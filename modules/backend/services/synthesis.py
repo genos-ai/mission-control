@@ -25,7 +25,8 @@ from modules.backend.schemas.execution_outcome import ExecutionOutcome
 
 logger = get_logger(__name__)
 
-_MODEL = "copilot:claude-haiku-4.5"
+# Model alias (config/settings/models.yaml), so the model is set in config, not here.
+_MODEL_ALIAS = "quick"
 
 _INSTRUCTIONS = """\
 You are a concise technical writer. Given structured execution outcome data,
@@ -42,7 +43,7 @@ Rules:
 
 def _create_agent() -> Agent[None, str]:
     """Create a fresh synthesis agent (no caching — avoids stale model singletons)."""
-    model = _build_model(_MODEL)
+    model = _build_model(_MODEL_ALIAS)
     return Agent(model, output_type=str, instructions=_INSTRUCTIONS)
 
 

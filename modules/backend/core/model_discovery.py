@@ -21,7 +21,10 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.config_schema import ProviderAuthSchema
 from modules.backend.core.exceptions import ExternalServiceError, ValidationError
 from modules.backend.core.logging import get_logger
-from modules.backend.core.model_providers import get_anthropic_provider, get_foundry_credential
+from modules.backend.core.model_providers import (
+    get_anthropic_provider,
+    get_foundry_credential,
+)
 from modules.backend.schemas.model_provider import DiscoveredModel
 
 logger = get_logger(__name__)
@@ -93,12 +96,27 @@ def anthropic_aliases(model_id: str) -> list[str]:
     return [match["alias"]] if match else []
 
 
-def to_discovered_anthropic_model(info) -> DiscoveredModel:
-    """Map the Anthropic SDK's ModelInfo to a DiscoveredModel."""
+def anthropic_format(deployment_protocols: dict[str, str]) -> str:
+    """The format name Anthropic's own models carry, from providers.yaml.
+
+    Anthropic's API lists only its own models, so ``providers.anthropic.
+    deployment_protocols`` must name exactly one format: the label every model it
+    lists gets. Requiring one keeps the label in config and rules out a guess.
+    """
+    if len(deployment_protocols) != 1:
+        raise ValidationError(
+            "providers.anthropic.deployment_protocols must name exactly one format, the one "
+            f"Anthropic's own models carry (found {sorted(deployment_protocols) or 'none'})."
+        )
+    return next(iter(deployment_protocols))
+
+
+def to_discovered_anthropic_model(info, format_name: str) -> DiscoveredModel:
+    """Map the Anthropic SDK's ModelInfo to a DiscoveredModel of format ``format_name``."""
     return DiscoveredModel(
         name=info.id,
         model=info.display_name,
-        format="Anthropic",
+        format=format_name,
         version=None,
         sku=None,
         state=None,
@@ -111,6 +129,7 @@ async def discover_anthropic_models() -> list[DiscoveredModel]:
     """List the models the Anthropic API serves to the configured key."""
     from anthropic import APIConnectionError, APIStatusError
 
+    format_name = anthropic_format(get_app_config().providers.anthropic.deployment_protocols)
     try:
         client = get_anthropic_provider().client
     except ValueError as exc:
@@ -126,7 +145,7 @@ async def discover_anthropic_models() -> list[DiscoveredModel]:
             "Check the API key and network access to api.anthropic.com."
         ) from exc
 
-    models = [to_discovered_anthropic_model(info) for info in infos]
+    models = [to_discovered_anthropic_model(info, format_name) for info in infos]
     models.sort(key=lambda m: m.name.lower())
     logger.info("Anthropic discovery complete", extra={"models": len(models)})
     return models

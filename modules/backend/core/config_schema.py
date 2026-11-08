@@ -494,7 +494,7 @@ class MissionsSchema(_StrictBase):
 class GateAiSchema(_StrictBase):
     """AI reviewer model and budget settings."""
 
-    model: str = "copilot:claude-haiku-4.5"
+    model: str  # a registry model, e.g. the provider:model string of the reviewer
     temperature: float = 0.0
     max_tokens: int = 1024
     budget_per_review_usd: float = Field(
@@ -644,13 +644,7 @@ class ModelsSchema(_StrictBase):
     correspond to a deployed model.
     """
 
-    aliases: dict[str, str] = Field(
-        default_factory=lambda: {
-            "quick": "copilot:claude-haiku-4.5",
-            "moderate": "copilot:claude-sonnet-4.6",
-            "comprehensive": "copilot:claude-opus-4.6",
-        },
-    )
+    aliases: dict[str, str]
     registry: dict[str, dict[str, ModelSpec]] = Field(
         default_factory=dict,
         description="Valid models as {provider: {model: ModelSpec}}.",
@@ -712,7 +706,7 @@ class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 
     mode: _GateMode = "autonomous"
-    ai: GateAiSchema = Field(default_factory=GateAiSchema)
+    ai: GateAiSchema
     manual: GateManualSchema = Field(default_factory=GateManualSchema)
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)
     auto_rules: GateAutoRulesSchema = Field(default_factory=GateAutoRulesSchema)
@@ -743,7 +737,7 @@ class CostSchema(_StrictBase):
 
     default_cache_ttl: str = "1h"
     alerts: CostAlertsSchema = Field(default_factory=CostAlertsSchema)
-    emergency_downgrade_model: str = "copilot:claude-haiku-4.5"
+    emergency_downgrade_model: str
     output_efficiency: OutputEfficiencySchema = Field(
         default_factory=OutputEfficiencySchema,
     )

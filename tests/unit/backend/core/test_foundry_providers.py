@@ -1,4 +1,4 @@
-"""Unit tests for the Foundry client factories: endpoint, client type and auth modes.
+"""Unit tests for the Foundry client factories: endpoints, client types and auth modes.
 
 The endpoint paths come from the foundry block under test, never from code. No
 request is made; these check how the clients are configured.
@@ -11,6 +11,7 @@ from modules.backend.core import model_providers
 from modules.backend.core.config import get_app_config
 from modules.backend.core.config_schema import ProviderAuthSchema
 from modules.backend.core.model_backends import ANTHROPIC_MESSAGES, OPENAI_CHAT
+from modules.backend.core.model_providers import OPENAI_RESPONSES
 
 BASE_URL = "https://example-resource.openai.azure.com/"
 PATHS = {OPENAI_CHAT: "/chat-path/", ANTHROPIC_MESSAGES: "/messages-path"}
@@ -130,3 +131,71 @@ class TestChatProvider:
 
         with pytest.raises(ValueError, match=f"endpoint_paths.{OPENAI_CHAT}"):
             model_providers.get_foundry_provider()
+
+
+PROJECT_URL = "https://example-account.services.ai.azure.com/api/projects/example-project"
+
+
+@pytest.fixture
+def project_config(monkeypatch):
+    """Point the project provider at a throwaway foundry_project block."""
+
+    def apply(**overrides):
+        config = ProviderAuthSchema(
+            **{
+                "auth_mode": "entra",
+                "base_url": PROJECT_URL,
+                "scope": "https://ai.azure.com/.default",
+                "endpoint_paths": {OPENAI_RESPONSES: "/responses-path/"},
+                **overrides,
+            }
+        )
+        monkeypatch.setattr(
+            model_providers,
+            "_get_provider_config",
+            lambda: type("P", (), {"foundry_project": config})(),
+        )
+        monkeypatch.setattr(model_providers, "get_foundry_credential", lambda: _FakeCredential())
+        return config
+
+    return apply
+
+
+class TestProjectProvider:
+    def test_client_targets_the_configured_responses_path(self, project_config):
+        project_config()
+
+        client = model_providers.get_foundry_project_provider()
+
+        assert str(client.base_url) == f"{PROJECT_URL}/responses-path/"
+
+    def test_the_shipped_project_block_builds_a_client_at_its_configured_path(self):
+        config = get_app_config().providers.foundry_project
+        path = config.endpoint_paths[OPENAI_RESPONSES]
+
+        client = model_providers.get_foundry_project_provider()
+
+        assert str(client.base_url) == f"{config.base_url.rstrip('/')}/{path.strip('/')}/"
+
+    def test_a_missing_responses_path_is_refused(self, project_config):
+        project_config(endpoint_paths={})
+
+        with pytest.raises(ValueError, match=f"endpoint_paths.{OPENAI_RESPONSES}"):
+            model_providers.get_foundry_project_provider()
+
+    def test_a_missing_base_url_is_refused_and_names_the_provider(self, project_config):
+        project_config(base_url=None)
+
+        with pytest.raises(ValueError, match="foundry_project provider requires base_url"):
+            model_providers.get_foundry_project_provider()
+
+    def test_entra_mode_needs_a_scope(self, project_config):
+        project_config(scope=None)
+
+        with pytest.raises(ValueError, match="scope"):
+            model_providers.get_foundry_project_provider()
+
+    def test_the_responses_key_is_not_a_model_registry_protocol(self):
+        from modules.backend.core.model_backends import BACKENDS
+
+        assert all(OPENAI_RESPONSES not in protocols for protocols in BACKENDS.values())

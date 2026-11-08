@@ -48,7 +48,7 @@ class LlmGateReviewer:
 
     def __init__(
         self,
-        model: str = "copilot:claude-haiku-4.5",
+        model: str,
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ):

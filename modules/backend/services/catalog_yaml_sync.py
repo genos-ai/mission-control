@@ -30,8 +30,9 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import ScalarString
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core import agent_defaults
 from modules.backend.core.agent_files import find_agent_files
-from modules.backend.core.config import find_project_root, get_app_config
+from modules.backend.core.config import find_project_root
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.agent_config import (
@@ -56,11 +57,6 @@ def _schema_default(schema: type, name: str) -> Callable[[], Any]:
     return lambda: schema.model_fields[name].get_default(call_default_factory=True)
 
 
-def _timeout_default() -> int:
-    """The task timeout an agent gets when its YAML sets none (application.yaml)."""
-    return get_app_config().application.timeouts.agent_task
-
-
 @dataclass(frozen=True)
 class _SyncedField:
     """A YAML field that mirrors a catalog column.
@@ -75,13 +71,19 @@ class _SyncedField:
     default: Callable[[], Any] = lambda: None
 
 
+def _constraint(row: Any, key: str, default: Callable[[], Any]) -> Any:
+    """A constraint as the roster applies it: the row's value, else the config default."""
+    value = (row.constraints or {}).get(key)
+    return default() if value is None else value
+
+
 def _model_config(row: Any) -> dict:
     return row.model_config_json or {}
 
 
 # Fields the admin API can change, in YAML terms. Not synced: agent_type,
-# invocation, execution, produces_artifact (not editable at runtime), visibility
-# (derived), and cache_ttl (never seeded).
+# invocation, execution, produces_artifact (not editable at runtime) and
+# cache_ttl (never seeded).
 _FIELDS: tuple[_SyncedField, ...] = (
     _SyncedField(("description",), lambda r: r.description),
     _SyncedField(("enabled",), lambda r: r.enabled),
@@ -89,6 +91,11 @@ _FIELDS: tuple[_SyncedField, ...] = (
         ("chat_enabled",),
         lambda r: r.chat_enabled,
         default=_schema_default(AgentConfigSchema, "chat_enabled"),
+    ),
+    _SyncedField(
+        ("visibility",),
+        lambda r: r.visibility,
+        default=_schema_default(AgentConfigSchema, "visibility"),
     ),
     _SyncedField(
         ("version",),
@@ -142,9 +149,14 @@ _FIELDS: tuple[_SyncedField, ...] = (
     _SyncedField(("max_budget_usd",), lambda r: r.max_budget_usd),
     _SyncedField(("max_input_length",), lambda r: r.max_input_length),
     _SyncedField(
+        ("retry_budget",),
+        lambda r: _constraint(r, "retry_budget", agent_defaults.retry_budget),
+        default=agent_defaults.retry_budget,
+    ),
+    _SyncedField(
         ("timeout_seconds",),
-        lambda r: (r.constraints or {}).get("timeout_seconds"),
-        default=_timeout_default,
+        lambda r: _constraint(r, "timeout_seconds", agent_defaults.task_timeout_seconds),
+        default=agent_defaults.task_timeout_seconds,
     ),
 )
 

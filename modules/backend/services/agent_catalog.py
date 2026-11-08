@@ -5,18 +5,27 @@ Business logic for the global agent registry. Handles CRUD operations,
 system prompt updates with version tracking, and catalog queries.
 """
 
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core import agent_defaults
 from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.model_builder import _resolve_model_alias
 from modules.backend.models.agent_catalog import AgentCatalog
 from modules.backend.repositories.agent_catalog import AgentCatalogRepository
+from modules.backend.schemas.agent_config import Visibility
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
+
+
+def _or(value: Any, default: Callable[[], Any]) -> Any:
+    """``value`` unless it is None, else the default; 0 and empty values are kept."""
+    return default() if value is None else value
 
 
 class AgentCatalogService(BaseService):
@@ -68,6 +77,24 @@ class AgentCatalogService(BaseService):
         """List catalog entries filtered by agent type."""
         return await self._repo.list_by_type(agent_type, enabled_only=enabled_only)
 
+    @staticmethod
+    def _default_model_config() -> dict[str, Any]:
+        """Model block for an agent created without one: the ``quick`` alias, schema defaults."""
+        return {
+            "name": _resolve_model_alias("quick"),
+            "temperature": agent_defaults.temperature(),
+            "max_tokens": agent_defaults.max_tokens(),
+        }
+
+    @staticmethod
+    def _default_constraints() -> dict[str, Any]:
+        """Constraints for an agent created without any, all from config."""
+        return {
+            "timeout_seconds": agent_defaults.task_timeout_seconds(),
+            "cost_ceiling_usd": agent_defaults.max_budget_usd(),
+            "retry_budget": agent_defaults.retry_budget(),
+        }
+
     async def create_entry(
         self,
         *,
@@ -76,7 +103,7 @@ class AgentCatalogService(BaseService):
         description: str,
         system_prompt: str = "",
         model_config_json: dict[str, Any] | None = None,
-        version: str = "1.0.0",
+        version: str | None = None,
         tools: list[str] | None = None,
         scope: dict[str, Any] | None = None,
         interface: dict[str, Any] | None = None,
@@ -84,15 +111,15 @@ class AgentCatalogService(BaseService):
         keywords: list[str] | None = None,
         enabled: bool = True,
         chat_enabled: bool = False,
-        visibility: str = "public",
-        engine: str = "pydantic_ai",
+        visibility: Visibility | None = None,
+        engine: str | None = None,
         effort: str | None = None,
-        invocation_tier: str = "user",
+        invocation_tier: str | None = None,
         invocation_required_role: str | None = None,
-        execution_mode: str = "standard",
+        execution_mode: str | None = None,
         thinking_budget_json: dict | None = None,
-        max_input_length: int = 32000,
-        max_budget_usd: float = 1.0,
+        max_input_length: int | None = None,
+        max_budget_usd: float | None = None,
         produces_artifact: bool = False,
         artifact_type: str | None = None,
     ) -> AgentCatalog:
@@ -104,28 +131,26 @@ class AgentCatalogService(BaseService):
         entry = await self._repo.create(
             agent_name=agent_name,
             agent_type=agent_type,
-            version=version,
+            version=_or(version, agent_defaults.version),
             description=description,
             system_prompt=system_prompt,
-            model_config_json=model_config_json
-            or {"name": "copilot:claude-haiku-4.5", "temperature": 0.0, "max_tokens": 4096},
+            model_config_json=model_config_json or self._default_model_config(),
             tools=tools or [],
             scope=scope or {"read": [], "write": []},
             interface=interface,
-            constraints=constraints
-            or {"timeout_seconds": 120, "cost_ceiling_usd": 1.0, "retry_budget": 2},
+            constraints=constraints or self._default_constraints(),
             keywords=keywords or [],
             enabled=enabled,
             chat_enabled=chat_enabled,
-            visibility=visibility,
-            engine=engine,
+            visibility=_or(visibility, agent_defaults.visibility),
+            engine=_or(engine, agent_defaults.engine),
             effort=effort,
-            invocation_tier=invocation_tier,
+            invocation_tier=_or(invocation_tier, agent_defaults.invocation_tier),
             invocation_required_role=invocation_required_role,
-            execution_mode=execution_mode,
+            execution_mode=_or(execution_mode, agent_defaults.execution_mode),
             thinking_budget_json=thinking_budget_json,
-            max_input_length=max_input_length,
-            max_budget_usd=max_budget_usd,
+            max_input_length=_or(max_input_length, agent_defaults.max_input_length),
+            max_budget_usd=_or(max_budget_usd, agent_defaults.max_budget_usd),
             produces_artifact=produces_artifact,
             artifact_type=artifact_type,
         )

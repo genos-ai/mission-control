@@ -13,6 +13,11 @@ from modules.backend.core.model_backends import (
 )
 
 
+def _models(**fields) -> ModelsSchema:
+    """A ModelsSchema with the required aliases left empty; these tests are about the registry."""
+    return ModelsSchema(aliases={}, **fields)
+
+
 class TestBackendTable:
     def test_every_entry_is_a_callable_builder(self):
         for provider, protocols in BACKENDS.items():
@@ -38,7 +43,7 @@ class TestBackendTable:
 
 class TestRegistrySchema:
     def test_each_model_carries_its_protocol_and_thinking_style(self):
-        models = ModelsSchema(
+        models = _models(
             registry={
                 "foundry": {
                     "gpt-a": {"protocol": OPENAI_CHAT},
@@ -57,12 +62,12 @@ class TestRegistrySchema:
         }
 
     def test_thinking_defaults_to_a_token_budget(self):
-        models = ModelsSchema(registry={"anthropic": {"c": {"protocol": ANTHROPIC_MESSAGES}}})
+        models = _models(registry={"anthropic": {"c": {"protocol": ANTHROPIC_MESSAGES}}})
 
         assert models.spec_of("anthropic", "c").thinking == "budget"
 
     def test_an_unregistered_model_or_provider_has_no_spec(self):
-        models = ModelsSchema(registry={"foundry": {"gpt-a": {"protocol": OPENAI_CHAT}}})
+        models = _models(registry={"foundry": {"gpt-a": {"protocol": OPENAI_CHAT}}})
 
         assert models.spec_of("foundry", "unknown") is None
         assert models.spec_of("anthropic", "gpt-a") is None
@@ -70,27 +75,25 @@ class TestRegistrySchema:
 
     def test_unknown_provider_is_rejected(self):
         with pytest.raises(PydanticValidationError, match="unknown provider 'bedrock'"):
-            ModelsSchema(registry={"bedrock": {"x": {"protocol": OPENAI_CHAT}}})
+            _models(registry={"bedrock": {"x": {"protocol": OPENAI_CHAT}}})
 
     def test_protocol_the_provider_does_not_support_is_rejected(self):
         with pytest.raises(PydanticValidationError, match="unknown protocol 'copilot_sdk'"):
-            ModelsSchema(registry={"foundry": {"x": {"protocol": COPILOT_SDK}}})
+            _models(registry={"foundry": {"x": {"protocol": COPILOT_SDK}}})
 
     def test_thinking_on_a_protocol_that_ignores_it_is_rejected(self):
         with pytest.raises(PydanticValidationError, match="'thinking' applies only to"):
-            ModelsSchema(
-                registry={"foundry": {"x": {"protocol": OPENAI_CHAT, "thinking": "adaptive"}}}
-            )
+            _models(registry={"foundry": {"x": {"protocol": OPENAI_CHAT, "thinking": "adaptive"}}})
 
     def test_an_unknown_thinking_style_is_rejected(self):
         with pytest.raises(PydanticValidationError):
-            ModelsSchema(
+            _models(
                 registry={"anthropic": {"x": {"protocol": ANTHROPIC_MESSAGES, "thinking": "max"}}}
             )
 
     def test_an_unknown_key_on_a_model_is_rejected(self):
         with pytest.raises(PydanticValidationError):
-            ModelsSchema(registry={"foundry": {"x": {"protocol": OPENAI_CHAT, "colour": "red"}}})
+            _models(registry={"foundry": {"x": {"protocol": OPENAI_CHAT, "colour": "red"}}})
 
     @pytest.mark.parametrize(
         "old_shape",
@@ -101,7 +104,7 @@ class TestRegistrySchema:
     )
     def test_earlier_registry_shapes_are_rejected(self, old_shape):
         with pytest.raises(PydanticValidationError):
-            ModelsSchema(registry=old_shape)
+            _models(registry=old_shape)
 
 
 class TestProvidersSchema:

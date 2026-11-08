@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from modules.backend.core import agent_defaults
 from modules.backend.core.agent_files import agents_dir, find_agent_files
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
@@ -50,15 +51,14 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
     if model_cfg.get("temperature") is not None or model_cfg.get("max_tokens"):
         model: str | AgentModelSchema = AgentModelSchema(
             name=model_name,
-            temperature=model_cfg.get("temperature", 0.0),
-            max_tokens=model_cfg.get("max_tokens"),
+            temperature=model_cfg.get("temperature", agent_defaults.temperature()),
+            max_tokens=model_cfg.get("max_tokens") or agent_defaults.max_tokens(),
         )
     else:
         model = model_name
 
     scope_data = row.scope or {}
     interface_data = row.interface
-    constraints = row.constraints or {}
 
     return AgentConfigSchema(
         agent_name=row.agent_name,
@@ -68,14 +68,13 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
         model=model,
         keywords=row.keywords or [],
         tools=row.tools or [],
-        max_input_length=getattr(row, "max_input_length", 32000) or 32000,
-        max_budget_usd=getattr(row, "max_budget_usd", 1.0)
-        or constraints.get("cost_ceiling_usd", 1.0),
+        max_input_length=row.max_input_length,
+        max_budget_usd=row.max_budget_usd,
         execution=ExecutionSchema(
-            mode=getattr(row, "execution_mode", "standard") or "standard",
+            mode=row.execution_mode,
         ),
         invocation=InvocationSchema(
-            tier=getattr(row, "invocation_tier", "user") or "user",
+            tier=row.invocation_tier,
             required_role=getattr(row, "invocation_required_role", None),
         ),
         scope=FileScopeConfigSchema(
@@ -83,10 +82,10 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
             write=scope_data.get("write", []),
         ),
         interface=interface_data,
-        version=row.version or "1.0.0",
+        version=row.version,
         chat_enabled=row.chat_enabled,
         thinking_budget=getattr(row, "thinking_budget_json", None),
-        engine=getattr(row, "engine", "pydantic_ai") or "pydantic_ai",
+        engine=row.engine,
         effort=getattr(row, "effort", None),
         produces_artifact=getattr(row, "produces_artifact", False),
         artifact_type=getattr(row, "artifact_type", None),

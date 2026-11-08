@@ -154,11 +154,11 @@ class AppConfig:
         self._temporal = _load_validated_optional(TemporalSchema, "temporal.yaml")
         self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
-        self._gate = _load_validated_optional(GateSchema, "gate.yaml")
+        self._gate = _load_validated(GateSchema, "gate.yaml")
         self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
         self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
-        self._models = _load_validated_optional(ModelsSchema, "models.yaml")
-        self._cost = _load_validated_optional(CostSchema, "cost.yaml")
+        self._models = _load_validated(ModelsSchema, "models.yaml")
+        self._cost = _load_validated(CostSchema, "cost.yaml")
         self._security_assessment = _load_validated_optional(
             SecurityAssessmentSchema,
             "security_assessment.yaml",

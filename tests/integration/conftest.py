@@ -245,7 +245,7 @@ def _create_mock_app_config() -> Any:
                 channels={"telegram": {"allowlist": []}},
             )
             self.sessions = SessionsSchema()
-            self.cost = CostSchema()
+            self.cost = CostSchema(emergency_downgrade_model="test-fixture:downgrade")
 
     return TestAppConfig()
 

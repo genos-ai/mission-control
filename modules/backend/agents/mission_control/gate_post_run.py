@@ -36,6 +36,7 @@ from modules.backend.agents.mission_control.gate_models import (
     GateContext,
     GateDecision,
 )
+from modules.backend.core.config import get_app_config
 from modules.backend.core.decision_reasoning import (
     decode_decision_reasoning,
     encode_decision_reasoning,
@@ -358,7 +359,8 @@ class AutonomousPostRunReviewer:
             from modules.backend.agents.mission.supervisor.agent import create_event_agent
             from modules.backend.agents.mission.supervisor.deps import MissionSupervisorDeps
 
-            agent = create_event_agent("copilot:claude-haiku-4.5")
+            model_name = get_app_config().gate.ai.model
+            agent = create_event_agent(model_name)
             deps = MissionSupervisorDeps(
                 mission_id=context.mission_id,
                 db_session=self._session,
@@ -389,7 +391,7 @@ class AutonomousPostRunReviewer:
             cost_usd = compute_cost_usd(
                 usage.input_tokens or 0,
                 usage.output_tokens or 0,
-                "copilot:claude-haiku-4.5",
+                model_name,
             )
 
             # Confidence override: < 0.6 → ESCALATE
@@ -430,7 +432,7 @@ class AutonomousPostRunReviewer:
                 decision.reason,
                 {
                     "action": action.value,
-                    "reviewer": "ai:copilot:claude-haiku-4.5",
+                    "reviewer": f"ai:{model_name}",
                     "rule": 8,
                     "model_metadata": model_metadata,
                 },
@@ -439,7 +441,7 @@ class AutonomousPostRunReviewer:
             gate_decision = GateDecision(
                 action=action,
                 reason=decision.reason,
-                reviewer="ai:copilot:claude-haiku-4.5",
+                reviewer=f"ai:{model_name}",
                 model_metadata=model_metadata,
                 rule=8,
             )

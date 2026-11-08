@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.backend.core.config import get_app_config
+from modules.backend.core.config import get_app_config, get_mission_control_config
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.services.catalog_yaml_sync import (
     _dump,
@@ -44,11 +44,13 @@ scope:
 
 # Defaults come from the schemas and config the sync reads, so no value is repeated here.
 DEFAULT_TIMEOUT = get_app_config().application.timeouts.agent_task
+DEFAULT_RETRIES = get_mission_control_config().dispatch.default_retry_budget
 SLOW_TIMEOUT = DEFAULT_TIMEOUT * 5
 DEFAULT_TEMPERATURE = AgentModelSchema.model_fields["temperature"].default
 DEFAULT_MAX_TOKENS = AgentModelSchema.model_fields["max_tokens"].default
 DEFAULT_VERSION = AgentConfigSchema.model_fields["version"].default
 DEFAULT_ENGINE = AgentConfigSchema.model_fields["engine"].default
+DEFAULT_VISIBILITY = AgentConfigSchema.model_fields["visibility"].default
 
 
 def _model(name: str, **overrides) -> dict:
@@ -68,6 +70,7 @@ def _row(**overrides) -> SimpleNamespace:
         enabled=True,
         chat_enabled=False,
         version=DEFAULT_VERSION,
+        visibility=DEFAULT_VISIBILITY,
         keywords=["alpha", "beta"],
         tools=["system.get_app_info"],
         model_config_json=_model("foundry:gpt-5-mini"),
@@ -255,3 +258,44 @@ class TestIgnoredAndEmptyValues:
         changes = diff_agent(_row(engine="claude_code", effort="medium"), _yaml().load(SAMPLE))
 
         assert sorted(c.field for c in changes) == ["effort", "engine"]
+
+
+class TestConstraintsAsTheRosterAppliesThem:
+    def test_a_missing_retry_budget_is_the_config_default_not_drift(self):
+        assert diff_agent(_row(constraints={}), _yaml().load(SAMPLE)) == []
+
+    def test_a_different_retry_budget_is_inserted_into_the_file(self):
+        changes, text = _sync(_row(constraints={"retry_budget": DEFAULT_RETRIES + 3}))
+
+        assert [(c.field, c.yaml_value, c.database_value) for c in changes] == [
+            ("retry_budget", DEFAULT_RETRIES, DEFAULT_RETRIES + 3)
+        ]
+        assert f"retry_budget: {DEFAULT_RETRIES + 3}" in text
+
+    def test_zero_retries_is_a_real_value_not_a_missing_one(self):
+        changes, text = _sync(_row(constraints={"retry_budget": 0}))
+
+        assert [(c.field, c.database_value) for c in changes] == [("retry_budget", 0)]
+        assert "retry_budget: 0" in text
+
+    def test_a_retry_budget_equal_to_the_default_is_not_inserted(self):
+        assert (
+            diff_agent(_row(constraints={"retry_budget": DEFAULT_RETRIES}), _yaml().load(SAMPLE))
+            == []
+        )
+
+    def test_a_missing_timeout_is_the_config_default_not_drift(self):
+        assert diff_agent(_row(constraints={}), _yaml().load(SAMPLE)) == []
+
+
+class TestVisibility:
+    def test_the_default_visibility_is_not_forced_into_the_file(self):
+        assert diff_agent(_row(visibility=DEFAULT_VISIBILITY), _yaml().load(SAMPLE)) == []
+
+    def test_a_restricted_agent_gets_its_visibility_written(self):
+        changes, text = _sync(_row(visibility="system"))
+
+        assert [(c.field, c.yaml_value, c.database_value) for c in changes] == [
+            ("visibility", DEFAULT_VISIBILITY, "system")
+        ]
+        assert "visibility: system" in text

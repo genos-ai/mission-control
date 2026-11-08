@@ -623,3 +623,36 @@ class TestNormalizeTaskContent:
         h1 = normalize_task_content("Fix the bug", "Check the logs")
         h2 = normalize_task_content("Add a feature", "Write the code")
         assert h1 != h2
+
+
+# ---------------------------------------------------------------------------
+# The classifier model comes from gate.yaml, not from the code
+# ---------------------------------------------------------------------------
+
+
+class TestClassifierModelComesFromConfig:
+    @pytest.mark.asyncio
+    async def test_the_configured_reviewer_model_is_used_and_recorded(
+        self, db_session: AsyncSession, monkeypatch
+    ):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from modules.backend.core.config import get_app_config
+
+        monkeypatch.setattr(get_app_config().gate.ai, "model", "fixture:reviewer")
+        fake_result = SimpleNamespace(
+            output=SimpleNamespace(decision="ESCALATE", confidence=0.9, reason="needs a human"),
+            usage=lambda: SimpleNamespace(input_tokens=10, output_tokens=5),
+        )
+        fake_agent = MagicMock()
+        fake_agent.run = AsyncMock(return_value=fake_result)
+        create_agent = MagicMock(return_value=fake_agent)
+
+        with patch(
+            "modules.backend.agents.mission.supervisor.agent.create_event_agent", create_agent
+        ):
+            decision = await AutonomousPostRunReviewer(db_session)._classify_with_haiku(_context())
+
+        create_agent.assert_called_once_with("fixture:reviewer")
+        assert decision.reviewer == "ai:fixture:reviewer"

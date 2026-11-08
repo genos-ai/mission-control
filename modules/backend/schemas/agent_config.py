@@ -88,6 +88,10 @@ class AgentInterfaceSchema(_StrictBase):
     )
 
 
+# Who can see an agent in the catalog: everyone, or sysadmins only.
+Visibility = Literal["public", "system"]
+
+
 class AgentModelSchema(_StrictBase):
     """Pinned model configuration. Immutable at runtime.
 
@@ -159,10 +163,14 @@ class AgentConfigSchema(_StrictBase):
     max_requests: int | None = None
 
     # Per-agent task timeout (wall-clock seconds for one execute_agent attempt).
-    # The catalog seeder reads this; absent → defaults to 120s in
-    # services/catalog_seeder.py. Override on long-running agents (web
+    # The catalog seeder reads this; absent → timeouts.agent_task in
+    # config/settings/application.yaml. Override on long-running agents (web
     # research, large-context synthesis).
     timeout_seconds: int | None = None
+
+    # Per-agent retries per task. The catalog seeder reads this; absent → the
+    # dispatch.default_retry_budget in config/agents/mission_control.yaml.
+    retry_budget: int | None = Field(default=None, ge=0)
 
     # Agent-specific optional fields
     file_size_limit: int | None = None
@@ -171,6 +179,10 @@ class AgentConfigSchema(_StrictBase):
 
     # Conversational chat support
     chat_enabled: bool = False
+
+    # Catalog visibility. An agent meant for sysadmins only declares `system`;
+    # the seeder takes it from here, not from the agent's type or name.
+    visibility: Visibility = "public"
 
     # Horizontal agent fields (Plan 13)
     thinking_budget: dict[str, int] | None = None
@@ -242,7 +254,10 @@ class AgentConfigSchema(_StrictBase):
             raise ValueError(f"Agent '{self.agent_name}' has an empty model name")
 
         # Known provider check
-        from modules.backend.core.model_backends import BACKENDS, NATIVE_OUTPUT_PROTOCOLS
+        from modules.backend.core.model_backends import (
+            BACKENDS,
+            NATIVE_OUTPUT_PROTOCOLS,
+        )
 
         provider = model_name.split(":")[0] if ":" in model_name else ""
         if provider and provider not in BACKENDS:
@@ -372,6 +387,22 @@ class DispatchSchema(_StrictBase):
     token_cost_factor: int = 333_333  # tokens per dollar of cost ceiling
     context_token_budget: int = 50_000  # assembled context packet budget
     history_reserve_tokens: int = 1_500  # reserved for Layer 2 history
+    default_retry_budget: int = Field(
+        ge=0,
+        description="Retries per task for an agent whose YAML sets no retry_budget.",
+    )
+    default_max_budget_usd: float = Field(
+        gt=0,
+        description="Cost ceiling per invocation for an agent created without one.",
+    )
+    default_max_input_length: int = Field(
+        gt=0,
+        description="Input size limit in characters for an agent created without one.",
+    )
+    default_execution_mode: str = Field(
+        min_length=1,
+        description="Execution mode for an agent created without one.",
+    )
 
 
 class EscalationThresholdsSchema(_StrictBase):
@@ -391,7 +422,7 @@ class MissionControlConfigSchema(_StrictBase):
     guardrails: GuardrailsSchema
     redis_ttl: RedisTtlSchema
     approval: ApprovalSchema
-    dispatch: DispatchSchema = Field(default_factory=DispatchSchema)
+    dispatch: DispatchSchema
     escalation: EscalationThresholdsSchema = Field(
         default_factory=EscalationThresholdsSchema,
     )

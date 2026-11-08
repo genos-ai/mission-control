@@ -26,6 +26,10 @@ from modules.backend.core.model_backends import ANTHROPIC_MESSAGES, OPENAI_CHAT
 
 logger = get_logger(__name__)
 
+# Key of the foundry_project endpoint_paths entry for the OpenAI Responses API. It is
+# not a model-registry protocol: no model is called over it, only the search service.
+OPENAI_RESPONSES = "openai_responses"
+
 
 # Shared Azure Entra credential for the Foundry providers.
 #
@@ -207,20 +211,27 @@ def get_openai_provider():
     return OpenAIProvider(openai_client=client)
 
 
-def _foundry_endpoint(config, protocol: str) -> str:
-    """The Foundry URL for ``protocol``: base_url plus its path from providers.yaml."""
+def _endpoint_url(config, provider: str, protocol: str, base_url_hint: str) -> str:
+    """``provider``'s URL for ``protocol``: base_url plus its path from providers.yaml.
+
+    Both are required; there is no built-in path to fall back on.
+    """
     if not config.base_url:
         raise ValueError(
-            "Foundry provider requires base_url in providers.yaml "
-            "(e.g. https://<resource>.openai.azure.com)."
+            f"{provider} provider requires base_url in providers.yaml ({base_url_hint})."
         )
     path = config.endpoint_paths.get(protocol)
     if not path:
         raise ValueError(
-            f"Foundry provider requires endpoint_paths.{protocol} in providers.yaml "
+            f"{provider} provider requires endpoint_paths.{protocol} in providers.yaml "
             "(the path appended to base_url for that protocol)."
         )
     return f"{config.base_url.rstrip('/')}/{path.strip('/')}/"
+
+
+def _foundry_endpoint(config, protocol: str) -> str:
+    """The Foundry resource URL for ``protocol``."""
+    return _endpoint_url(config, "Foundry", protocol, "e.g. https://<resource>.openai.azure.com")
 
 
 def get_foundry_provider():
@@ -359,13 +370,12 @@ def get_foundry_project_provider():
 
     config = _get_provider_config().foundry_project
 
-    if not config.base_url:
-        raise ValueError(
-            "foundry_project provider requires base_url in providers.yaml "
-            "(format: https://<account>.services.ai.azure.com/api/projects/<project>)."
-        )
-
-    sdk_base_url = f"{config.base_url.rstrip('/')}/openai/v1/"
+    sdk_base_url = _endpoint_url(
+        config,
+        "foundry_project",
+        OPENAI_RESPONSES,
+        "format: https://<account>.services.ai.azure.com/api/projects/<project>",
+    )
 
     if config.auth_mode == "entra":
         # Shares the module-level credential singleton with get_foundry_provider()

@@ -11,6 +11,7 @@ from dataclasses import asdict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from modules.backend.agents.mission_control.gate import (
     ConfigurableGate,
@@ -92,8 +93,12 @@ def _plan(mission_id: str = "test", tasks: list[dict] | None = None) -> TaskPlan
     )
 
 
+AI = GateAiSchema(model="fixture:gate-reviewer")
+
+
 def _gate_config(mode: str = "autonomous", **overrides) -> GateSchema:
     """Build a GateSchema for testing."""
+    overrides.setdefault("ai", AI)
     return GateSchema(mode=mode, **overrides)
 
 
@@ -269,8 +274,12 @@ class TestLlmGateReviewer:
         gate = LlmGateReviewer(model="anthropic:claude-sonnet-4-20250514")
         assert gate.model_name == "anthropic:claude-sonnet-4-20250514"
 
+    def test_the_model_is_required_not_assumed(self):
+        with pytest.raises(TypeError, match="model"):
+            LlmGateReviewer()
+
     def test_default_params(self):
-        gate = LlmGateReviewer()
+        gate = LlmGateReviewer(model=AI.model)
         assert gate.temperature == 0.0
         assert gate.max_tokens == 1024
 
@@ -296,23 +305,23 @@ class TestLlmGateReviewer:
 
 class TestGateSchema:
     def test_defaults(self):
-        schema = GateSchema()
+        schema = GateSchema(ai=AI)
         assert schema.mode == "autonomous"
-        assert schema.ai.model == "copilot:claude-haiku-4.5"
+        assert schema.ai.model == AI.model
         assert schema.ai.temperature == 0.0
         assert schema.points.pre_dispatch.enabled is True
         assert schema.points.verification_failed.mode is None
         assert schema.auto_rules.cost_threshold_pct == 80
 
     def test_mode_override(self):
-        schema = GateSchema(mode="autonomous")
+        schema = GateSchema(mode="autonomous", ai=AI)
         assert schema.mode == "autonomous"
 
     def test_per_point_mode(self):
         points = GatePointsSchema(
             verification_failed=GatePointSchema(enabled=True, mode="ai_assisted"),
         )
-        schema = GateSchema(mode="autonomous", points=points)
+        schema = GateSchema(mode="autonomous", points=points, ai=AI)
         assert schema.points.verification_failed.mode == "ai_assisted"
         assert schema.points.pre_dispatch.mode is None
 
@@ -320,8 +329,16 @@ class TestGateSchema:
         points = GatePointsSchema(
             post_task=GatePointSchema(enabled=False),
         )
-        schema = GateSchema(mode="interactive", points=points)
+        schema = GateSchema(mode="interactive", points=points, ai=AI)
         assert schema.points.post_task.enabled is False
+
+    def test_the_reviewer_model_is_required_not_assumed(self):
+        with pytest.raises(ValidationError, match="model"):
+            GateAiSchema()
+
+    def test_a_gate_config_without_an_ai_block_is_rejected(self):
+        with pytest.raises(ValidationError, match="ai"):
+            GateSchema()
 
     def test_custom_ai_model(self):
         ai = GateAiSchema(model="anthropic:claude-sonnet-4-20250514", max_tokens=2048)
@@ -331,11 +348,11 @@ class TestGateSchema:
 
     def test_strict_rejects_unknown_keys(self):
         with pytest.raises(Exception):  # ValidationError
-            GateSchema(mode="autonomous", unknown_key="bad")
+            GateSchema(mode="autonomous", ai=AI, unknown_key="bad")
 
     def test_rejects_invalid_mode(self):
         with pytest.raises(Exception):  # ValidationError
-            GateSchema(mode="banana")
+            GateSchema(mode="banana", ai=AI)
 
 
 # ── ConfigurableGate tests ───────────────────────────────────────

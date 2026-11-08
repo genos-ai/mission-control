@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from modules.backend.schemas.agent_config import Visibility
+
 
 class AgentCatalogResponse(BaseModel):
     """List-view response for a catalog agent."""
@@ -84,19 +86,13 @@ class AgentCatalogCreateRequest(BaseModel):
         default_factory=lambda: {"read": [], "write": []},
     )
     interface: dict[str, Any] | None = None
-    constraints: dict[str, Any] = Field(
-        default_factory=lambda: {
-            "timeout_seconds": 120,
-            "cost_ceiling_usd": 1.0,
-            "retry_budget": 2,
-        },
+    constraints: dict[str, Any] | None = Field(
+        default=None,
+        description="None gives the agent the configured timeout and retry-budget defaults.",
     )
     keywords: list[str] = Field(default_factory=list)
     enabled: bool = True
-    visibility: str = Field(
-        default="public",
-        pattern=r"^(public|system)$",
-    )
+    visibility: Visibility | None = None
 
 
 class SystemPromptUpdateRequest(BaseModel):

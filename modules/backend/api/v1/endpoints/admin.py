@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from modules.backend.core.config import get_app_config
 from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
 from modules.backend.core.exceptions import AuthorizationError, ValidationError
+from modules.backend.schemas.agent_config import Visibility
 from modules.backend.schemas.base import ApiResponse
 
 router = APIRouter()
@@ -47,7 +48,7 @@ class CatalogCreateRequest(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     enabled: bool = True
     chat_enabled: bool = False
-    visibility: str = "public"
+    visibility: Visibility | None = None
     model_config_json: dict[str, Any] | None = None
     scope: dict[str, Any] | None = None
     interface: dict[str, Any] | None = None
@@ -60,7 +61,7 @@ class CatalogUpdateRequest(BaseModel):
     description: str | None = None
     enabled: bool | None = None
     chat_enabled: bool | None = None
-    visibility: str | None = None
+    visibility: Visibility | None = None
     version: str | None = None
     tools: list[str] | None = None
     keywords: list[str] | None = None

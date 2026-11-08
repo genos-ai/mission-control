@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from modules.backend.core import agent_defaults
 from modules.backend.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -24,8 +25,8 @@ class RosterModelSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    temperature: float = 0.0
-    max_tokens: int = 4096
+    temperature: float = Field(default_factory=agent_defaults.temperature)
+    max_tokens: int = Field(default_factory=agent_defaults.max_tokens)
 
 
 class RosterInterfaceSchema(BaseModel):
@@ -42,9 +43,9 @@ class RosterConstraintsSchema(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    timeout_seconds: int = 120
-    cost_ceiling_usd: float = 1.0
-    retry_budget: int = 2
+    timeout_seconds: int = Field(default_factory=agent_defaults.task_timeout_seconds)
+    cost_ceiling_usd: float = Field(default_factory=agent_defaults.max_budget_usd)
+    retry_budget: int = Field(default_factory=agent_defaults.retry_budget)
     parallelism: str = "safe"
 
 
@@ -151,8 +152,8 @@ async def derive_roster_from_team(
                 description=catalog_entry.description,
                 model=RosterModelSchema(
                     name=model_cfg["name"],
-                    temperature=model_cfg.get("temperature", 0.0),
-                    max_tokens=model_cfg.get("max_tokens", 4096),
+                    temperature=model_cfg.get("temperature", agent_defaults.temperature()),
+                    max_tokens=model_cfg.get("max_tokens", agent_defaults.max_tokens()),
                 ),
                 tools=catalog_entry.tools or [],
                 interface=RosterInterfaceSchema(
@@ -160,9 +161,13 @@ async def derive_roster_from_team(
                     output=(catalog_entry.interface or {}).get("output", {}),
                 ),
                 constraints=RosterConstraintsSchema(
-                    timeout_seconds=constraints_cfg.get("timeout_seconds", 120),
-                    cost_ceiling_usd=constraints_cfg.get("cost_ceiling_usd", 1.0),
-                    retry_budget=constraints_cfg.get("retry_budget", 2),
+                    timeout_seconds=constraints_cfg.get(
+                        "timeout_seconds", agent_defaults.task_timeout_seconds()
+                    ),
+                    cost_ceiling_usd=constraints_cfg.get(
+                        "cost_ceiling_usd", agent_defaults.max_budget_usd()
+                    ),
+                    retry_budget=constraints_cfg.get("retry_budget", agent_defaults.retry_budget()),
                 ),
             )
         )

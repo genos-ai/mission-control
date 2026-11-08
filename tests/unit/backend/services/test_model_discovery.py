@@ -13,6 +13,8 @@ from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.model_discovery import (
     DISCOVERABLE_PROVIDERS,
     anthropic_aliases,
+    anthropic_format,
+    discover_anthropic_models,
     discover_foundry_deployments,
     discover_models,
 )
@@ -173,13 +175,13 @@ class TestAnthropicListing:
             type="model",
         )
 
-        model = to_discovered_anthropic_model(info)
+        model = to_discovered_anthropic_model(info, "Some Format")
 
         assert model.name == "claude-haiku-4-5-20251001"
         assert model.model == "Claude Haiku 4.5"
         assert model.created == "2025-10-01"
         assert model.aliases == ["claude-haiku-4-5"]
-        assert model.format == "Anthropic"
+        assert model.format == "Some Format"
 
 
 def _deployment(name: str, fmt: str) -> DiscoveredModel:
@@ -286,3 +288,32 @@ class TestFindUnmappedFormats:
         assert (
             ModelProviderService.find_unmapped_formats([_deployment("a", "OpenAI")], FORMATS) == []
         )
+
+
+class TestAnthropicFormat:
+    def test_the_single_configured_format_is_used(self):
+        assert anthropic_format({"Vendor": "anthropic_messages"}) == "Vendor"
+
+    @pytest.mark.parametrize(
+        "mapping",
+        [{}, {"A": "anthropic_messages", "B": "anthropic_messages"}],
+        ids=["none", "several"],
+    )
+    def test_anything_but_exactly_one_is_refused(self, mapping):
+        with pytest.raises(ValidationError, match="exactly one format"):
+            anthropic_format(mapping)
+
+    def test_the_shipped_config_names_one_format(self):
+        from modules.backend.core.config import get_app_config
+
+        mapping = get_app_config().providers.anthropic.deployment_protocols
+
+        assert anthropic_format(mapping) in mapping
+
+    async def test_discovery_checks_the_config_before_calling_the_api(self, monkeypatch):
+        from modules.backend.core.config import get_app_config
+
+        monkeypatch.setattr(get_app_config().providers.anthropic, "deployment_protocols", {})
+
+        with pytest.raises(ValidationError, match="exactly one format"):
+            await discover_anthropic_models()

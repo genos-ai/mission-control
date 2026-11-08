@@ -35,7 +35,6 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
     version: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default="1.0.0",
     )
     description: Mapped[str] = mapped_column(
         Text,
@@ -95,14 +94,12 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
     )
     visibility: Mapped[str] = mapped_column(
         String(20),
-        default="public",
         nullable=False,
         index=True,
         comment="public (all users) or system (sysadmins only)",
     )
     engine: Mapped[str] = mapped_column(
         String(20),
-        default="pydantic_ai",
         nullable=False,
         comment="Execution engine: pydantic_ai, claude_code, codex, copilot",
     )
@@ -114,7 +111,6 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
     # Fields needed for registry to work from DB (Plan 59)
     invocation_tier: Mapped[str] = mapped_column(
         String(20),
-        default="user",
         nullable=False,
         comment="Invocation tier: user, platform, system",
     )
@@ -125,7 +121,6 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
     )
     execution_mode: Mapped[str] = mapped_column(
         String(20),
-        default="standard",
         nullable=False,
         comment="Execution mode: standard, local, worktree, container",
     )
@@ -135,13 +130,11 @@ class AgentCatalog(UUIDMixin, TimestampMixin, Base):
         comment='{"max_thinking_tokens": 10000}',
     )
     max_input_length: Mapped[int] = mapped_column(
-        default=32000,
         nullable=False,
         comment="Maximum input length in characters",
     )
     max_budget_usd: Mapped[float] = mapped_column(
         Numeric(12, 6, asdecimal=False),
-        default=1.0,
         nullable=False,
         comment="Per-agent budget ceiling in USD",
     )

@@ -26,6 +26,10 @@
 #     token_cost_factor        - Tokens per dollar of cost ceiling (integer)
 #     context_token_budget     - Token budget for assembled context packet (integer)
 #     history_reserve_tokens   - Tokens reserved for Layer 2 history (integer)
+#     default_retry_budget     - Retries per task for an agent that sets no retry_budget (integer)
+#     default_max_budget_usd   - Cost ceiling per invocation for an agent created without one (decimal)
+#     default_max_input_length - Input size limit in characters for an agent created without one (integer)
+#     default_execution_mode   - Execution mode for an agent created without one (string)
 #   escalation            - Deterministic risk thresholds (object)
 #     max_auto_approve_cost_usd   - Max cost for auto-approval (decimal)
 #     max_medium_approve_cost_usd - Max cost for medium-risk approval (decimal)
@@ -160,6 +164,10 @@ dispatch:
   token_cost_factor: 500000  # tokens per dollar of cost ceiling (1M/2)
   context_token_budget: 50000  # assembled context budget (PCD + Code Map + history)
   history_reserve_tokens: 1500  # reserved for Layer 2 history within context budget
+  default_retry_budget: 2  # retries per task when an agent's YAML sets no retry_budget
+  default_max_budget_usd: 1.00  # cost ceiling per invocation for an agent created without one
+  default_max_input_length: 32000  # input size limit (characters) for an agent created without one
+  default_execution_mode: standard  # execution mode for an agent created without one
 
 escalation:
   max_auto_approve_cost_usd: 1.00

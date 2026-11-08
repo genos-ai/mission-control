@@ -15,8 +15,9 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from modules.backend.core import agent_defaults
 from modules.backend.core.agent_files import agents_dir, find_agent_files
-from modules.backend.core.config import find_project_root, get_app_config
+from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 from modules.backend.services.agent_catalog import AgentCatalogService
@@ -36,7 +37,9 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
     The resulting assembled prompt is stored in agent_catalog.system_prompt
     so agents read from DB at runtime.
     """
-    from modules.backend.agents.mission_control.helpers.prompt_builder import _assemble_from_disk
+    from modules.backend.agents.mission_control.helpers.prompt_builder import (
+        _assemble_from_disk,
+    )
 
     try:
         prompt = _assemble_from_disk(agent_name)
@@ -72,13 +75,6 @@ def _extract_model_config(model_field: str | AgentModelSchema) -> dict:
         else AgentModelSchema(name=model_field)
     )
     return {"name": model.name, "temperature": model.temperature, "max_tokens": model.max_tokens}
-
-
-def _infer_visibility(agent_type: str, agent_name: str) -> str:
-    """Determine visibility from agent type and name."""
-    if agent_type == "system":
-        return "system"
-    return "public"
 
 
 async def seed_catalog(
@@ -168,14 +164,18 @@ async def seed_catalog(
                 ),
                 constraints={
                     "timeout_seconds": getattr(config, "timeout_seconds", None)
-                    or get_app_config().application.timeouts.agent_task,
+                    or agent_defaults.task_timeout_seconds(),
                     "cost_ceiling_usd": config.max_budget_usd,
-                    "retry_budget": 2,
+                    "retry_budget": (
+                        config.retry_budget
+                        if config.retry_budget is not None
+                        else agent_defaults.retry_budget()
+                    ),
                 },
                 keywords=config.keywords,
                 enabled=config.enabled,
                 chat_enabled=config.chat_enabled,
-                visibility=_infer_visibility(config.agent_type, config.agent_name),
+                visibility=config.visibility,
                 engine=config.engine,
                 effort=config.effort,
                 # Registry-critical fields (Plan 59)
