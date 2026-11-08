@@ -51,6 +51,7 @@ async def _run_refine(gate_mode: str | None) -> AsyncMock:
                 plan_id=str(uuid.uuid4()),
                 instructions="refine it",
                 user_id=str(uuid.uuid4()),
+                mission_budget_usd=10.0,
             ),
         )
     return approve

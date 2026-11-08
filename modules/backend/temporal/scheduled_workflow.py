@@ -18,7 +18,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
-    from modules.backend.core.config import get_app_config, get_default_budget_usd
+    from modules.backend.core.config import get_app_config
     from modules.backend.temporal import scheduled_activities
     from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
     from modules.backend.temporal.models import MissionWorkflowInput
@@ -64,7 +64,7 @@ class ScheduledMissionCheckWorkflow:
                     session_id="",  # Created by execute_mission activity
                     mission_brief=plan_info.get("brief", ""),
                     roster_name=plan_info.get("roster", "default"),
-                    mission_budget_usd=plan_info.get("budget") or get_default_budget_usd(),
+                    mission_budget_usd=plan_info["budget_remaining_usd"],
                     mission_id=plan_info["mission_id"],
                     gate_mode=plan_info["gate_mode"],
                     owner_id=plan_info.get("owner_id", ""),

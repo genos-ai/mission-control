@@ -16,7 +16,7 @@ class PlanRefineInput:
     plan_id: str
     instructions: str
     user_id: str
-    mission_budget_usd: float = 10.0  # overridden by callers from config
+    mission_budget_usd: float
 
 
 @dataclass

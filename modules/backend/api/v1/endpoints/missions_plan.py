@@ -17,7 +17,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from modules.backend.core.config import get_app_config, get_default_budget_usd
+from modules.backend.core.config import get_app_config
 from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
@@ -39,7 +39,7 @@ from modules.backend.schemas.mission_plan import (
     TaskStatus,
     TaskTransitionResponse,
 )
-from modules.backend.services.mission_plan import MissionPlanService
+from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
 
 # Plan 42 §3.5: every mutating endpoint gets an event bus so
 # MissionPlanService can publish mission_plan.* events.
@@ -181,7 +181,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=data.instructions,
             user_id=current_user.id,
-            mission_budget_usd=plan.budget_usd_ceiling or get_default_budget_usd(),
+            mission_budget_usd=remaining_plan_budget_usd(plan),
         ),
         id=workflow_id,
         task_queue=config.task_queue,

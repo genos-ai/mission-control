@@ -44,9 +44,9 @@ async def refine_plan(
     Returns:
         The started workflow's identifiers and a message for the user.
     """
-    from modules.backend.core.config import get_app_config, get_default_budget_usd
+    from modules.backend.core.config import get_app_config
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
     from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
@@ -69,7 +69,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=instructions,
             user_id=mission.owner_id,
-            mission_budget_usd=plan.budget_usd_ceiling or get_default_budget_usd(),
+            mission_budget_usd=remaining_plan_budget_usd(plan),
         ),
         id=workflow_id,
         task_queue=config.task_queue,

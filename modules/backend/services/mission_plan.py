@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
@@ -57,6 +58,17 @@ def gate_mode_auto_approves(gate_mode: str | None) -> bool:
     For callers outside the service layer, such as agent tools, which may not import models.
     """
     return gate_mode in AUTO_APPROVE_GATE_MODES
+
+
+def remaining_plan_budget_usd(plan: MissionPlan) -> float:
+    """Lifetime cap minus spend.
+
+    A NULL ceiling means the configured default cap (missions.default_budget_ceiling_usd).
+    """
+    ceiling = (
+        plan.budget_usd_ceiling if plan.budget_usd_ceiling is not None else get_default_budget_usd()
+    )
+    return ceiling - plan.total_spent_usd
 
 
 class MissionPlanService(BaseService):

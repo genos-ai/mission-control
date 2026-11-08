@@ -9,7 +9,6 @@ _find_ready_plan_ids but as a Temporal Activity.
 
 from temporalio import activity
 
-from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 async def find_ready_plans() -> list[dict]:
     """Find mission plans with approved tasks ready to dispatch.
 
-    Returns a list of dicts with plan_id, mission_id, brief, budget,
+    Returns a list of dicts with plan_id, mission_id, brief, budget_remaining_usd,
     gate_mode, roster — the minimum info needed to start a
     MissionRunWorkflow.
 
@@ -27,7 +26,7 @@ async def find_ready_plans() -> list[dict]:
     but returns richer data so the workflow can start child workflows
     without additional DB queries.
     """
-    from sqlalchemy import exists, func, or_, select
+    from sqlalchemy import exists, func, select
 
     from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus
@@ -38,6 +37,7 @@ async def find_ready_plans() -> list[dict]:
     )
     from modules.backend.models.task import Task, TaskStatus
     from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
+    from modules.backend.services.mission_plan import remaining_plan_budget_usd
 
     async with get_async_session() as db:
         # Find plans that have at least one approved task and are in
@@ -77,25 +77,20 @@ async def find_ready_plans() -> list[dict]:
             )
         )
 
-        # Budget filter: exclude plans where total_spent >= ceiling
-        stmt = stmt.where(
-            or_(
-                MissionPlan.budget_usd_ceiling.is_(None),
-                MissionPlan.total_spent_usd < MissionPlan.budget_usd_ceiling,
-            )
-        )
-
         result = await db.execute(stmt)
         rows = result.all()
 
     plans = []
     for plan, mission in rows:
+        remaining = remaining_plan_budget_usd(plan)
+        if remaining <= 0:
+            continue
         plans.append(
             {
                 "plan_id": plan.id,
                 "mission_id": plan.mission_id,
                 "brief": mission.brief or mission.description or "",
-                "budget": plan.budget_usd_ceiling or get_default_budget_usd(),
+                "budget_remaining_usd": remaining,
                 "gate_mode": resolve_gate_mode(plan.gate_mode),
                 "roster": mission.default_roster or "default",
                 "owner_id": mission.owner_id,

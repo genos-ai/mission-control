@@ -23,7 +23,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import MissionPlanDispatchedEvent
@@ -31,6 +30,7 @@ from modules.backend.models.mission_plan import MissionPlanStatus, resolve_gate_
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services import mission_plan_supervisor, mission_plan_taskio
+from modules.backend.services.mission_plan import remaining_plan_budget_usd
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 if TYPE_CHECKING:
@@ -90,7 +90,7 @@ async def start_temporal_run_workflow(
 
     mission = await MissionRepository(orchestrator._session).get_by_id(plan.mission_id)
     brief = mission.brief or mission.description or mission.name
-    remaining_budget = (plan.budget_usd_ceiling or get_default_budget_usd()) - plan.total_spent_usd
+    remaining_budget = remaining_plan_budget_usd(plan)
 
     # Every execution must have a real session (P15).
     if not session_id:
@@ -154,7 +154,7 @@ async def dispatch_approved(
     plan.total_spent_usd is incremented by the run cost.
 
     Plan 42 §10.7 cumulative budget check: before dispatch, rejects
-    if total_spent_usd >= budget_usd_ceiling (when set).
+    if total_spent_usd >= budget_usd_ceiling (the default cap when NULL).
 
     Returns a dict with:
         outcome_status: "success" | "partial" | "failed"
@@ -190,15 +190,14 @@ async def dispatch_approved(
     task_plan = mission_plan_taskio.materialize_task_plan(plan)
 
     # Budget check (Plan 42 §10.7)
-    if plan.budget_usd_ceiling is not None:
-        remaining = plan.budget_usd_ceiling - plan.total_spent_usd
-        if remaining <= 0:
-            raise ValidationError(
-                f"Plan budget exhausted: spent "
-                f"${plan.total_spent_usd:.4f} of "
-                f"${plan.budget_usd_ceiling:.4f} ceiling. "
-                f"Increase budget_usd_ceiling to continue."
-            )
+    remaining = remaining_plan_budget_usd(plan)
+    if remaining <= 0:
+        raise ValidationError(
+            f"Plan budget exhausted: spent "
+            f"${plan.total_spent_usd:.4f} of "
+            f"${plan.total_spent_usd + remaining:.4f} ceiling. "
+            f"Increase budget_usd_ceiling to continue."
+        )
 
     # Collect approved task ids
     approved_states = await orchestrator._task_repo.get_by_plan_id(
@@ -288,9 +287,7 @@ async def dispatch_approved(
     prior_outputs = await mission_plan_taskio.load_prior_outputs(orchestrator, mission_plan_id)
 
     # Dispatch via the Phase 0 precomputed_plan path
-    budget = plan.budget_usd_ceiling or get_default_budget_usd()
-    if plan.budget_usd_ceiling is not None:
-        budget = plan.budget_usd_ceiling - plan.total_spent_usd
+    budget = remaining
 
     from modules.backend.services.session import SessionService
 
