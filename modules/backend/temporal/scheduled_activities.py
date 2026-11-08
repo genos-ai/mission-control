@@ -27,7 +27,7 @@ async def find_ready_plans() -> list[dict]:
     but returns richer data so the workflow can start child workflows
     without additional DB queries.
     """
-    from sqlalchemy import func, or_, select
+    from sqlalchemy import exists, func, or_, select
 
     from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus
@@ -37,6 +37,7 @@ async def find_ready_plans() -> list[dict]:
         resolve_gate_mode,
     )
     from modules.backend.models.task import Task, TaskStatus
+    from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 
     async with get_async_session() as db:
         # Find plans that have at least one approved task and are in
@@ -60,6 +61,19 @@ async def find_ready_plans() -> list[dict]:
                 MissionPlan.status == MissionPlanStatus.ACTIVE,
                 MissionPlan.gate_mode == "autonomous",
                 approved_count > 0,
+                # A workflow run owns the tasks of its mission while active.
+                ~exists(
+                    select(WorkflowRun.id).where(
+                        WorkflowRun.mission_id == Mission.id,
+                        WorkflowRun.status.in_(
+                            [
+                                WorkflowRunState.PENDING,
+                                WorkflowRunState.RUNNING,
+                                WorkflowRunState.AWAITING_INPUT,
+                            ]
+                        ),
+                    )
+                ),
             )
         )
 

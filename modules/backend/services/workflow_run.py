@@ -457,7 +457,10 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             import uuid as _uuid
 
             from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
-            from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_plan import (
+                MissionPlanService,
+                resolve_gate_mode,
+            )
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
             # Map step IDs to UUIDs so Task rows get valid PKs
@@ -501,17 +504,6 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
             await orchestrator._persist_plan(plan, task_plan, source="workflow_run_service")
 
-            # Mark as workflow-managed so the Temporal autonomous scheduler
-            # (find_ready_plans) skips these — the workflow engine owns dispatch.
-            #
-            # Plan 80g: when the plan's gate_mode is `manual` (or other
-            # interactive modes), preserve it — workflow_run_waves now calls
-            # ConfigurableGate.review() before each step, so the gate fires
-            # during execution. Setting `workflow_managed` here would lose
-            # that mode and the gate would silently no-op.
-            if plan.gate_mode not in ("manual", "interactive", "ai_assisted"):
-                plan.gate_mode = "workflow_managed"
-
             # Plan 80h: tasks always start PROPOSED. Mode determines who
             # triggers the PROPOSED → APPROVED transition:
             #   - autonomous: auto-approver below transitions immediately
@@ -526,7 +518,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 plan.id,
                 status=TaskStatus.PROPOSED,
             )
-            if plan.gate_mode in ("workflow_managed", "autonomous"):
+            if resolve_gate_mode(plan.gate_mode) == "autonomous":
                 # Autonomous-mode auto-approver: transition immediately at
                 # creation. Same end state as the legacy bulk-approve, but
                 # routed through the canonical lifecycle so the Kanban
