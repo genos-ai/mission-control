@@ -27,7 +27,7 @@ from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import MissionPlanDispatchedEvent
-from modules.backend.models.mission_plan import MissionPlanStatus
+from modules.backend.models.mission_plan import MissionPlanStatus, resolve_gate_mode
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services import mission_plan_supervisor, mission_plan_taskio
@@ -114,7 +114,7 @@ async def start_temporal_run_workflow(
         roster_name=mission.default_roster or "default",
         mission_budget_usd=max(remaining_budget, 0.01),
         mission_id=plan.mission_id,
-        execution_mode=mission.execution_environment,
+        gate_mode=resolve_gate_mode(plan.gate_mode),
     )
 
     workflow_id = mission_run_workflow_id(plan.id)

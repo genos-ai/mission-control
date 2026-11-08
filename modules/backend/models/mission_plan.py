@@ -58,6 +58,17 @@ VALID_GATE_MODES: frozenset[str] = frozenset(
 # the Director does it. In every other mode a human has to approve them.
 AUTO_APPROVE_GATE_MODES: frozenset[str] = frozenset({"ai_assisted", "autonomous"})
 
+FAIL_CLOSED_GATE_MODE: str = "manual"
+
+
+def resolve_gate_mode(value: str | None) -> str:
+    """Resolve a stored gate mode, failing closed.
+
+    NULL, 'workflow_managed' and any value outside VALID_GATE_MODES resolve to
+    MANUAL (decision 7, fail closed).
+    """
+    return value if value in VALID_GATE_MODES else FAIL_CLOSED_GATE_MODE
+
 
 class MissionPlan(UUIDMixin, TimestampMixin, Base):
     """A persistent, long-lived plan for a single mission.

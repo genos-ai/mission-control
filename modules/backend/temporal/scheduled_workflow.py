@@ -66,7 +66,7 @@ class ScheduledMissionCheckWorkflow:
                     roster_name=plan_info.get("roster", "default"),
                     mission_budget_usd=plan_info.get("budget") or get_default_budget_usd(),
                     mission_id=plan_info["mission_id"],
-                    execution_mode=plan_info.get("gate_mode", "autonomous"),
+                    gate_mode=plan_info["gate_mode"],
                     owner_id=plan_info.get("owner_id", ""),
                 )
 

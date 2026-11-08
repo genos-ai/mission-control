@@ -31,7 +31,11 @@ async def find_ready_plans() -> list[dict]:
 
     from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus
-    from modules.backend.models.mission_plan import MissionPlan, MissionPlanStatus
+    from modules.backend.models.mission_plan import (
+        MissionPlan,
+        MissionPlanStatus,
+        resolve_gate_mode,
+    )
     from modules.backend.models.task import Task, TaskStatus
 
     async with get_async_session() as db:
@@ -81,7 +85,7 @@ async def find_ready_plans() -> list[dict]:
                 "mission_id": plan.mission_id,
                 "brief": mission.brief or mission.description or "",
                 "budget": plan.budget_usd_ceiling or get_default_budget_usd(),
-                "gate_mode": plan.gate_mode or "autonomous",
+                "gate_mode": resolve_gate_mode(plan.gate_mode),
                 "roster": mission.default_roster or "default",
                 "owner_id": mission.owner_id,
             }

@@ -4,6 +4,9 @@ Pure dataclass tests — no mocks, no infrastructure.
 """
 
 import dataclasses
+from dataclasses import fields
+
+import pytest
 
 from modules.backend.temporal.models import (
     ApprovalDecision,
@@ -13,6 +16,7 @@ from modules.backend.temporal.models import (
     NotificationPayload,
     WorkflowStatus,
 )
+from modules.backend.temporal.supervisor_activities import PostRunEvalInput
 
 
 class TestMissionWorkflowInput:
@@ -38,6 +42,15 @@ class TestMissionWorkflowInput:
 
     def test_is_dataclass(self):
         assert dataclasses.is_dataclass(MissionWorkflowInput)
+
+    def test_mission_workflow_input_has_no_execution_mode(self):
+        assert "execution_mode" not in {f.name for f in fields(MissionWorkflowInput)}
+
+
+class TestPostRunEvalInput:
+    def test_post_run_eval_input_gate_mode_required(self):
+        with pytest.raises(TypeError):
+            PostRunEvalInput(mission_id="m", plan_id="p", execution_record_id="e")
 
 
 class TestMissionExecutionResult:

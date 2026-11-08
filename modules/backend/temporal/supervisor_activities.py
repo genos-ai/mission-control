@@ -36,7 +36,7 @@ class PostRunEvalInput:
     mission_id: str
     plan_id: str
     execution_record_id: str
-    gate_mode: str = "autonomous"
+    gate_mode: str
     supervisor_iteration_count: int = 0
     max_supervisor_iterations: int = 20
     budget_usd_ceiling: float = 0.0

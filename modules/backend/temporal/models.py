@@ -19,7 +19,9 @@ class MissionWorkflowInput:
     roster_name: str = "default"
     mission_budget_usd: float = 10.0  # overridden by callers from config
     mission_id: str | None = None
-    execution_mode: str | None = None
+    # plan gate mode; None only on AgentMissionWorkflow starts, which do not read it
+    # (deleted in 88.2.6)
+    gate_mode: str | None = None
     owner_id: str = ""  # Mission owner UUID — used to create session when session_id is empty
     approval_timeout_seconds: int = 14400
     escalation_timeout_seconds: int = 86400
