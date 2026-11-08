@@ -100,6 +100,34 @@ jobs:
           sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=postgres/' config/.env
           sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')/" config/.env
           sed -i "s/^API_KEY_SALT=$/API_KEY_SALT=$(python -c 'import secrets; print(secrets.token_hex(16))')/" config/.env
+      - name: Start Temporal dev server
+        env:
+          TEMPORAL_CLI_VERSION: "1.6.2"
+        run: |
+          base="https://github.com/temporalio/cli/releases/download/v${TEMPORAL_CLI_VERSION}"
+          archive="temporal_cli_${TEMPORAL_CLI_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$archive" "$base/$archive"
+          curl -sSfL -o checksums.txt "$base/checksums.txt"
+          grep " $archive\$" checksums.txt | sha256sum --check
+          tar -xzf "$archive" temporal
+          nohup ./temporal server start-dev --headless --ip 127.0.0.1 --port 7233 --namespace default > temporal-dev.log 2>&1 &
+          for i in $(seq 1 30); do ./temporal operator cluster health --address 127.0.0.1:7233 && break; sleep 1; done
+          ./temporal operator cluster health --address 127.0.0.1:7233
+      - name: Prefetch Temporal time-skipping test server
+        run: |
+          python - <<'EOF'
+          import asyncio
+
+          from temporalio.testing import WorkflowEnvironment
+
+
+          async def main() -> None:
+              env = await WorkflowEnvironment.start_time_skipping()
+              await env.shutdown()
+
+
+          asyncio.run(main())
+          EOF
       - name: Unit tests
         run: pytest tests/unit -q -p no:cacheprovider
       - name: Integration tests
