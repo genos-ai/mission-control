@@ -68,7 +68,7 @@ def _context(
 class TestBreakerBudgetExhausted:
     @pytest.mark.asyncio
     async def test_budget_exhausted(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(budget_usd=5.0, total_cost_usd=5.0)
 
         decision = await reviewer.review(ctx)
@@ -78,7 +78,7 @@ class TestBreakerBudgetExhausted:
 
     @pytest.mark.asyncio
     async def test_budget_exceeded(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(budget_usd=5.0, total_cost_usd=6.0)
 
         decision = await reviewer.review(ctx)
@@ -89,7 +89,7 @@ class TestBreakerBudgetExhausted:
     @pytest.mark.asyncio
     async def test_no_budget_ceiling_skips_breaker(self, db_session: AsyncSession):
         """budget_usd=0 means unlimited — breaker #1 should not fire."""
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(budget_usd=0, total_cost_usd=100.0, proposed=2)
 
         decision = await reviewer.review(ctx)
@@ -106,7 +106,7 @@ class TestBreakerBudgetExhausted:
 class TestBreakerMaxIterations:
     @pytest.mark.asyncio
     async def test_max_iterations_reached(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(supervisor_iteration_count=20, max_supervisor_iterations=20)
 
         decision = await reviewer.review(ctx)
@@ -116,7 +116,7 @@ class TestBreakerMaxIterations:
 
     @pytest.mark.asyncio
     async def test_below_max_iterations(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(
             supervisor_iteration_count=5,
             max_supervisor_iterations=20,
@@ -136,7 +136,7 @@ class TestBreakerMaxIterations:
 class TestBreakerStall:
     @pytest.mark.asyncio
     async def test_stall_detected(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, stall_threshold=3)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous", stall_threshold=3)
         ctx = _context(
             recent_run_outcomes=[
                 {"completed_task_count": 0},
@@ -152,7 +152,7 @@ class TestBreakerStall:
 
     @pytest.mark.asyncio
     async def test_no_stall_when_some_completions(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, stall_threshold=3)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous", stall_threshold=3)
         ctx = _context(
             recent_run_outcomes=[
                 {"completed_task_count": 0},
@@ -168,7 +168,7 @@ class TestBreakerStall:
 
     @pytest.mark.asyncio
     async def test_not_enough_outcomes_for_stall(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, stall_threshold=3)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous", stall_threshold=3)
         ctx = _context(
             recent_run_outcomes=[
                 {"completed_task_count": 0},
@@ -192,6 +192,7 @@ class TestBreakerBudgetHeadroom:
     async def test_headroom_insufficient(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
             db_session,
+            gate_mode="autonomous",
             budget_safety_factor=1.5,
         )
         # Budget=10, spent=9, remaining=1.
@@ -211,7 +212,7 @@ class TestBreakerBudgetHeadroom:
 
     @pytest.mark.asyncio
     async def test_headroom_sufficient(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(
             budget_usd=100.0,
             total_cost_usd=1.0,
@@ -234,7 +235,7 @@ class TestBreakerBudgetHeadroom:
 class TestRuleApprovedTasks:
     @pytest.mark.asyncio
     async def test_approved_tasks_wait(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(approved=3)
 
         decision = await reviewer.review(ctx)
@@ -292,7 +293,7 @@ class TestRulePlanExhausted:
         db_session: AsyncSession,
     ):
         """When Haiku classification fails, reviewer falls through to ESCALATE."""
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(
             approved=0,
             proposed=0,
@@ -312,7 +313,7 @@ class TestRulePlanExhausted:
     @pytest.mark.asyncio
     async def test_no_outcomes_falls_through(self, db_session: AsyncSession):
         """No approved, no proposed, no outcomes → fallthrough."""
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(approved=0, proposed=0, recent_run_outcomes=[])
 
         decision = await reviewer.review(ctx)
@@ -328,13 +329,14 @@ class TestRulePlanExhausted:
 
 class TestCheckBudgetHeadroom:
     def test_no_ceiling_returns_true(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(budget_usd=0, total_cost_usd=100.0)
         assert reviewer._check_budget_headroom(ctx, proposed_count=10) is True
 
     def test_remaining_exceeds_estimate(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
             db_session,
+            gate_mode="autonomous",
             budget_safety_factor=1.5,
         )
         # Budget=100, spent=10, remaining=90.
@@ -349,6 +351,7 @@ class TestCheckBudgetHeadroom:
     def test_remaining_less_than_estimate(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
             db_session,
+            gate_mode="autonomous",
             budget_safety_factor=1.5,
         )
         ctx = _context(
@@ -362,6 +365,7 @@ class TestCheckBudgetHeadroom:
     def test_zero_completed_uses_cost_floor(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(
             db_session,
+            gate_mode="autonomous",
             cost_floor_usd=0.50,
         )
         ctx = _context(
@@ -373,7 +377,7 @@ class TestCheckBudgetHeadroom:
         assert reviewer._check_budget_headroom(ctx, proposed_count=3) is True
 
     def test_already_over_ceiling(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         ctx = _context(budget_usd=5.0, total_cost_usd=6.0)
         assert reviewer._check_budget_headroom(ctx, proposed_count=1) is False
 
@@ -386,7 +390,7 @@ class TestCheckBudgetHeadroom:
 class TestCachedDecision:
     @pytest.mark.asyncio
     async def test_no_cached_row_returns_none(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         result = await reviewer._get_cached_decision("00000000-0000-0000-0000-000000000000")
         assert result is None
 
@@ -444,7 +448,7 @@ class TestCachedDecision:
         db_session.add(row)
         await db_session.flush()
 
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         cached = await reviewer._get_cached_decision(record_id)
 
         assert cached is not None
@@ -498,7 +502,7 @@ class TestCachedDecision:
         db_session.add(row)
         await db_session.flush()
 
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         cached = await reviewer._get_cached_decision(record_id)
 
         assert cached is not None
@@ -527,7 +531,7 @@ class TestReasonIsHumanText:
         kwargs: dict,
         rule: str | int,
     ):
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
 
         decision = await reviewer.review(_context(**kwargs))
 
@@ -573,7 +577,7 @@ class TestDecisionIsPersistedAndReadBack:
         )
         await db_session.flush()
 
-        reviewer = AutonomousPostRunReviewer(db_session)
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode="autonomous")
         decision = await reviewer.review(
             _context(budget_usd=1.0, total_cost_usd=1.0, execution_record_id=record_id)
         )
@@ -656,3 +660,25 @@ class TestClassifierModelComesFromConfig:
 
         create_agent.assert_called_once_with("fixture:reviewer")
         assert decision.reviewer == "ai:fixture:reviewer"
+
+
+# ---------------------------------------------------------------------------
+# Plan 88 step 88.0.5 — NULL gate_mode fails closed to the manual reviewer
+# ---------------------------------------------------------------------------
+
+
+class TestFailClosedGateMode:
+    @pytest.mark.asyncio
+    async def test_none_gate_mode_uses_manual_reviewer(self, db_session: AsyncSession):
+        from modules.backend.agents.mission_control.gate_manual import ManualGateReviewer
+        from modules.backend.agents.mission_control.gate_models import GateDecision
+
+        manual_decision = GateDecision(action=GateAction.ESCALATE, reviewer="manual")
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=None)
+        with patch.object(
+            ManualGateReviewer, "review", new_callable=AsyncMock, return_value=manual_decision
+        ) as review:
+            decision = await reviewer.review(_context(proposed=2))
+
+        review.assert_awaited_once()
+        assert decision is manual_decision

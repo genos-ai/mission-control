@@ -58,10 +58,7 @@ async def find_ready_plans() -> list[dict]:
                 # Only dispatch for active missions — paused/archived skip
                 Mission.status == MissionStatus.ACTIVE,
                 MissionPlan.status == MissionPlanStatus.ACTIVE,
-                or_(
-                    MissionPlan.gate_mode == "autonomous",
-                    MissionPlan.gate_mode.is_(None),
-                ),
+                MissionPlan.gate_mode == "autonomous",
                 approved_count > 0,
             )
         )

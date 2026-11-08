@@ -24,11 +24,12 @@ from modules.backend.events.types import (
     MissionPlanTaskStatusChangedEvent,
 )
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
-from modules.backend.models.mission_plan import (
+from modules.backend.models.mission_plan import (  # noqa: F401
     AUTO_APPROVE_GATE_MODES,
     VALID_GATE_MODES,
     MissionPlan,
     MissionPlanStatus,
+    resolve_gate_mode,
 )
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.repositories.mission import MissionRepository

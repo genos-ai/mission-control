@@ -260,8 +260,8 @@ class TestParseAction:
         assert _parse_action("ABORT") == GateAction.ABORT
         assert _parse_action(" retry ") == GateAction.RETRY
 
-    def test_unknown_action_falls_back(self):
-        assert _parse_action("explode") == GateAction.CONTINUE
+    def test_unknown_gate_action_aborts(self):
+        assert _parse_action("explode") == GateAction.ABORT
 
 
 # ── LlmGateReviewer tests ────────────────────────────────────────
@@ -386,6 +386,15 @@ class TestConfigurableGate:
         config = _gate_config("autonomous", points=points)
         gate = ConfigurableGate(config=config)
         assert gate._effective_mode("pre_dispatch") == "interactive"
+
+    @pytest.mark.asyncio
+    async def test_unknown_effective_mode_aborts(self):
+        config = GateSchema.model_construct(**{**_gate_config().__dict__, "mode": "bogus"})
+        gate = ConfigurableGate(config=config)
+        ctx = GateContext(gate_type="pre_dispatch", mission_id="test")
+        decision = await gate.review(ctx)
+        assert decision.action == GateAction.ABORT
+        assert decision.reviewer == "config:invalid_mode:bogus"
 
     def test_rejects_wrong_config_type(self):
         with pytest.raises(TypeError, match="Expected GateSchema"):

@@ -275,14 +275,12 @@ async def dispatch_approved(
     )
 
     # Build the gate reviewer from the plan's gate_mode (Plan 42 §10.4)
-    gate_reviewer = None
-    if plan.gate_mode:
-        from modules.backend.agents.mission_control.gate import create_gate
+    from modules.backend.agents.mission_control.gate import create_gate
 
-        gate_reviewer = create_gate(
-            mode_override=plan.gate_mode,
-            event_bus=orchestrator._event_bus,
-        )
+    gate_reviewer = create_gate(
+        mode_override=resolve_gate_mode(plan.gate_mode),
+        event_bus=orchestrator._event_bus,
+    )
 
     # Load outputs from prior waves so downstream tasks can resolve
     # from_upstream references to tasks that completed in earlier

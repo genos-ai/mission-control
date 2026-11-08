@@ -43,6 +43,7 @@ from modules.backend.core.decision_reasoning import (
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
+from modules.backend.services.mission_plan import resolve_gate_mode
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +77,7 @@ class AutonomousPostRunReviewer:
         cost_floor_usd: float = DEFAULT_COST_FLOOR_USD,
     ) -> None:
         self._session = session
-        self._gate_mode = gate_mode or "autonomous"
+        self._gate_mode = resolve_gate_mode(gate_mode)
         self._stall_threshold = stall_threshold
         self._budget_safety_factor = budget_safety_factor
         self._cost_floor_usd = cost_floor_usd

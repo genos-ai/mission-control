@@ -30,7 +30,7 @@ from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.events.types import MissionPlanRefinedEvent, SystemEvent
-from modules.backend.models.mission_plan import VALID_GATE_MODES
+from modules.backend.models.mission_plan import VALID_GATE_MODES, resolve_gate_mode
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository
@@ -399,7 +399,11 @@ class MissionPlanOrchestrator(BaseService):
         plan = await self._plan_svc.get_or_create_plan(mission_id)
 
         # 2. Apply overrides
-        if gate_mode is not None and gate_mode in VALID_GATE_MODES:
+        if gate_mode is not None:
+            if gate_mode not in VALID_GATE_MODES:
+                raise ValidationError(
+                    f"Invalid gate_mode {gate_mode!r}. Must be one of: {sorted(VALID_GATE_MODES)}"
+                )
             plan.gate_mode = gate_mode
         if budget_ceiling_usd is not None:
             plan.budget_usd_ceiling = budget_ceiling_usd
@@ -420,10 +424,10 @@ class MissionPlanOrchestrator(BaseService):
         task_count = len(plan.tasks)
 
         # 5. Auto-approve (gate mode permitting)
-        effective_gate = plan.gate_mode or "autonomous"
-        if effective_gate == "interactive":
+        effective_gate = resolve_gate_mode(plan.gate_mode)
+        if effective_gate != "autonomous":
             self._log_operation(
-                "run_objective: interactive gate — stopping after refine",
+                "run_objective: non-autonomous gate, stopping after refine",
                 plan_id=plan.id,
                 mission_id=mission_id,
                 task_count=task_count,

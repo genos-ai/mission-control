@@ -95,3 +95,41 @@ async def test_start_passes_plan_gate_mode_not_environment():
 
     workflow_input = client.start_workflow.await_args.args[1]
     assert workflow_input.gate_mode == "manual"
+
+
+class _StopAfterGate(Exception):
+    """Raised by the patched create_gate to end dispatch_approved early."""
+
+
+async def test_dispatch_approved_null_gate_mode_builds_manual_gate():
+    plan = _plan(gate_mode=None)
+    approved = SimpleNamespace(id=str(uuid.uuid4()), status=None, last_attempt_at=None)
+    orchestrator = SimpleNamespace(
+        _repo=SimpleNamespace(get_by_id=AsyncMock(return_value=plan)),
+        _task_repo=SimpleNamespace(get_by_plan_id=AsyncMock(return_value=[approved])),
+        _session=SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock()),
+        _event_bus=MagicMock(),
+        _log_operation=MagicMock(),
+    )
+    create_gate = MagicMock(side_effect=_StopAfterGate)
+    taskio = mission_plan_dispatch.mission_plan_taskio
+
+    with (
+        patch(
+            "modules.backend.services.mission_plan_crash_recovery.reconcile_orphaned_task_states",
+            AsyncMock(),
+        ),
+        patch.object(taskio, "materialize_task_plan", MagicMock()),
+        patch.object(taskio, "derive_subset_task_plan", AsyncMock()),
+        patch.object(taskio, "infer_task_type", MagicMock(return_value="general")),
+        patch.object(
+            mission_plan_dispatch, "create_early_execution_record", AsyncMock(return_value=None)
+        ),
+        patch.object(mission_plan_dispatch, "MissionRepository", _mission_repo()),
+        patch("modules.backend.agents.mission_control.gate.create_gate", create_gate),
+        pytest.raises(_StopAfterGate),
+    ):
+        await mission_plan_dispatch.dispatch_approved(orchestrator, plan.id, str(uuid.uuid4()))
+
+    assert create_gate.call_args.kwargs["mode_override"] == "manual"
+    assert create_gate.call_args.kwargs["event_bus"] is orchestrator._event_bus

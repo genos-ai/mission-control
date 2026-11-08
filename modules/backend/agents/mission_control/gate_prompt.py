@@ -136,11 +136,11 @@ def _build_gate_prompt(context: GateContext) -> str:
 
 
 def _parse_action(action_str: str) -> GateAction:
-    """Parse action string to GateAction enum, with fallback."""
+    """Parse action string to GateAction; an unknown action is ABORT (fail closed)."""
     try:
         return GateAction(action_str.lower().strip())
     except ValueError:
-        # falling back to the safe default — pure parsing function, no
-        # context object or event_bus available here.
-        logger.warning("Unknown gate action '%s', defaulting to CONTINUE", action_str)
-        return GateAction.CONTINUE
+        # non-critical log: pure parsing function with no mission context or
+        # event bus; the ABORT decision itself is recorded by the caller.
+        logger.warning("Unknown gate action %r: aborting (fail closed)", action_str)
+        return GateAction.ABORT

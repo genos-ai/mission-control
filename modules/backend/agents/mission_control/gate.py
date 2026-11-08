@@ -279,10 +279,11 @@ class ConfigurableGate:
                 )
             return await self._get_llm().review(context)
 
-        logger.warning("Unknown gate mode '%s', defaulting to CONTINUE", effective_mode)
+        logger.error("Unknown gate mode %r: aborting (fail closed)", effective_mode)
         return GateDecision(
-            action=GateAction.CONTINUE,
-            reviewer=f"config:unknown:{effective_mode}",
+            action=GateAction.ABORT,
+            reason=f"unknown gate mode {effective_mode!r}",
+            reviewer=f"config:invalid_mode:{effective_mode}",
         )
 
 
