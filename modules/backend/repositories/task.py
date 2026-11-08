@@ -9,6 +9,7 @@ Business logic (dependency closure on approval, state machine enforcement)
 lives in the service layer — this is raw data access.
 """
 
+from collections.abc import Collection
 from datetime import datetime
 from typing import NamedTuple
 from uuid import uuid7
@@ -129,20 +130,30 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query)
         return [TaskGroup(str(mid), n, oldest, latest) for mid, n, oldest, latest in result.all()]
 
-    async def list_in_flight(
+    async def list_in_flight_older_than(
         self,
-        plan_id: str | None = None,
+        cutoff: datetime,
+        *,
+        ids: Collection[str] | None = None,
+        for_update: bool = False,
     ) -> list[Task]:
-        """Return all tasks in RUNNING or QUEUED status.
+        """Return RUNNING or QUEUED tasks last updated before ``cutoff``.
 
-        Used by crash recovery at startup (plan_id=None → global)
-        or before dispatch (plan_id set → scoped to one plan).
+        Reconciler candidates. ``ids`` narrows the select to those rows;
+        ``for_update`` locks them with SKIP LOCKED, so a row another
+        transaction holds is left out.
         """
-        conditions = [Task.status.in_([TaskStatus.RUNNING, TaskStatus.QUEUED])]
-        if plan_id is not None:
-            conditions.append(Task.plan_id == plan_id)
-        query = select(Task).where(*conditions).order_by(Task.created_at)
-        result = await self.session.execute(query)
+        query = select(Task).where(
+            Task.status.in_([TaskStatus.RUNNING, TaskStatus.QUEUED]),
+            Task.updated_at < cutoff,
+        )
+        if ids is not None:
+            query = query.where(Task.id.in_(list(ids)))
+        if for_update:
+            query = query.execution_options(populate_existing=True).with_for_update(
+                skip_locked=True
+            )
+        result = await self.session.execute(query.order_by(Task.created_at))
         return list(result.scalars().all())
 
     # ── Single task operations ─────────────────────────────────────────────

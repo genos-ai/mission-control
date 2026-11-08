@@ -115,10 +115,6 @@ async def test_dispatch_approved_null_gate_mode_builds_manual_gate():
     taskio = mission_plan_dispatch.mission_plan_taskio
 
     with (
-        patch(
-            "modules.backend.services.mission_plan_crash_recovery.reconcile_orphaned_task_states",
-            AsyncMock(),
-        ),
         patch.object(taskio, "materialize_task_plan", MagicMock()),
         patch.object(taskio, "derive_subset_task_plan", AsyncMock()),
         patch.object(taskio, "infer_task_type", MagicMock(return_value="general")),
@@ -129,7 +125,9 @@ async def test_dispatch_approved_null_gate_mode_builds_manual_gate():
         patch("modules.backend.agents.mission_control.gate.create_gate", create_gate),
         pytest.raises(_StopAfterGate),
     ):
-        await mission_plan_dispatch.dispatch_approved(orchestrator, plan.id, str(uuid.uuid4()))
+        await mission_plan_dispatch.dispatch_approved(
+            orchestrator, plan.id, str(uuid.uuid4()), temporal_workflow_id="mission-run-test"
+        )
 
     assert create_gate.call_args.kwargs["mode_override"] == "manual"
     assert create_gate.call_args.kwargs["event_bus"] is orchestrator._event_bus

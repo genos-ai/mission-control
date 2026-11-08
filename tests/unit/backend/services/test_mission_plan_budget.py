@@ -49,10 +49,6 @@ async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
             "modules.backend.services.mission_plan.get_default_budget_usd",
             return_value=5.0,
         ),
-        patch(
-            "modules.backend.services.mission_plan_crash_recovery.reconcile_orphaned_task_states",
-            AsyncMock(),
-        ),
         patch.object(
             mission_plan_dispatch.mission_plan_taskio,
             "materialize_task_plan",
@@ -60,7 +56,9 @@ async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
         ),
         pytest.raises(ValidationError, match="budget exhausted"),
     ):
-        await mission_plan_dispatch.dispatch_approved(orchestrator, plan.id, str(uuid.uuid4()))
+        await mission_plan_dispatch.dispatch_approved(
+            orchestrator, plan.id, str(uuid.uuid4()), temporal_workflow_id="mission-run-test"
+        )
 
 
 def test_plan_refine_input_budget_required():

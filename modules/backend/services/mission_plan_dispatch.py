@@ -137,6 +137,7 @@ async def dispatch_approved(
     mission_plan_id: str,
     user_id: str,
     *,
+    temporal_workflow_id: str,
     session_id: str | None = None,
     skip_post_run_supervisor: bool = False,
 ) -> dict:
@@ -172,20 +173,6 @@ async def dispatch_approved(
     from modules.backend.agents.mission_control.mission_control import handle_mission
 
     plan = await orchestrator._repo.get_by_id(mission_plan_id)
-
-    # Reconcile orphaned tasks before dispatch — if a prior dispatch
-    # crashed after marking tasks RUNNING, those orphans would block
-    # dependency validation. Move orphaned RUNNING → FAILED so the
-    # user can retry them explicitly.
-    from modules.backend.services.mission_plan_crash_recovery import (
-        reconcile_orphaned_task_states,
-    )
-
-    await reconcile_orphaned_task_states(
-        orchestrator._session,
-        orchestrator._event_bus,
-        plan_id=mission_plan_id,
-    )
 
     task_plan = mission_plan_taskio.materialize_task_plan(plan)
 
@@ -252,6 +239,7 @@ async def dispatch_approved(
         session_id=session_id,
         task_type=task_type,
         approved_task_ids=approved_task_ids,
+        temporal_workflow_id=temporal_workflow_id,
     )
     early_record_id = early_record.id if early_record else None
 
@@ -390,6 +378,7 @@ async def create_early_execution_record(
     session_id: str | None,
     task_type: str,
     approved_task_ids: set[str],
+    temporal_workflow_id: str,
 ):
     """Insert a 'running' ExecutionRecord before dispatch starts.
 
@@ -416,6 +405,7 @@ async def create_early_execution_record(
                 "task_ids": sorted(approved_task_ids),
             },
             started_at=utc_now(),
+            temporal_workflow_id=temporal_workflow_id,
         )
         orchestrator._session.add(record)
         await orchestrator._session.commit()

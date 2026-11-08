@@ -58,7 +58,7 @@ class TaskStatus(str, enum.Enum):
 VALID_TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PROPOSED: frozenset({TaskStatus.APPROVED, TaskStatus.CANCELLED}),
     TaskStatus.APPROVED: frozenset({TaskStatus.QUEUED, TaskStatus.CANCELLED}),
-    TaskStatus.QUEUED: frozenset({TaskStatus.RUNNING}),
+    TaskStatus.QUEUED: frozenset({TaskStatus.RUNNING, TaskStatus.FAILED}),
     TaskStatus.RUNNING: frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.SKIPPED}),
     TaskStatus.FAILED: frozenset({TaskStatus.APPROVED}),
     TaskStatus.COMPLETED: frozenset(),

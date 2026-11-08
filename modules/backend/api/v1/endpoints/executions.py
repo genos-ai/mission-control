@@ -241,6 +241,9 @@ async def execute_execution(
         if not record.session_id:
             raise ApplicationError(f"Execution record '{execution_id}' has no session_id")
 
+        # Stamp the workflow id so the reconciler can resolve liveness;
+        # the request-scoped session commits it.
+        record.temporal_workflow_id = f"execution-{execution_id}"
         client = await get_temporal_client()
         handle = await client.start_workflow(
             AgentMissionWorkflow.run,

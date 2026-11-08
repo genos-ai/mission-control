@@ -164,6 +164,7 @@ async def execute_run_workflow(input: RunWorkflowInput) -> ToolForkResult:
                     triggered_by=input.triggered_by,
                     mission_id=input.mission_id,
                     context_overrides=input.context_overrides,
+                    temporal_workflow_id=activity.info().workflow_id,
                 )
         finally:
             await redis.aclose()

@@ -5,7 +5,10 @@ Standard CRUD plus execution-specific queries: cost aggregation,
 status filtering, session lookups, re-plan lineage.
 """
 
-from sqlalchemy import and_, func, select
+from collections.abc import Collection
+from datetime import datetime
+
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -41,6 +44,40 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_in_flight_older_than(
+        self,
+        cutoff: datetime,
+        *,
+        ids: Collection[str] | None = None,
+        for_update: bool = False,
+    ) -> list[ExecutionRecord]:
+        """Return PENDING or RUNNING records last updated before ``cutoff``.
+
+        Reconciler candidates: only records driven by Temporal, directly
+        (``temporal_workflow_id``) or through a workflow run
+        (``workflow_run_id``). In-process records carry neither and are
+        never returned. ``ids`` narrows the select; ``for_update`` locks
+        with SKIP LOCKED.
+        """
+        query = select(ExecutionRecord).where(
+            ExecutionRecord.status.in_(
+                [ExecutionRecordStatus.PENDING, ExecutionRecordStatus.RUNNING]
+            ),
+            ExecutionRecord.updated_at < cutoff,
+            or_(
+                ExecutionRecord.temporal_workflow_id.is_not(None),
+                ExecutionRecord.workflow_run_id.is_not(None),
+            ),
+        )
+        if ids is not None:
+            query = query.where(ExecutionRecord.id.in_(list(ids)))
+        if for_update:
+            query = query.execution_options(populate_existing=True).with_for_update(
+                skip_locked=True
+            )
+        result = await self.session.execute(query.order_by(ExecutionRecord.created_at))
+        return list(result.scalars().all())
 
     async def get_by_session(self, session_id: str) -> list[ExecutionRecord]:
         """Get all execution records for a session, newest first."""

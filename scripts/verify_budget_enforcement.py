@@ -218,6 +218,7 @@ class BudgetEnforcementVerifier:
                 await svc.dispatch_approved(
                     self._original_plan_id,
                     user_id="verify-budget-test",
+                    temporal_workflow_id="verify-budget-test",
                 )
                 return (False, "dispatch_approved did not raise")
             except ValidationError as exc:

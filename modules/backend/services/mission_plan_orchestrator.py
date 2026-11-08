@@ -503,6 +503,7 @@ class MissionPlanOrchestrator(BaseService):
         mission_plan_id: str,
         user_id: str,
         *,
+        temporal_workflow_id: str,
         session_id: str | None = None,
         skip_post_run_supervisor: bool = False,
     ) -> dict:
@@ -516,6 +517,7 @@ class MissionPlanOrchestrator(BaseService):
             self,
             mission_plan_id,
             user_id,
+            temporal_workflow_id=temporal_workflow_id,
             session_id=session_id,
             skip_post_run_supervisor=skip_post_run_supervisor,
         )

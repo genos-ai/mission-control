@@ -128,6 +128,8 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         on_progress: Any | None = None,
         mission_id: str | None = None,
         gate: object | None = None,
+        *,
+        temporal_workflow_id: str | None = None,
     ) -> WorkflowRun:
         """Execute a workflow by name from the DB.
 
@@ -169,6 +171,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             context_overrides=context_overrides,
             on_progress=on_progress,
             gate=gate,
+            temporal_workflow_id=temporal_workflow_id,
         )
 
     async def run_workflow_from_definition(
@@ -181,11 +184,16 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         context_overrides: dict[str, Any] | None = None,
         on_progress: Any | None = None,
         gate: object | None = None,
+        temporal_workflow_id: str | None = None,
     ) -> WorkflowRun:
         """Execute a DB-backed workflow definition.
 
         Loads the WorkflowDefinition, converts it to a WorkflowSchema,
         and runs it through the same execution pipeline as YAML workflows.
+
+        ``temporal_workflow_id`` is the id of the Temporal workflow driving
+        this run, written on the parent ExecutionRecord so the reconciler
+        can resolve liveness. In-process callers pass None.
         """
         from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository
 
@@ -245,6 +253,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             status=ExecutionRecordStatus.FAILED,
             total_cost_usd=0.0,
             started_at=now,
+            temporal_workflow_id=temporal_workflow_id,
         )
 
         run = WorkflowRun(

@@ -215,41 +215,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # no event_bus/mission_id to emit a mission event through.
         logger.error("Workflow template seeding failed — continuing startup", exc_info=True)
 
-    # Crash recovery: reconcile orphaned task states from prior crash.
-    # Temporal's durable execution handles most cases, but tasks that
-    # were mid-run when the BACKEND (not the worker) crashed still
-    # need reconciliation.
-    try:
-        from redis.asyncio import Redis as AsyncRedis
-
-        from modules.backend.core.config import get_redis_url
-        from modules.backend.core.database import get_async_session
-        from modules.backend.events.bus import SessionEventBus
-        from modules.backend.services.mission_plan_crash_recovery import (
-            reconcile_orphaned_execution_records,
-            reconcile_orphaned_task_states,
-            reconcile_orphaned_workflow_runs,
-        )
-
-        redis = AsyncRedis.from_url(get_redis_url())
-        try:
-            event_bus = SessionEventBus(redis)
-            async with get_async_session() as db:
-                stats = await reconcile_orphaned_task_states(db, event_bus)
-                exec_orphans = await reconcile_orphaned_execution_records(db)
-                stats["execution_records_reconciled"] = exec_orphans
-                workflow_run_orphans = await reconcile_orphaned_workflow_runs(db, event_bus)
-                stats["workflow_runs_reconciled"] = workflow_run_orphans
-                await db.commit()
-            logger.info("Crash recovery completed", extra=stats)
-        finally:
-            await redis.close()
-    except Exception:  # noqa: BLE001
-        # best-effort — startup crash-recovery spans all orphaned missions,
-        # not a single mission_id; no single mission channel to emit
-        # through even though an event_bus is constructed above.
-        logger.error("Crash recovery failed — continuing startup", exc_info=True)
-
     yield
 
     logger.info("Application shutting down")

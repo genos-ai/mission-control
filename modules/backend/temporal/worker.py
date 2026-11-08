@@ -54,6 +54,8 @@ from modules.backend.temporal.maintenance_workflow import (
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+from modules.backend.temporal.reconciler_activities import reconcile_mission_runs
+from modules.backend.temporal.reconciler_workflow import ReconcilerWorkflow
 from modules.backend.temporal.run_objective_activities import execute_run_objective
 from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
 from modules.backend.temporal.scheduled_activities import find_ready_plans
@@ -66,6 +68,7 @@ from modules.backend.temporal.supervisor_activities import (
     fire_supervisor_followups,
     start_director_turn,
 )
+from modules.backend.temporal.system_schedules import register_system_schedules
 from modules.backend.temporal.tool_fork_activities import (
     execute_design_workflow,
     execute_run_workflow,
@@ -109,6 +112,8 @@ async def start_worker() -> None:
             MetricsAggregationWorkflow,
             CleanupEnvironmentsWorkflow,
             EvaluateWorkflowSchedulesWorkflow,
+            # Run reconciliation (Plan 88 step 88.0.10)
+            ReconcilerWorkflow,
         ],
         activities=[
             # Mission execution (Plan 16)
@@ -151,6 +156,8 @@ async def start_worker() -> None:
             run_metrics_aggregation,
             run_cleanup_stale_environments,
             run_evaluate_workflow_schedules,
+            # Run reconciliation (Plan 88 step 88.0.10)
+            reconcile_mission_runs,
         ],
     )
 
@@ -162,6 +169,9 @@ async def start_worker() -> None:
         "Temporal worker starting",
         extra={"task_queue": config.task_queue},
     )
+
+    # Fail closed: a registration failure stops the worker from starting.
+    await register_system_schedules(client)
 
     await worker.run()
 

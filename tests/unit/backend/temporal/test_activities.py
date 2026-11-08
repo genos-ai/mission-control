@@ -96,6 +96,10 @@ class TestExecuteMission:
         patches["heartbeat"] = patch(
             "modules.backend.temporal.activities.activity.heartbeat",
         )
+        patches["activity_info"] = patch(
+            "modules.backend.temporal.activities.activity.info",
+            return_value=MagicMock(workflow_id="mission-run-test"),
+        )
 
         class _Ctx:
             async def __aenter__(self_ctx):
