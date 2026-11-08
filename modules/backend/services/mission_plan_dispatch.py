@@ -20,15 +20,18 @@ import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from modules.backend.core.config import get_default_budget_usd
-from modules.backend.core.exceptions import ValidationError
+from modules.backend.core.exceptions import ConflictError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import MissionPlanDispatchedEvent
 from modules.backend.models.mission_plan import MissionPlanStatus
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services import mission_plan_supervisor, mission_plan_taskio
+from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 if TYPE_CHECKING:
     from modules.backend.models.mission_plan import MissionPlan
@@ -114,13 +117,18 @@ async def start_temporal_run_workflow(
         execution_mode=mission.execution_environment,
     )
 
-    workflow_id = f"mission-run-{plan.id[:12]}-{uuid.uuid4().hex[:8]}"
-    await client.start_workflow(
-        MissionRunWorkflow.run,
-        workflow_input,
-        id=workflow_id,
-        task_queue=config.temporal.task_queue,
-    )
+    workflow_id = mission_run_workflow_id(plan.id)
+    try:
+        await client.start_workflow(
+            MissionRunWorkflow.run,
+            workflow_input,
+            id=workflow_id,
+            task_queue=config.temporal.task_queue,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
+        )
+    except WorkflowAlreadyStartedError as exc:
+        raise ConflictError(f"A mission run is already in progress for plan {plan.id}") from exc
     return workflow_id
 
 

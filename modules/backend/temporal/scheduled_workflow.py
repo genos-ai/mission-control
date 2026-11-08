@@ -13,7 +13,8 @@ Temporal handles timing, deduplication, and worker coordination.
 from datetime import timedelta
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
@@ -21,6 +22,7 @@ with workflow.unsafe.imports_passed_through():
     from modules.backend.temporal import scheduled_activities
     from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
     from modules.backend.temporal.models import MissionWorkflowInput
+    from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 
 @workflow.defn
@@ -68,31 +70,29 @@ class ScheduledMissionCheckWorkflow:
                     owner_id=plan_info.get("owner_id", ""),
                 )
 
-                # Use plan_id as workflow ID for deduplication — only one
-                # run workflow per plan at a time.
-                workflow_id = f"mission-run-{plan_info['plan_id']}"
+                # One MissionRunWorkflow per plan (88.0.3): the id is shared
+                # with the API dispatch path, so Temporal rejects a duplicate.
+                workflow_id = mission_run_workflow_id(plan_info["plan_id"])
 
                 await workflow.start_child_workflow(
                     MissionRunWorkflow.run,
                     input_data,
                     id=workflow_id,
                     task_queue=config.task_queue,
+                    id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
                     # ABANDON: child continues after parent completes.
                     # Without this, Temporal's default TERMINATE policy
                     # kills the child when the scheduled workflow finishes.
                     parent_close_policy=ParentClosePolicy.ABANDON,
                 )
                 dispatched += 1
-            except Exception as exc:
-                # best-effort — Temporal workflow code must stay
-                # deterministic (rule 013.1); no event_bus/Redis I/O is
-                # reachable from here. Workflow already running for this
-                # plan, or other error — don't fail the scheduled check.
-                workflow.logger.warning(
-                    "Failed to start MissionRunWorkflow for plan %s (mission %s): %s",
-                    plan_info.get("plan_id", "?"),
-                    plan_info.get("mission_id", "?"),
-                    exc,
+            except WorkflowAlreadyStartedError:
+                # A run is already in progress for this plan. Any other
+                # exception propagates and fails the check, visibly.
+                workflow.logger.info(
+                    "MissionRunWorkflow already running for plan %s (mission %s)",
+                    plan_info["plan_id"],
+                    plan_info["mission_id"],
                 )
 
         return {"checked": True, "dispatched": dispatched}
