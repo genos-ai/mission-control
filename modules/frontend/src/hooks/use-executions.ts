@@ -5,8 +5,6 @@ import type {
   ExecutionRecordDetail,
   ExecutionDecision,
   ExecutionCostBreakdown,
-  ExecutionCreateRequest,
-  ExecutionCreateResponse,
 } from '@/types'
 
 export const executionKeys = {
@@ -93,17 +91,6 @@ export function useBackgroundTasks(missionId: string | undefined) {
     activeTasks,
     activeCount: activeTasks.length,
   }
-}
-
-export function useCreateExecution() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: ExecutionCreateRequest) =>
-      api.post<ExecutionCreateResponse>('/workflows/missions', data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['executions'] })
-    },
-  })
 }
 
 /** Plan 62: unified execution via the plan path. */

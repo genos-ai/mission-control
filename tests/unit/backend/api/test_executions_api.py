@@ -162,3 +162,100 @@ class TestGetExecutionCost:
             assert response.status_code == 200
             data = response.json()
             assert data["data"]["total_cost_usd"] == 0.10
+
+
+# ---- Plan 88 step 88.0.9: operator rule and removed legacy routes ----
+
+
+async def _real_db_client(app: FastAPI, db_session, user):
+    from modules.backend.core.database import get_db_session
+    from modules.backend.core.dependencies import get_current_user
+
+    async def override_db():
+        yield db_session
+
+    async def override_user():
+        return user
+
+    app.dependency_overrides[get_db_session] = override_db
+    app.dependency_overrides[get_current_user] = override_user
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+class TestCancelExecutionOperatorRule:
+    @pytest.mark.asyncio
+    async def test_cancel_execution_viewer_forbidden(self, db_session, test_user):
+        from uuid import uuid4
+
+        from modules.backend.core import security
+        from modules.backend.core.exception_handlers import register_exception_handlers
+        from modules.backend.models.execution_record import (
+            ExecutionRecord,
+            ExecutionRecordStatus,
+        )
+        from modules.backend.models.mission import (
+            Mission,
+            MissionMember,
+            MissionMemberRole,
+            MissionStatus,
+        )
+        from modules.backend.models.user import User
+
+        viewer = User(
+            id=str(uuid4()),
+            email=f"p88-viewer-{uuid4().hex[:8]}@test.dev",
+            display_name="Viewer",
+            hashed_password=security.hash_password("viewer-password-123"),
+            system_role="user",
+            is_active=True,
+        )
+        mission = Mission(
+            id=str(uuid4()),
+            name=f"p88-viewer-{uuid4().hex[:8]}",
+            description="Plan 88 viewer test",
+            owner_id=test_user.id,
+            status=MissionStatus.ACTIVE,
+        )
+        db_session.add_all([viewer, mission])
+        await db_session.flush()
+        record = ExecutionRecord(mission_id=mission.id, status=ExecutionRecordStatus.RUNNING)
+        db_session.add_all(
+            [
+                MissionMember(
+                    mission_id=mission.id, user_id=viewer.id, role=MissionMemberRole.VIEWER
+                ),
+                record,
+            ]
+        )
+        await db_session.flush()
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(router, prefix="/api/v1/executions")
+        async with await _real_db_client(app, db_session, viewer) as ac:
+            response = await ac.post(f"/api/v1/executions/{record.id}/cancel")
+
+        assert response.status_code == 403
+        await db_session.refresh(record)
+        assert record.status == ExecutionRecordStatus.RUNNING
+
+
+class TestLegacyWorkflowsMissionsRoutes:
+    @pytest.mark.asyncio
+    async def test_legacy_workflows_missions_routes_removed(self, mock_db_session):
+        from modules.backend.api.v1 import router as api_v1_router
+        from modules.backend.core.exception_handlers import register_exception_handlers
+
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(api_v1_router, prefix="/api/v1")
+        async with await _real_db_client(app, mock_db_session, _StubAdminUser()) as ac:
+            responses = [
+                await ac.post("/api/v1/workflows/missions", json={"objective": "x"}),
+                await ac.get("/api/v1/workflows/missions"),
+                await ac.get("/api/v1/workflows/missions/x"),
+                await ac.post("/api/v1/workflows/missions/x/cancel"),
+            ]
+
+        codes = [r.status_code for r in responses]
+        assert all(code in (404, 405) for code in codes), codes

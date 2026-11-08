@@ -321,6 +321,17 @@ async def require_mission_owner(db, mission_id: str, user) -> None:
     raise AuthorizationError("Only the mission owner can perform this action")
 
 
+async def require_mission_operator(db, mission_id: str, user) -> None:
+    """Allow a platform admin, the mission owner, or an OWNER/MAINTAINER member.
+
+    Raises AuthorizationError otherwise; NotFoundError for an unknown mission.
+    """
+    from modules.backend.services.mission import MissionService
+
+    if not await MissionService(db).is_operator(mission_id, user):
+        raise AuthorizationError("Requires mission owner or maintainer")
+
+
 async def require_session_access(db, session_id: str, user) -> None:
     """Allow admin, the session owner, or a member of the session's mission.
 

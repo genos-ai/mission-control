@@ -17,6 +17,7 @@ from modules.backend.core.dependencies import (
     Idempotency,
     RequestId,
     require_mission_access,
+    require_mission_operator,
 )
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.schemas.base import ApiResponse
@@ -580,38 +581,23 @@ async def cancel_workflow_run(
     current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Mark a workflow run as CANCELLED.
-
-    Use cases:
-      - Stale RUNNING rows whose dispatcher coroutine died on backend
-        restart (Plan 80h orphan recovery).
-      - Operator-aborted runs.
+    """Cancel a workflow run: its Temporal workflow first, then the row (Plan 88).
 
     Idempotent: no-op when the run is already in a terminal state.
     """
-    await require_mission_access(db, mission_id, current_user)
-    from modules.backend.services.workflow_run import WorkflowRunService
+    await require_mission_operator(db, mission_id, current_user)
+    from modules.backend.services.execution_cancellation import ExecutionCancellationService
 
-    service = WorkflowRunService(db)
-    run, changed = await service.cancel_run(run_id, mission_id=mission_id)
-    if not changed:
-        current = run.status.value if hasattr(run.status, "value") else str(run.status)
-        return ApiResponse(
-            success=True,
-            data={
-                "id": run.id,
-                "status": str(current),
-                "message": "Already in terminal state — no-op.",
-            },
-            metadata={"request_id": request_id},
-        )
-
+    run, _changed, temporal_cancelled = await ExecutionCancellationService(db).cancel_workflow_run(
+        mission_id, run_id, user_id=str(current_user.id)
+    )
     run_id_value = run.id
+    status = run.status.value if hasattr(run.status, "value") else str(run.status)
     await db.commit()
 
     return ApiResponse(
         success=True,
-        data={"id": run_id_value, "status": "CANCELLED"},
+        data={"id": run_id_value, "status": status, "temporal_cancelled": temporal_cancelled},
         metadata={"request_id": request_id},
     )
 

@@ -18,6 +18,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.mission_event import MissionEvent
 from modules.backend.models.mission_plan import VALID_GATE_MODES
+from modules.backend.models.user import User
 from modules.backend.repositories.mission import MissionMemberRepository, MissionRepository
 from modules.backend.schemas.mission import MissionResponse
 from modules.backend.services.base import BaseService
@@ -178,7 +179,7 @@ class MissionService(BaseService):
         """Permanently delete a mission and all related data.
 
         Cleanup order:
-        1. Cancel any running Temporal workflows for this mission
+        1. Terminate the mission's running Temporal workflows (fails closed)
         2. Remove Docker containers
         3. Clear user.current_mission_id references
         4. Delete all DB records in FK order (deepest children first)
@@ -191,26 +192,32 @@ class MissionService(BaseService):
         mission = await self._mission_repo.get_by_id(mission_id)
         mission_name = mission.name
 
-        # Cancel running Temporal workflows for this mission
-        try:
-            from modules.backend.temporal.client import get_temporal_client
+        # Stop the mission's Temporal workflows before any DB delete. Terminate,
+        # not cancel: the rows are about to go, so no cleanup activity may run.
+        # ExternalServiceError aborts the delete (fail closed).
+        from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+        from modules.backend.repositories.mission_plan import MissionPlanRepository
+        from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+        from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
-            client = await get_temporal_client()
+        plan = await MissionPlanRepository(self._session).get_by_mission_id(mission_id)
+        result = await self._session.execute(
+            select(ExecutionRecord.temporal_workflow_id).where(
+                ExecutionRecord.mission_id == mission_id,
+                ExecutionRecord.status.in_(
+                    [ExecutionRecordStatus.PENDING, ExecutionRecordStatus.RUNNING]
+                ),
+                ExecutionRecord.temporal_workflow_id.is_not(None),
+            )
+        )
+        workflow_ids = set(result.scalars().all())
+        if plan is not None:
+            workflow_ids.add(mission_run_workflow_id(plan.id))
+        await self._session.commit()
 
-            # Cancel MissionRunWorkflow if running
-            for plan in mission.plans if hasattr(mission, "plans") else []:
-                workflow_id = f"mission-run-{plan.id}"
-                try:
-                    handle = client.get_workflow_handle(workflow_id)
-                    await handle.terminate(reason=f"Mission {mission_name} deleted")
-                except Exception:
-                    logger.debug(
-                        "Temporal workflow terminate failed (not running or already completed): %s",
-                        workflow_id,
-                        exc_info=True,
-                    )
-        except Exception:
-            logger.debug("Temporal cleanup skipped (non-fatal)", exc_info=True)
+        gateway = await TemporalWorkflowGateway.connect()
+        for workflow_id in sorted(workflow_ids):
+            await gateway.terminate(workflow_id, reason=f"Mission {mission_name} deleted")
 
         # Clean up containers BEFORE deleting DB records
         # (cleanup_for_mission queries execution_environments table)
@@ -358,6 +365,20 @@ class MissionService(BaseService):
         """Check if a user is a member of a mission."""
         membership = await self._member_repo.get_membership(mission_id, user_id)
         return membership is not None
+
+    async def is_operator(self, mission_id: str, user: User) -> bool:
+        """Platform admin, the mission owner, or a member whose role is OWNER or MAINTAINER.
+
+        Raises NotFoundError for an unknown mission, for every caller.
+        """
+        mission = await self.get_mission(mission_id)
+        if user.has_role("admin") or mission.owner_id == user.id:
+            return True
+        membership = await self._member_repo.get_membership(mission_id, user.id)
+        return membership is not None and membership.role in {
+            MissionMemberRole.OWNER,
+            MissionMemberRole.MAINTAINER,
+        }
 
     async def get_mission(self, mission_id: str) -> Mission:
         """Get a mission by ID. Raises NotFoundError if not found."""

@@ -89,19 +89,3 @@ export interface ExecutionCostBreakdown {
   total_input_tokens: number
   total_output_tokens: number
 }
-
-// Execution create/execute types
-export interface ExecutionCreateRequest {
-  objective: string
-  triggered_by: string
-  mission_id?: string
-  roster_ref?: string
-  complexity_tier?: string
-  cost_ceiling_usd?: number
-}
-
-export interface ExecutionCreateResponse {
-  id: string
-  session_id: string
-  status: string
-}

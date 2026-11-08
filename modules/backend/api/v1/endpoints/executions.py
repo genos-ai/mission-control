@@ -19,6 +19,7 @@ from modules.backend.core.dependencies import (
     Idempotency,
     RequestId,
     require_mission_access,
+    require_mission_operator,
 )
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
@@ -358,30 +359,27 @@ async def cancel_execution(
     request_id: RequestId,
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
-    """Cancel a pending or running execution via execution_records (Plan 71)."""
-    service = ExecutionPersistenceService(db)
-    record = await service.get_execution(execution_id)
+    """Cancel a pending or running execution: Temporal first, then the record (Plan 88)."""
+    from modules.backend.services.execution_cancellation import ExecutionCancellationService
+
+    record = await ExecutionPersistenceService(db).get_execution(execution_id)
     if not record:
         raise NotFoundError(f"Execution '{execution_id}' not found")
 
-    await _require_execution_access(db, record.mission_id, current_user)
+    if record.mission_id:
+        await require_mission_operator(db, record.mission_id, current_user)
+    elif not current_user.has_role("admin"):
+        raise AuthorizationError("You don't have access to this execution")
 
-    status = record.status.value if hasattr(record.status, "value") else str(record.status)
-    if status.lower() in ("completed", "failed", "cancelled", "timed_out"):
-        return ApiResponse(
-            success=True,
-            data={"id": str(record.id), "status": status, "message": "Already terminal"},
-            metadata={"request_id": request_id},
-        )
-
-    await service.complete_execution(
-        execution_record_id=str(record.id),
-        status="cancelled",
+    record, _changed, temporal_cancelled = await ExecutionCancellationService(db).cancel_execution(
+        execution_id, user_id=str(current_user.id), reason=reason
     )
+    record_id = str(record.id)
+    status = record.status.value if hasattr(record.status, "value") else str(record.status)
     await db.commit()
     return ApiResponse(
         success=True,
-        data={"id": str(record.id), "status": "cancelled"},
+        data={"id": record_id, "status": status, "temporal_cancelled": temporal_cancelled},
         metadata={"request_id": request_id},
     )
 

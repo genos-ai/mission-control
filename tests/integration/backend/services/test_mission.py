@@ -1,12 +1,21 @@
 """Integration tests for MissionService — real database, no mocks."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID, uuid5
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.exceptions import NotFoundError
-from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.core import security
+from modules.backend.core.exceptions import ExternalServiceError, NotFoundError
+from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.user import User
 from modules.backend.services.mission import MissionService
+from modules.backend.services.mission_plan import MissionPlanService
+from modules.backend.temporal.workflow_gateway import WorkflowState
+
+_NS = UUID("00000000-0000-0000-0000-000000000000")
+_CONNECT = "modules.backend.temporal.workflow_gateway.TemporalWorkflowGateway.connect"
 
 
 class TestCreateMission:
@@ -164,3 +173,105 @@ class TestDeleteMission:
 
         with pytest.raises(NotFoundError):
             await service.get_mission(mission_id)
+
+
+async def _other_user(db_session: AsyncSession, key: str, system_role: str = "user") -> User:
+    user = User(
+        id=str(uuid5(_NS, f"user:p88-operator-{key}")),
+        email=f"p88-operator-{key}@test.dev",
+        display_name=f"Operator test {key}",
+        hashed_password=security.hash_password("operator-password-123"),
+        system_role=system_role,
+        is_active=True,
+    )
+    user = await db_session.merge(user)
+    await db_session.flush()
+    return user
+
+
+class TestIsOperator:
+    @pytest.mark.parametrize(
+        ("caller", "expected"),
+        [
+            ("platform_admin", True),
+            ("mission_owner", True),
+            ("member_owner", True),
+            ("member_maintainer", True),
+            ("member_viewer", False),
+            ("non_member", False),
+        ],
+    )
+    async def test_is_operator_matrix(
+        self,
+        db_session: AsyncSession,
+        test_mission: Mission,
+        regular_user: User,
+        caller: str,
+        expected: bool,
+    ):
+        if caller == "mission_owner":
+            user = regular_user
+        elif caller == "platform_admin":
+            user = await _other_user(db_session, caller, system_role="admin")
+        else:
+            user = await _other_user(db_session, caller)
+            roles = {
+                "member_owner": MissionMemberRole.OWNER,
+                "member_maintainer": MissionMemberRole.MAINTAINER,
+                "member_viewer": MissionMemberRole.VIEWER,
+            }
+            if caller in roles:
+                db_session.add(
+                    MissionMember(mission_id=test_mission.id, user_id=user.id, role=roles[caller])
+                )
+                await db_session.flush()
+
+        assert await MissionService(db_session).is_operator(test_mission.id, user) is expected
+
+    async def test_is_operator_unknown_mission_raises_not_found(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        with pytest.raises(NotFoundError):
+            await MissionService(db_session).is_operator(
+                "00000000-0000-0000-0000-000000000000", regular_user
+            )
+
+
+class TestDeleteMissionTemporal:
+    async def test_delete_mission_terminates_mission_run_workflow(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        service = MissionService(db_session)
+        mission = await service.create_mission(
+            name="p88-delete-terminates", description="tmp", owner_id=regular_user.id
+        )
+        mission_id = mission.id
+        plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
+        plan_id = plan.id
+
+        gateway = MagicMock()
+        gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
+        with patch(_CONNECT, AsyncMock(return_value=gateway)):
+            await service.delete_mission(mission_id)
+
+        gateway.terminate.assert_awaited_once_with(
+            f"mission-run-{plan_id}", reason="Mission p88-delete-terminates deleted"
+        )
+        with pytest.raises(NotFoundError):
+            await service.get_mission(mission_id)
+
+    async def test_delete_mission_aborts_when_temporal_unavailable(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        service = MissionService(db_session)
+        mission = await service.create_mission(
+            name="p88-delete-aborts", description="tmp", owner_id=regular_user.id
+        )
+        mission_id = mission.id
+        await MissionPlanService(db_session).get_or_create_plan(mission_id)
+
+        with patch(_CONNECT, AsyncMock(side_effect=ExternalServiceError("Temporal unavailable"))):
+            with pytest.raises(ExternalServiceError):
+                await service.delete_mission(mission_id)
+
+        assert (await service.get_mission(mission_id)).id == mission_id

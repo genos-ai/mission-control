@@ -24,6 +24,7 @@ from modules.backend.core.dependencies import (
     RequestId,
     get_event_bus,
     require_existing_mission_access,
+    require_mission_operator,
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.events.bus import SessionEventBus
@@ -102,7 +103,7 @@ async def update_plan(
     optional. Gate mode is validated against the existing gate system's
     supported values.
     """
-    await require_existing_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
