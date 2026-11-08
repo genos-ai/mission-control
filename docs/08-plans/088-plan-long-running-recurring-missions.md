@@ -34,8 +34,10 @@ Unattended operation is also unsafe:
 - Escalation notifications are a stub.
 - Cancel updates the database only, so the Temporal workflow keeps running.
 - Several defaults fail open.
+- **Failures are untyped.** `failed_result()` discards its reason (`dispatch/result_builders.py:66-85`), and write-back stores the constant "Task failed during dispatch" (`services/mission_plan_taskio.py:199-207`). Nothing classifies a failure as a platform defect, a missing dependency, a target-code bug or a transient error, so an unattended run cannot tell the owner, the supervisor or the Director why a task failed.
+- **The execution boundary fails open.** A failure to provision a container falls back to local execution (`agents/mission_control/mission_dispatch.py:396-412`). `repo_root` defaults to the platform repository (`:375`). Without an environment handle, `run_command` runs a shell on the worker host (`tools/run_command.py:88-100`).
 
-**Goal:** a mission can run on a schedule for months. Each run builds on the previous one. The mission survives worker crashes and deploys, stays inside defined spend limits, waits durably for human approval and notifies its owner. Every occurrence is recorded and auditable.
+**Goal:** a mission can run on a schedule for months. Each run builds on the previous one. The mission survives worker crashes and deploys, stays inside defined spend limits, waits durably for human approval and notifies its owner. Every occurrence is recorded and auditable, and every failed task records why it failed in a typed, classified form.
 
 **Why now:** every later autonomy feature (Plans 85 and 86 and the Think Tank workflows) assumes missions that persist and recur. Building those features on top of the current defects would bake them in.
 
@@ -61,6 +63,7 @@ The owner made these decisions on 2026-11-07. They are binding on the implemente
 | 12 | Versioning | The config snapshot is a workflow input. Code changes use `workflow.patched`. CI replays recorded histories. Continue-as-new replaces the 25-iteration cap. |
 | 13 | Retention | A nightly job applies per-table retention periods from config. Digests, runs and audit records are kept permanently. Raw events and task outputs are kept for 90 days. `llm_calls` are rolled up to daily aggregates after 90 days. The 1-second poller is replaced by event-driven dispatch. |
 | 14 | Delivery | Phase 0 bug fixes ship first. Phases 1 to 5 each ship to `main` once they pass. Acceptance requires a real 7-day hourly run (168 runs) with a worker kill and a redeploy, then a 4-week weekly mission. |
+| 15 | Failure evidence and execution boundary (added 2026-11-08) | Every failed task carries a typed, persisted failure record: origin, class, fingerprint, summary and bounded evidence. A deterministic classifier assigns it from mechanical rules and signature rules in config; no LLM classifies. The post-run reviewer, the Director's refine turn and the Planning Agent see these records. The execution boundary fails closed: there is no silent fallback to local execution, and no write-capable agent runs without an isolated workspace. Repair loops are out of scope. A later plan attaches them at `_after_task` using this contract (contracts 3.8). |
 
 ---
 
@@ -110,7 +113,7 @@ Each phase file is self-contained apart from its references to the contracts.
 | (all) | [00-shared-contracts.md](088-plan-long-running-recurring-missions/00-shared-contracts.md) | Data model, state machines, Temporal contracts, config keys, service and API interfaces, phase ownership | n/a | n/a |
 | 0 | [phase-0-correctness-fixes.md](088-plan-long-running-recurring-missions/phase-0-correctness-fixes.md) | State-corrupting defects fixed: reconciler, gate defaults, workflow ids, cancel and delete, IDOR, swallowed exceptions, Telegram fail-open | Baseline commit | Not started |
 | 1 | [phase-1-missionrun-and-schedules.md](088-plan-long-running-recurring-missions/phase-1-missionrun-and-schedules.md) | `MissionRun` entity; mission schedules backed by Temporal Schedules; event-driven dispatch; run reconciliation; API, `mc` and web | Phase 0 done; Alembic head `plan87_002` | Not started |
-| 2 | [phase-2-durable-execution.md](088-plan-long-running-recurring-missions/phase-2-durable-execution.md) | One activity per task with heartbeats and idempotency; config snapshot as input; `workflow.patched`; replay tests in CI; continue-as-new | Phase 1 done | Not started |
+| 2 | [phase-2-durable-execution.md](088-plan-long-running-recurring-missions/phase-2-durable-execution.md) | One activity per task with heartbeats and idempotency; fail-closed execution boundary; typed failure records; config snapshot as input; `workflow.patched`; replay tests in CI; continue-as-new | Phase 1 done | Not started |
 | 3 | [phase-3-memory-between-runs.md](088-plan-long-running-recurring-missions/phase-3-memory-between-runs.md) | Run digest, MCD delta and watermark, learnings in context, bounded prior outputs, automatic compaction | Phase 2 done | Not started |
 | 4 | [phase-4-gates-budgets-notifications-lifecycle.md](088-plan-long-running-recurring-missions/phase-4-gates-budgets-notifications-lifecycle.md) | Budget caps on the single ledger; mission lifecycle reaching Temporal; durable gates; per-mission notifications; Telegram approvals; web lifecycle UI | Phase 3 done | Not started |
 | 5 | [phase-5-retention-observability-acceptance.md](088-plan-long-running-recurring-missions/phase-5-retention-observability-acceptance.md) | Retention and rollup; health views; stale-gate sweep; endurance evaluator; CI endurance variant; the 7-day and 4-week acceptance runs | Phase 4 done | Not started |

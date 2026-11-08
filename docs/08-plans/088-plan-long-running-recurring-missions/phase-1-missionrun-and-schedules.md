@@ -198,6 +198,7 @@
    - `Mission.run_sequence_counter`: `Integer`, `server_default="0"`, NOT NULL.
    - `Task.mission_run_id`, `ExecutionRecord.mission_run_id`, `TaskExecution.mission_run_id`, `TaskExecution.idempotency_key` and `ContextChange.mission_run_id`, per 3.1.8.
    - `LlmCall.mission_run_id: Mapped[str | None]` and `LlmCall.task_id: Mapped[str | None]`, both `PgUUID(as_uuid=False)` with no FK, matching the existing table style.
+   - The failure columns on `tasks` and `task_executions` (3.1.8, decision 15) are **not mapped here**. The migration creates them; 88.2.3b maps them with the `FailureOrigin` and `FailureClass` enums, which do not exist until then. Phase 1 code never reads or writes them.
    - Delete `ExecutionRecord.parent_execution_record_id`, `get_replan_chain` in the repository and in `execution_persistence.py:618-620`, the `parent_execution_record_id` parameter (`execution_persistence.py:87,129`) and the schema field (`schemas/execution_record.py:91`).
 5. **Migration `plan88_002_mission_runs.py`** (`revision="plan88_002"`, `down_revision="plan88_001"`). Operations, in order:
    1. `op.add_column("missions", sa.Column("run_sequence_counter", sa.Integer(), server_default="0", nullable=False))`.
@@ -207,6 +208,7 @@
    5. `op.create_table("mission_run_digests", ...)` per 3.1.7.
    6. Add the 3.1.8 columns on `tasks`, `execution_records`, `task_executions` and `context_changes`, with `ix_tasks_run_status (mission_run_id, status)`, `uq_execution_records_run` (partial, `WHERE mission_run_id IS NOT NULL`), `ix_task_executions_mission_run_id`, `uq_task_executions_idempotency_key` and `ix_context_changes_mission_run_id`.
    7. Create `ix_context_changes_context_version ON context_changes (context_id, version)`.
+   7a. Add the failure columns (3.1.8): `failure_origin` VARCHAR(32), `failure_class` VARCHAR(40) and `failure_fingerprint` VARCHAR(64) on both `tasks` and `task_executions`, all nullable, plus `task_executions.failure_json` JSONB nullable and `ix_task_executions_failure_fingerprint (failure_fingerprint)`. No backfill: existing FAILED rows keep NULL.
    8. Add `llm_calls.mission_run_id` and `llm_calls.task_id` (UUID, nullable, no FK), with `ix_llm_calls_mission_run_id (mission_run_id)`, `ix_llm_calls_task_id (task_id)` and `ix_llm_calls_mission_created (mission_id, created_at)`.
    9. Drop the FK `execution_records_parent_execution_record_id_fkey`, then the `parent_execution_record_id` column.
    10. `downgrade()` reverses steps 9 to 1 structurally.
@@ -226,6 +228,7 @@
   - `test_schedule_slot_check`: a `trigger='SCHEDULE'` row with NULL `scheduled_for` violates `ck_mission_runs_schedule_slot`.
   - `test_llm_calls_attribution_columns_exist`: `information_schema.columns` lists `llm_calls.mission_run_id` and `llm_calls.task_id`.
   - `test_context_version_index_exists`: `pg_indexes` lists `ix_context_changes_context_version` on `(context_id, version)`.
+  - `test_failure_columns_exist`: `information_schema.columns` lists the seven failure columns of 3.1.8, and `pg_indexes` lists `ix_task_executions_failure_fingerprint`.
 
 **Done when:**
 - `python admin.py migrate upgrade head` reaches `plan88_002`.
@@ -564,7 +567,10 @@ Other repositories:
 12. **Events (`events/base.py`, `events/mission_run_types.py`).** Move `SessionEvent` verbatim from `events/types.py:31-41` to `events/base.py`; `events/types.py` imports it from there. Add `MissionRunCreatedEvent`, `MissionRunStatusChangedEvent`, `MissionRunOccurrenceRecordedEvent`, `MissionScheduleChangedEvent` and `MissionScheduleSyncFailedEvent` exactly as in 3.6.1 to `events/mission_run_types.py`, importing `SessionEvent` from `events.base`, and register them in `EVENT_TYPE_MAP` in `events/types.py`. `MissionPlanDispatchedEvent` and `MissionPlanRunCompletedEvent` are deleted in 88.1.7 and 88.1.8, with their emitters.
 
 **Tests:**
-- `test_redaction.py`: `test_redacts_bot_token` (`"https://api.telegram.org/bot123:AA-b_c/sendMessage"` contains no `123:AA-b_c`) and `test_redacts_action_token`.
+- `test_redaction.py`:
+  - `test_redacts_bot_token`: `"https://api.telegram.org/bot123:AA-b_c/sendMessage"` contains no `123:AA-b_c`.
+  - `test_redacts_action_token`.
+  - `test_redacts_provider_key`, `test_redacts_bearer`, `test_redacts_url_credentials` and `test_redacts_key_value_secret`: one input per 3.5.5 pattern 3 to 6, which decision 15 needs (contracts 3.8.1).
 - `test_mission_schedule_service.py`. Integration tests with a real DB; `TemporalScheduleGateway` is replaced by an in-memory `FakeScheduleGateway` defined in the test module.
   - `test_create_rejects_when_recurrence_disabled`: with `recurrence.enabled` patched to false, `ValidationError` is raised and the fake's `validate_spec` is never called.
   - `test_create_rejects_interactive_gate_mode`.

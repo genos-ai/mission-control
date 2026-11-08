@@ -558,7 +558,13 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
    - **Accepted overshoot.** It is bounded to one LLM call per task.
 3. **`execute_plan_task`.**
    - It passes `ExecuteTaskInput.budget_headroom_usd` to `build_dispatch_runtime` and from there to the executor.
-   - It catches `BudgetExceededError`, marks the task `FAILED` with `failure_reason="budget_exceeded"` in the 3.1.9 atomic write, and returns `ExecuteTaskResult(status="failed", failure_reason="budget_exceeded")`. It does not raise, so the task is not retried.
+   - `BudgetExceededError` raised by the executor guard is handled by the 88.2.3b machinery.
+     - **Classification.** The retry handler's classifier maps it to `control(FailureClass.BUDGET_EXCEEDED, "budget_exceeded")` (contracts 3.8.3 step 1). The class is never retryable, so the task ends at once.
+     - **Recording.** `execute_plan_task` records the failed `TaskResult` like any other failure. The `tasks` row gets `failure_reason="budget_exceeded"` and the enum members `CONTROL` and `BUDGET_EXCEEDED`.
+     - **Result.** It returns `ExecuteTaskResult(status="failed", failure_reason="budget_exceeded", failure_origin="control", failure_class="budget_exceeded", ...)`.
+     - **No retry.** Nothing is raised, so Temporal never retries the task.
+
+     The workflow's chunk check keeps comparing `failure_reason == "budget_exceeded"`, which `control()` guarantees verbatim.
 4. **Workflow budget points, patch id `p88-budget-caps`.** `self._headroom_usd: float | None = None` is set in `__init__` (it is not handler-owned).
    ```python
    async def _budget_point(self) -> str | None:

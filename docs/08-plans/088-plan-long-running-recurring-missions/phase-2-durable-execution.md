@@ -1,12 +1,13 @@
 ## Phase 2: Durable execution: per-task activities, idempotency, versioning
 
-This phase delivers decisions 11 and 12. Each approved task in a wave runs as its own heartbeating Temporal activity. That activity has config-driven timeouts and an idempotency key, so a retry never re-runs or re-charges a completed task. `MissionRunWorkflow` becomes replay-safe for runs lasting weeks: config is pinned as workflow input, history is bounded by continue-as-new, idle waits are durable, code changes after this phase go through `workflow.patched`, and recorded histories are replayed in CI.
+This phase delivers decisions 11, 12 and 15. Before the per-task activity exists, 88.2.3a closes the fail-open execution boundary and 88.2.3b gives every failed task a typed, classified failure record (contracts 3.8), so the activity, the supervisor and the Director are built on evidence rather than "Task failed during dispatch". Each approved task in a wave runs as its own heartbeating Temporal activity. That activity has config-driven timeouts and an idempotency key, so a retry never re-runs or re-charges a completed task. `MissionRunWorkflow` becomes replay-safe for runs lasting weeks: config is pinned as workflow input, history is bounded by continue-as-new, idle waits are durable, code changes after this phase go through `workflow.patched`, and recorded histories are replayed in CI.
 
 **Scope boundaries (3.0 Phase ownership):**
 - **No budget enforcement.** Phase 2 contains no budget branch. `check_run_budget`, `BudgetService` and the run, monthly and lifetime caps arrive in 88.4.1 and 88.4.6, which add enforcement under patch id `p88-budget-caps`. This phase deletes `dispatch_approved` (88.2.6), so the plan-ceiling check it held leaves the Temporal path here (Risk 6).
 - **Gates are a seam only.** 88.2.6 adds `MissionRunWorkflow._gate()`, which returns `"continue"`. 88.4.8 replaces its body under patch id `p88-durable-gate` (Risk 6).
 - **No migration.** Phase 2 adds no Alembic revision. The head stays `plan88_003`.
-- **Owned here:** the deletion of `AgentMissionWorkflow` (`temporal/workflow.py`), `POST /executions/{id}/execute`, `POST /executions/{id}/approve`, the web code that calls them, and the config keys only they read (88.2.6); continue-as-new (88.2.7, Phase 1 has none).
+- **Owned here:** the deletion of `AgentMissionWorkflow` (`temporal/workflow.py`), `POST /executions/{id}/execute`, `POST /executions/{id}/approve`, the web code that calls them, and the config keys only they read (88.2.6); continue-as-new (88.2.7, Phase 1 has none); the fail-closed execution boundary (88.2.3a) and the task failure contract (88.2.3b, 88.2.4, 88.2.6; contracts 3.8).
+- **No repair loop.** Phase 2 records, classifies and surfaces failures. It does not diagnose or fix them (contracts 3.8.7).
 
 **Entry criteria:**
 - `git status --porcelain` lists no changes under `modules/`, `config/`, `tests/`, `requirements*.txt`, `pyproject.toml`, `mc.py`, `admin.py` or `services.py`. Uncommitted work in progress (for example the model-provider changes in progress at the time of writing) is committed or stashed first. If such work is committed, re-verify by symbol the line citations below in the files it touched before starting.
@@ -260,11 +261,221 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
 - `lint-imports` passes with no new `ignore_imports` entry.
 - `grep -n "async def _inject_context" modules/backend/agents/mission_control/dispatch/task_runner.py` matches, and the same grep on `loop.py` matches nothing.
 
+### 88.2.3a Fail-closed execution boundary
+
+Delivers decision 15, boundary half (contracts 3.8.5). 88.2.3 moved the provisioning code into `build_dispatch_runtime` without changing behaviour. This step changes the behaviour, so that every later step builds on a boundary that cannot fail open.
+
+**Files:**
+- modify:
+  - `core/exceptions.py`, `core/config_schema.py`, `config/settings/executions.yaml`, `temporal/activity_options.py`;
+  - `agents/mission_control/runtime.py`, `agents/mission_control/dispatch/environment.py`;
+  - `agents/mission_control/helpers/agent_executor.py`, `agents/mission_control/helpers/cli_executor.py`;
+  - `tools/run_command.py`, `tools/run_tests.py`;
+  - `services/workflow_run_waves.py`, `services/workflow_run_steps/helpers.py`;
+  - `services/mission.py`, `schemas/mission.py`;
+- modify `tests/unit/backend/agents/test_cli_executor.py`. Its fixtures supply a fake handle with `host_working_dir` set, or an empty `scope.write` for `claude_code`;
+- create `tests/unit/backend/mission_control/test_execution_boundary.py`.
+
+**Current state** (cited at `86ecd6eb`; locate by symbol):
+- `build_dispatch_runtime`, from `mission_dispatch.py` before 88.2.3, does two things:
+  - it defaults `repo_root` to `find_project_root()` when the mission has none (`mission_dispatch.py:375`);
+  - it catches every provisioning exception, emits a warning `SystemEvent` and continues with `env_handle = None`, which is local execution (`:396-412`).
+- `_validate_mode` (`dispatch/environment.py:108-120`) returns `"local"` with a warning when worktree or container mode has no `repo_root`. `resolve_execution_mode` also runs from `services/workflow_run_steps/helpers.py`.
+- `workflow_run_waves` calls `handle_mission` without `mission_repo_root`, so a container workflow step falls back to the platform root today.
+- No worktree backend is registered, yet `worktree` is an accepted mission environment.
+- `run_command` (`tools/run_command.py:47-54`) calls `_run_local` (`:88-118`) when there is no handle. `_run_local` runs `create_subprocess_shell` on the worker host, in the worker's working directory.
+- `run_tests` (`tools/run_tests.py:21-42`):
+  - runs `sys.executable -m pytest tests/unit` in `project_root` on the host;
+  - has no timeout;
+  - declares `deps: ["project_root"]`.
+- The CLI engines default `cwd` to `find_project_root()` (`helpers/cli_executor.py:205`, `:272`, `:306`). `execute_copilot` writes `AGENTS.md` into its working directory (`:306-331`), and `codex` runs with `--full-auto`.
+
+**Change:**
+1. **Exception.** Add `class ExecutionEnvironmentError(ApplicationError)` to `core/exceptions.py`, and add its name to `temporal/activity_options.NON_RETRYABLE`. Retrying the activity does not cure a missing environment.
+2. **`build_dispatch_runtime`.**
+   - A non-local `execution_mode` with no `mission_repo_root` raises `ExecutionEnvironmentError("execution mode '<mode>' requires repo_root")`.
+   - Any provisioning exception is re-raised as `ExecutionEnvironmentError`, with the original exception as `__cause__`.
+   - Delete the `find_project_root()` default, the warning `SystemEvent` and the `env_handle = None` fallback.
+   - Pass `mission_repo_root` to `_make_agent_executor`, which gains the keyword-only argument.
+   - The `CodeMapLoader` call keeps `find_project_root()`: it reads the platform's own code map, not a workspace.
+3. **Mode validation.**
+   - `_validate_mode` raises `ExecutionEnvironmentError` instead of returning `"local"`.
+   - `services/workflow_run_steps/helpers.py` lets it propagate as a failed step.
+   - `services/workflow_run_waves.py` passes `mission_repo_root=mission.repo_root` to `handle_mission`.
+4. **Worktree.** `MissionService` create and update reject `execution_environment="worktree"` with `ValidationError("no worktree backend is registered")` (`schemas/mission.py` documents it). An existing worktree row fails its tasks through item 2.
+5. **`run_command`.** Delete `_run_local`. With `environment_handle is None`, `run_command` raises `ExecutionEnvironmentError("run_command requires an execution environment")`.
+6. **`run_tests`.**
+   - `TOOL_DEF["deps"]` becomes `["environment_handle"]`, and the `register` wrapper passes `ctx.deps.environment_handle`.
+   - It runs through the handle with `run_command`'s `_run_in_environment`.
+   - The timeout is `get_app_config().executions.run_tests_timeout_seconds` (contracts 3.4.10; key added here). There is no literal default.
+   - Without a handle it raises `ExecutionEnvironmentError`.
+   - It no longer uses `sys.executable`, so the target's interpreter runs the target's tests.
+   - The return shape is unchanged in this step; 88.2.3b changes it.
+7. **CLI engine working directory** (`helpers/cli_executor.py`). Delete every `find_project_root()` fallback, then apply these rules in order:
+   - a handle whose `host_working_dir` is not `None` gives that directory;
+   - a handle whose `host_working_dir is None` raises `ExecutionEnvironmentError`;
+   - `codex` and `copilot` without a handle raise `ExecutionEnvironmentError`;
+   - `claude_code` without a handle uses `mission_repo_root` only when the agent's `scope.write` is empty and `mission_repo_root` is set; otherwise it raises.
+
+   `execute_copilot` stops writing `AGENTS.md` into its working directory and passes the system prompt through the CLI's prompt argument.
+8. **Write guard** (`helpers/agent_executor.py`, in `execute_agent`). The guard runs after deps and the handle redirect are resolved and before the engine branch, so it covers every engine. It raises `ExecutionEnvironmentError("agent '<name>' needs an isolated workspace")` when both of the following hold:
+   - the agent has a non-empty `scope.write`, or its engine is `codex` or `copilot`;
+   - there is no effective environment handle, or its `host_working_dir is None`.
+
+   The guard uses no path containment, so an isolated worktree under the platform repository's `var/worktrees/` passes. Platform-tier and system-tier agents have no handle, so they can never write files (P8).
+
+**Tests** (`test_execution_boundary.py`, unit):
+- `test_container_mode_without_repo_root_raises`.
+- `test_provisioning_error_raises_not_local`: a patched `get_or_create_for_mission` raises. `build_dispatch_runtime` raises `ExecutionEnvironmentError` and emits no `SystemEvent`.
+- `test_validate_mode_raises`.
+- `test_workflow_wave_passes_repo_root`.
+- `test_mission_worktree_rejected`.
+- `test_run_command_without_handle_raises`.
+- `test_run_tests_without_handle_raises`.
+- `test_run_tests_runs_through_handle_with_config_timeout`: a fake handle receives the pytest command with the configured timeout, and `sys.executable` is not in the command.
+- `test_codex_without_handle_raises`.
+- `test_handle_without_host_working_dir_raises`.
+- `test_claude_code_read_only_uses_repo_root`.
+- `test_copilot_never_writes_cwd`: after a fake run, no `AGENTS.md` exists in the working directory.
+- `test_write_guard_blocks_without_handle`.
+- `test_write_guard_allows_worktree_under_platform_repo`: `host_working_dir` is `<platform>/var/worktrees/x/workspace`, and the guard does not raise.
+- `test_write_guard_covers_cli_engine`.
+
+**Done when:**
+- `pytest tests/unit/backend/mission_control tests/unit/backend/agents -q` passes.
+- `grep -rn "_run_local\|falling back to local" modules/backend` returns nothing.
+- `grep -n "find_project_root" modules/backend/agents/mission_control/helpers/cli_executor.py` returns nothing.
+- `grep -n "repo_root.*find_project_root" modules/backend/agents/mission_control/runtime.py` returns nothing.
+
+### 88.2.3b Typed task failure record and deterministic classifier
+
+Delivers decision 15, evidence half: contracts 3.8.2 to 3.8.4, and the Planning Agent row of 3.8.6. After this step every failed `TaskResult` carries a classified `TaskFailure`. 88.2.4 persists it. 88.2.6 hands it to the post-run reviewer and the Director.
+
+**Files:**
+- create `schemas/task_failure.py`, `core/failure_classification.py`, `config/settings/failure_signatures.yaml`;
+- modify:
+  - config and errors: `core/config_schema.py`, `core/config.py`, `core/exceptions.py`;
+  - schemas and models: `schemas/execution_outcome.py`, `models/task.py`, `models/execution_record.py`;
+  - tools: `tools/run_command.py`, `tools/run_tests.py`, `tools/halt_workflow.py`;
+  - dispatch: `agents/mission_control/dispatch/result_builders.py`, `retry_handler.py`, `task_runner.py`, `research_loop.py`, `convergence.py`, `loop.py`, `dag.py`;
+  - gates and executors: `agents/mission_control/gate_prompt.py`, `agents/mission_control/helpers/agent_executor.py`, `agents/mission_control/helpers/cli_executor.py`;
+  - planning: `services/mission_plan_taskio.py`, `services/mission_plan_orchestrator.py`, `agents/mission/planning/` (prompt input);
+  - clients: `clients/cli/gate.py`, `clients/tui/widgets/gate_modal.py`;
+- modify `tests/unit/backend/mission_control/test_dispatch.py` (`TestRetryModifyAction`) and `tests/unit/clients/tui/test_gate_modal.py`;
+- create `tests/unit/backend/core/test_failure_classification.py`, `tests/unit/backend/core/test_failure_signatures_config.py`, `tests/unit/backend/mission_control/test_failure_capture.py`.
+
+**Current state** (cited at `86ecd6eb`; locate by symbol):
+- **Lost reasons.** `failed_result()` accepts `reason` and never stores it (`dispatch/result_builders.py:66-85`). `TaskResult` has no failure field (`schemas/execution_outcome.py:106-131`, `extra="forbid"`).
+- **Direct constructions.** About ten sites build failed results directly, as `TaskResult(status=FAILED|TIMEOUT)`:
+  - `retry_handler.py:178`, `:297`, `:504`;
+  - `convergence.py:285`, `:431`, `:442`;
+  - the `loop.py` sites that 88.2.3 moves into `task_runner.py`.
+
+  `research_loop._failed_result` (`:774-785`) is a second builder.
+- **The retry handler.**
+  - It does not append the final failing attempt to `retry_history` in its generic, transient and timeout branches (`dispatch/retry_handler.py:165-189`, `:284-308`, `:325-346`).
+  - It feeds every non-provider exception back as `"Previous attempt failed with error: {e}. Avoid this error."` (`:330-337`), including platform defects that no retry can fix.
+- **Upstream errors.** `resolve_upstream_inputs` raises a bare `KeyError`; the upstream task id appears only in its message.
+- **CLI engines** return a failed or timed-out subprocess as ordinary output text (`helpers/cli_executor.py:151-170`).
+- **Tool results reach the LLM only.** On the exception path the tool results are lost.
+- **Workflow halt.** `halt_workflow` raises a bare `RuntimeError` (`tools/halt_workflow.py:47`).
+- **The Planning Agent sees no task status or failure.** `materialize_plan_dict` feeds `current_plan`, which `PlanBuildingSession` seeds into `TaskPlan.model_validate` (`agents/mission/planning/build_session.py:159-161`, `:404`). `TaskDefinition` forbids extra keys (`schemas/task_plan.py:289-292`).
+- **`MODIFY` turns a failure into a success.** `retry_handler.py:471-484` returns a verification-failed output as `SUCCESS` when the gate decides `MODIFY`. `gate_prompt.py`, the CLI gate and the TUI gate modal all offer `MODIFY` at `verification_failed`. `CONTINUE`, which `NoOpGate` always returns, falls through to the retry path.
+
+**Change:**
+1. **Types.** Create `schemas/task_failure.py` exactly as contracts 3.8.2. Add `failure: TaskFailure | None` to `TaskResult`, with the validator in 3.8.2. Add `failure_class` to `RetryHistoryEntry`.
+2. **Config.** Create `failure_signatures.yaml` as contracts 3.4.9, with the commented options header. Add `FailureSignaturesSchema` and its validators. Load it in `AppConfig.__init__` with `_load_validated`, required.
+3. **Classifier.** Create `core/failure_classification.py` with `FailureClassifier` (3.8.3) and the fingerprint (3.8.4). Expose `get_failure_classifier()` as an `lru_cache` singleton over `get_app_config().failure_signatures` and `Path(os.path.realpath(find_project_root() / "modules"))`. Every evidence string passes through `redact_secrets` (3.8.1 item 5).
+4. **New exceptions** (contracts 3.5.5).
+   - **`CliEngineError`.** The CLI engines raise it on a non-zero return code, on a subprocess timeout (with `exit_code=-1`), and when the Claude SDK's `ResultMessage.is_error` is true. They never return failure text as output again.
+   - **`WorkflowHaltedError(RuntimeError)`.** `halt_workflow` raises it.
+   - **`UpstreamOutputMissingError(KeyError)`.** `resolve_upstream_inputs` raises it, with `source_task` and `source_field`.
+   - **`AgentAttemptError`.** `execute_agent` raises it (item 5).
+5. **Command evidence.**
+   - **Tool output.** `run_tests` returns `{"passed", "exit_code", "stdout_tail", "stderr_tail"}`. `run_command` cuts its stdout and stderr to the same sizes. Both use `failure_signatures.evidence` and `redact_secrets`.
+   - **Kept evidence.** `execute_agent` keeps the last tool result of the attempt that carries an `exit_code` as `CommandEvidence`. `run_tests` sets `issued_by="platform"` and `run_command` sets `issued_by="agent"`. `in_environment` is `True` only when the tool ran through a handle.
+   - **Events.** When that `exit_code` is not 0, the `AgentToolResultEvent` is emitted with `status="error"`.
+   - **Carrier on success.** `execute_agent` returns `_meta["command_evidence"]`: a `CommandEvidence.model_dump()`, or `None`.
+   - **Carrier on failure.** It reads the stream's messages in its `except` block and raises `AgentAttemptError(command_evidence=...)` from the original exception.
+   - **Unwrapping.** The retry handler unwraps `AgentAttemptError` before `classify_provider_error`, and reads `_meta` on the verification path.
+   - **CLI engines** supply `command_evidence=None`.
+   - A non-zero exit on its own never fails a task: agents legitimately run failing tests while working.
+6. **Every failed `TaskResult` carries a failure.** `failed_result(task, failure, *, status=TaskStatus.FAILED, ...)` replaces `reason: str` (P3), and `research_loop._failed_result` is deleted in its favour. Every construction whose status is or may be `FAILED` or `TIMEOUT` passes a `TaskFailure`: the `failed_result` callers and the direct sites listed above.
+   - **Roster miss:** `classifier.roster_miss(agent)`.
+   - **Missing upstream output:** `UpstreamOutputMissingError` in `run_single_task` uses `classifier.upstream_blocked(ref, exc.source_task)`.
+   - **Exception:** `classifier.from_exception(exc, command)`.
+   - **Exhausted verification:** the direct `TaskResult` keeps `output_reference` and `verification_outcome`, so 88.2.4's `verification_failed` flag still works, and gains `failure=classifier.verification_failed(agent, verification_outcome, command)`.
+7. **Retry handler.**
+   - Every attempt, including the final one, is appended to `retry_history` with its `failure_class`.
+   - An attempt whose `TaskFailure.retryable` is false ends the task at once, with no "Avoid this error" retry. That includes `BudgetExceededError` (3.8.3 step 1), so 88.4.6's breach reaches the workflow as `budget_exceeded`.
+   - Retry feedback becomes `f"Previous attempt failed ({failure.failure_class.value}): {failure.summary}"`.
+   - The retry budget and the provider branches are otherwise unchanged.
+8. **`verification_failed` gate actions.** At `verification_failed` the actions behave as follows. `NoOpGate` and the Temporal path (`gate=None`) therefore keep retrying as today.
+   - `CONTINUE` and `RETRY` both retry, as today's fall-through does.
+   - `SKIP` skips.
+   - `ABORT` aborts.
+   - `MODIFY` and any other action are treated as `ABORT`.
+
+   The `MODIFY` branch at `retry_handler.py:471-484` is deleted (P3). `MODIFY` is also removed from the `verification_failed` vocabulary in `gate_prompt.py`, `clients/cli/gate.py` and `clients/tui/widgets/gate_modal.py`, matching contracts 3.3.6. `TestRetryModifyAction` becomes an assertion that `MODIFY` aborts.
+9. **Model mapping.** Map the failure columns that `plan88_002` creates (3.1.8) on `Task` and `TaskExecution`:
+   - `failure_origin` as `Enum(FailureOrigin, native_enum=False, length=32)`;
+   - `failure_class` as `Enum(FailureClass, native_enum=False, length=40)`;
+   - `failure_fingerprint` as `String(64)`;
+   - `TaskExecution.failure_json` as `JSONB`.
+
+   Nothing writes them until 88.2.4.
+10. **Planning Agent visibility.** `materialize_plan_dict` is unchanged and stays TaskPlan-valid.
+    - **New function.** Add `mission_plan_taskio.materialize_task_states(plan) -> list[dict]`. It returns `{task_id, status, failure}` per task: `status` is the lowercase value, and `failure` is `{origin, failure_class, summary}` for FAILED tasks or `None` otherwise.
+    - **Planner input.** `MissionPlanOrchestrator.refine` passes it to the planning call as a separate `task_states` argument. The refinement prompt renders it beside `current_plan`.
+    - **Never seeded.** It is never seeded into `PlanBuildingSession.tasks`.
+
+**Tests:**
+- **`test_failure_classification.py`** (unit, no I/O):
+  - **Provider and contract:** `test_quota_is_provider_not_retryable`; `test_rate_limited_is_transient_retryable`; `test_contract_violation_is_agent_contract`; `test_pydantic_validation_error_is_agent_contract`; `test_unexpected_model_behavior_is_agent_contract`; `test_usage_limit_exceeded_is_agent_contract`.
+  - **Control and engine:** `test_budget_exceeded_is_control`; `test_env_error_is_environment`; `test_cli_engine_error_is_agent_engine_error`; `test_cli_timeout_is_timeout`; `test_workflow_halted_is_cancelled`.
+  - **`test_scope_violation_is_agent_tool_error`:** a `PermissionError` raised from `modules/backend/agents/deps/` gives `AGENT`/`AGENT_TOOL_ERROR`.
+  - **`test_platform_frame_is_platform_defect`.**
+  - **`test_import_module_failure_is_platform`:** a `ModuleNotFoundError` raised through `importlib`, whose innermost frame is `<frozen importlib._bootstrap>`, from a platform loader gives `PLATFORM`/`PLATFORM_DEPENDENCY_MISSING` with `module_name` set.
+  - **`test_json_error_from_platform_caller_is_platform`.**
+  - **`test_site_packages_error_not_platform`.**
+  - **`test_target_package_named_modules_not_platform`:** an innermost frame at `/srv/target/modules/x.py` is not `PLATFORM`.
+  - **`test_platform_issued_command_upgrades_to_target`:** `run_tests` evidence with `in_environment=True`, exit 2 and `ModuleNotFoundError: No module named 'requests'` in `stdout_tail` gives `TARGET`/`TARGET_DEPENDENCY_MISSING`.
+  - **`test_agent_command_never_upgrades_to_target`:** the same evidence with `issued_by="agent"` gives `AGENT`/`VERIFICATION_FAILED`.
+  - **`test_command_outside_environment_never_target`.**
+  - **`test_real_pytest_collection_output_classified`:** captured pytest stdout with exit 2.
+  - **`test_upstream_cascade_one_fingerprint`.**
+  - **`test_distinct_platform_sites_have_distinct_fingerprints`:** the same library exception raised from two platform functions gives two fingerprints.
+  - **`test_fingerprint_ignores_line_numbers_and_addresses`.**
+  - **`test_unknown_uses_config_retryable`.**
+  - **`test_summary_format_and_bound`.**
+  - **`test_evidence_redacted_and_bounded`:** a provider key in `message`, `command` and `stdout_tail` is redacted, and each field is cut to its bound.
+- **`test_failure_signatures_config.py`:** `test_duplicate_rule_id_rejected`; `test_target_rule_must_apply_to_command`; `test_command_rule_cannot_be_platform`; `test_never_retryable_class_rule_rejected`; `test_invalid_regex_rejected`; `test_unknown_exception_type_rejected`; `test_match_keys_are_conjunctive`; `test_file_required`.
+- **`test_failure_capture.py`:**
+  - **`test_failed_result_requires_failure`:** building a FAILED `TaskResult` without `failure` raises.
+  - **`test_every_failed_fork_carries_failure`:** drive the standard, convergence, research and `workflow:` forks to FAILED or TIMEOUT, then assert `result.failure is not None`.
+  - **`test_final_attempt_in_retry_history`.**
+  - **`test_platform_defect_not_retried`.**
+  - **`test_budget_exceeded_not_retried`.**
+  - **`test_command_evidence_reaches_classifier_on_raise_and_on_verification`.**
+  - **`test_cli_nonzero_raises`.**
+  - **`test_run_tests_returns_stderr_tail`.**
+  - **`test_noop_gate_verification_failure_retries`:** with `NoOpGate` and `retry_budget` 1, a task whose first attempt fails verification runs a second time.
+  - **`test_modify_at_verification_failed_aborts`.**
+  - **`test_materialize_task_states_carries_failure`.**
+  - **`test_refine_with_failed_task_finalises`:** a plan with one FAILED task refines, and `finalise()` returns a valid `TaskPlan`.
+  - **`test_failed_result_callers_pass_task_failure`:** an AST check that every `failed_result` call under `modules/backend` passes a second positional argument or `failure=`, and that no `_failed_result` definition remains.
+- **Existing suites:** `test_dispatch.py`, `test_task_runner.py` and `test_gate_modal.py` pass after their updates.
+
+**Done when:**
+- The tests above pass.
+- `grep -rn "Avoid this error" modules/backend` returns nothing.
+- `grep -rn "GateAction.MODIFY" modules/backend/agents modules/clients` lists no `verification_failed` use.
+
 ### 88.2.4 Idempotent `execute_plan_task` activity with heartbeats
 
 **Files:**
 - create `services/run_task_execution.py` and `temporal/task_activities.py`;
-- modify `models/task.py`, `services/mission_context.py`, `temporal/mission_run_models.py`, `temporal/activity_helpers.py`, `temporal/mission_run_activities.py`, `temporal/worker.py`;
+- modify `models/task.py`, `services/mission_context.py`, `services/mission_plan.py` (`retry_task`), `services/mission_run.py` (`finalise`), `services/run_reconciliation.py`, `agents/mission_control/persistence_bridge.py` (`persist_task_result`), `services/execution_persistence.py`, `events/mission_run_types.py`, `events/types.py`, `temporal/mission_run_models.py`, `temporal/activity_helpers.py`, `temporal/mission_run_activities.py`, `temporal/worker.py`;
 - create `tests/integration/backend/services/test_run_task_execution.py` and `tests/unit/backend/temporal/test_task_activities.py`.
 
 **Current state:**
@@ -295,7 +506,10 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
        verification_failed: bool
        cost_usd: float
        idempotent_replay: bool
-       failure_reason: str | None
+       failure_reason: str | None           # TaskFailure.summary (contracts 3.8)
+       failure_origin: str | None           # FailureOrigin value; set exactly when status == "failed"
+       failure_class: str | None            # FailureClass value
+       failure_fingerprint: str | None
 
 
    @dataclass(frozen=True)
@@ -340,7 +554,7 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
      1. `SELECT … FROM tasks WHERE id = :task_id AND mission_run_id = :run_id FOR UPDATE`. A missing row raises `MissionRunStateError`.
      2. `key = f"{mission_run_id}:{task_id}:{task.retry_count}"`.
      3. If a `task_executions` row with `idempotency_key = key` exists, return outcome `"replay"` with `stored` rebuilt from that row and `idempotent_replay=True`.
-     4. If `task.status` is COMPLETED or SKIPPED with no such row, return outcome `"replay"` with `stored = ExecuteTaskResult(task_id, task.status.value, False, float(task.cost_usd), True, task.failure_reason)`.
+     4. If `task.status` is COMPLETED or SKIPPED with no such row, return outcome `"replay"` with `stored = ExecuteTaskResult(task_id, task.status.value, False, float(task.cost_usd), True, task.failure_reason, None, None, None)`. A replay rebuilt from a `task_executions` row (step 3) reads `failure_origin`, `failure_class` and `failure_fingerprint` from that row.
      5. Status APPROVED transitions APPROVED→QUEUED→RUNNING; QUEUED transitions QUEUED→RUNNING; RUNNING stays RUNNING (3.1.9 rule 2, interrupted attempt). Any other status raises `MissionRunStateError`.
      6. Set `last_attempt_at = utc_now()`. Read `mission.execution_environment` (`"local"` when NULL, as `dispatch_approved` does today) and `mission.repo_root`. Build `task_definition = task_definition_from_row(task)`. Commit.
 
@@ -351,12 +565,16 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
         - `persist_task_result(..., execution_record_id=execution_record_id, mission_run_id=mission_run_id, idempotency_key=key)`;
         - when the result status is SUCCESS and `context_updates` is not empty, `MissionContextManager(self._session).apply_updates(mission_id, task_result.context_updates, agent_id=task_result.agent_name, mission_id_ref=mission_id, task_id=task_id, mission_run_id=mission_run_id)`. 88.3.2 replaces `mission_id_ref` with `reason` and keeps `mission_run_id`;
         - the task transition, mapping `TaskResult.status` SUCCESS to COMPLETED, FAILED and TIMEOUT to FAILED, SKIPPED to SKIPPED;
-        - `tasks.cost_usd`, `tasks.duration_seconds`, and `tasks.result_summary = json.dumps(task_result.output_reference)` on COMPLETED or `tasks.failure_reason` on FAILED.
+        - `tasks.cost_usd`, `tasks.duration_seconds`, and `tasks.result_summary = json.dumps(task_result.output_reference)` on COMPLETED. On FAILED, the `tasks` row gets `failure_reason = failure.summary`, `failure_origin`, `failure_class` and `failure_fingerprint` from `task_result.failure`, as enum members, so the stored values are names (contracts 3.8.6). `persist_task_result` (88.2.3) writes the same three columns and `failure_json = failure.model_dump(mode="json")` on the `task_executions` row, for the in-process path as well.
      3. Commit.
      4. An `IntegrityError` on the `idempotency_key` unique index is caught: roll back, re-read the row and return it with `idempotent_replay=True`.
      - `verification_failed` is `status == FAILED and any(t.status == "fail" for t in (vo.tier_1, vo.tier_2, vo.tier_3))`, where `vo` is the result's `verification_outcome`. The same rule rebuilds `verification_failed` from a stored row.
      - `retry_count` is not touched.
-   - **`mark_cancelled`** transitions RUNNING→FAILED with `failure_reason="cancelled"` and commits, in its own session.
+   - **`mark_cancelled`** transitions RUNNING→FAILED with `failure = get_failure_classifier().control(FailureClass.CANCELLED, "cancelled")`. It sets `task.failure_reason = failure.summary`, `task.failure_origin = failure.origin`, `task.failure_class = failure.failure_class` and `task.failure_fingerprint = failure.fingerprint`, and commits in its own session. The two class columns take enum members, so the stored names are `CONTROL` and `CANCELLED`. Lowercase values appear only in `ExecuteTaskResult` and events (3.0.2).
+   - **Other writers of FAILED tasks** (contracts 3.8.6) use the same enum-member pattern:
+     - `MissionRunService.finalise` step 2 fails every QUEUED or RUNNING task with `control(FailureClass.RUN_ABORTED, reason)`;
+     - the reconciler's task-fail path (`services/run_reconciliation.py`, 88.0.10 and 88.1.10a) uses `orphaned(detail)`.
+   - **`retry_task`** (`services/mission_plan.py`) clears `failure_origin`, `failure_class` and `failure_fingerprint` together with `failure_reason`. The attempt's record stays on its `task_executions` row.
    - **`resolve_failed`** loads the task with `WHERE id = :task_id AND mission_run_id = :run_id`, else `NotFoundError`.
      - `retry` calls `MissionPlanService.retry_task(plan_id, task_id, user_id=mission.owner_id)`. That is the only `retry_count` increment.
      - `skip` transitions FAILED→SKIPPED.
@@ -387,18 +605,25 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
            try:
                bus = SessionEventBus(redis, mission_id=claim.mission_id)
                async with get_async_session() as db:                            # read-only use; no commit
-                   runtime = await build_dispatch_runtime(
-                       db_session=db, event_bus=bus, mission_id=claim.mission_id,
-                       session_id=input.session_id, execution_mode=claim.execution_mode,
-                       mission_repo_root=claim.mission_repo_root, container_image=None,
-                       extra_volumes=None, mission_run_id=input.mission_run_id, task_id=input.task_id,
-                   )
-                   upstream = await load_dependency_outputs(db, input.task_id)
-                   result = await run_single_task(
-                       task=claim.task_definition, runtime=runtime, upstream_outputs=upstream,
-                       mission_id=claim.mission_id, budget_usd=0.0, event_bus=bus,
-                       session_id=input.session_id, gate=None,
-                   )                                                            # budget_usd feeds GateContext only; gate=None ignores it
+                   try:
+                       runtime = await build_dispatch_runtime(
+                           db_session=db, event_bus=bus, mission_id=claim.mission_id,
+                           session_id=input.session_id, execution_mode=claim.execution_mode,
+                           mission_repo_root=claim.mission_repo_root, container_image=None,
+                           extra_volumes=None, mission_run_id=input.mission_run_id, task_id=input.task_id,
+                       )
+                   except ExecutionEnvironmentError as exc:                    # 88.2.3a: fail the task, not the run
+                       result = failed_result(
+                           claim.task_definition,
+                           get_failure_classifier().from_exception(exc, None),
+                       )
+                   else:
+                       upstream = await load_dependency_outputs(db, input.task_id)
+                       result = await run_single_task(
+                           task=claim.task_definition, runtime=runtime, upstream_outputs=upstream,
+                           mission_id=claim.mission_id, budget_usd=0.0, event_bus=bus,
+                           session_id=input.session_id, gate=None,
+                       )                                                        # budget_usd feeds GateContext only; gate=None ignores it
            except asyncio.CancelledError:
                async with get_async_session() as db:
                    await RunTaskExecutionService(db).mark_cancelled(input.mission_run_id, input.task_id)
@@ -407,13 +632,23 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
                await redis.aclose()
            hb.phase = "record"
            async with get_async_session() as db:
-               return await RunTaskExecutionService(db).record(
+               recorded = await RunTaskExecutionService(db).record(
                    mission_run_id=input.mission_run_id,
                    task_id=input.task_id,
                    idempotency_key=claim.idempotency_key,
                    execution_record_id=input.execution_record_id,
                    task_result_json=result.model_dump(mode="json"),
                )
+           if recorded.status == "failed" and not recorded.idempotent_replay:     # contracts 3.6.1, after commit
+               redis = AsyncRedis.from_url(get_redis_url())
+               try:
+                   await SessionEventBus(redis, mission_id=claim.mission_id).publish(
+                       task_failed_event(result, mission_id=claim.mission_id,
+                                         mission_run_id=input.mission_run_id, session_id=input.session_id)
+                   )
+               finally:
+                   await redis.aclose()
+           return recorded
 
 
    @activity.defn
@@ -421,7 +656,11 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
        async with get_async_session() as db:
            await RunTaskExecutionService(db).resolve_failed(input.mission_run_id, input.task_id, input.action)
    ```
-   - The activity raises only for infrastructure errors. A failed agent task returns `status="failed"`, so Temporal never retries an agent failure.
+   - The activity raises only for infrastructure errors. A failed agent task returns `status="failed"`, so Temporal never retries an agent failure. An `ExecutionEnvironmentError` from `build_dispatch_runtime` (88.2.3a) is a failed task with `ENV_UNAVAILABLE`, not an activity error, so one unavailable environment does not end the run as `task_failures`.
+   - **`TaskFailedEvent`.** The event and its builder `task_failed_event(result: TaskResult, *, mission_id: str, mission_run_id: str, session_id: str) -> TaskFailedEvent` live in `events/mission_run_types.py`, and the event is registered in `EVENT_TYPE_MAP` (contracts 3.6.1).
+     - It is published only after `record` commits, and never for a replay. One failed attempt therefore gives at most one event: a crash between commit and publish loses it.
+     - The `task_executions` row is the durable record; the event is for display (rule 014).
+     - A cancelled attempt is recorded on `tasks` only and emits no event.
    - `resolve_failed_task` uses the `persistence` policy.
 7. **`temporal/worker.py`.** Register `execute_plan_task` and `resolve_failed_task`.
 
@@ -440,11 +679,21 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
   - `test_retry_increments_once`: FAILED then `resolve_failed("retry")` gives `retry_count == 1` and a next claim key ending `:1`.
   - `test_skip_failed_task`: FAILED then `resolve_failed("skip")` gives SKIPPED.
   - `test_resolve_other_runs_task_404`: `resolve_failed` with another run's id raises `NotFoundError`.
+  - `test_record_failed_writes_failure_columns`: a FAILED result with a `TARGET`/`TARGET_DEPENDENCY_MISSING` failure writes `failure_reason`, `failure_origin`, `failure_class` and `failure_fingerprint` on `tasks`, the same three columns plus `failure_json` on `task_executions`, and the stored enum name `TARGET_DEPENDENCY_MISSING`.
+  - `test_failed_replay_returns_failure_fields`: replaying a FAILED attempt returns the same `failure_class` and `failure_fingerprint`.
+  - `test_retry_keeps_attempt_failure`: `resolve_failed("retry")` clears the `tasks` failure columns, and the first attempt's `task_executions` row still holds them.
+  - `test_mark_cancelled_is_control_cancelled`: the stored names are `CONTROL` and `CANCELLED`.
+  - `test_no_failed_task_without_class`: run the following, then check that `SELECT count(*) FROM tasks WHERE status = 'FAILED' AND failure_class IS NULL` is 0:
+    - a run with one success, one failure and one cancellation;
+    - a run ended by `finalise` with a QUEUED task;
+    - a task failed by the reconciler.
 - `test_task_activities.py` (unit, `ActivityEnvironment` from `temporalio.testing`, with the services and `run_single_task` patched):
   - `test_replay_skips_agent`: when `claim` returns outcome `"replay"`, `run_single_task` is not awaited.
   - `test_heartbeats_emitted`: interval 0.01s and an agent that sleeps 0.05s give at least 3 heartbeats, each with a `phase` key.
   - `test_cancel_marks_failed_and_reraises`: cancelling the environment calls `mark_cancelled` and raises `CancelledError`.
   - `test_agent_failure_returns_failed_not_raises`: a FAILED `TaskResult` gives `status == "failed"`.
+  - `test_environment_error_fails_task_not_activity`: a patched `build_dispatch_runtime` raising `ExecutionEnvironmentError` gives `status == "failed"`, `failure_class == "env_unavailable"`, and no raise.
+  - `test_task_failed_event_published_once`: one failed attempt publishes one `TaskFailedEvent` with `mission_id` set; a replay publishes none.
 
 **Done when:** both test files pass, and `python -m modules.backend.temporal.worker` starts with no import errors.
 
@@ -512,7 +761,7 @@ async def ensure_healthy(cls) -> None:
 ### 88.2.6 MissionRunWorkflow: per-task layers, durable WAIT, hard stop, legacy paths deleted
 
 **Files:**
-- modify `temporal/mission_run_workflow.py`, `temporal/mission_run_models.py`, `temporal/supervisor_activities.py`, `temporal/worker.py`, `agents/mission_control/gate_post_run.py`, `agents/adapters/plan_introspection.py`, `services/execution_persistence.py`, `services/mission_run.py`, `services/mission_plan.py`, `services/mission_plan_orchestrator.py`, `repositories/task.py`, `api/v1/endpoints/missions_plan.py`, `api/v1/endpoints/executions.py`, `core/config_schema.py`, `config/settings/temporal.yaml`;
+- modify `temporal/mission_run_workflow.py`, `temporal/mission_run_models.py`, `temporal/config_snapshots.py`, `temporal/supervisor_activities.py`, `temporal/worker.py`, `agents/mission_control/gate_post_run.py`, `agents/adapters/plan_introspection.py`, `services/execution_persistence.py`, `services/mission_run.py`, `services/mission_plan.py`, `services/mission_plan_orchestrator.py`, `repositories/task.py`, `api/v1/endpoints/missions_plan.py`, `api/v1/endpoints/executions.py`, `core/config_schema.py`, `config/settings/temporal.yaml`;
 - modify `temporal/chat_workflow.py:16` and `temporal/human_input_workflow.py:4` (docstrings naming `AgentMissionWorkflow`);
 - modify `modules/frontend/src/hooks/use-executions.ts`, `modules/frontend/src/pages/mission/run-live.tsx`;
 - modify `scripts/trace_execution.py:396`, `scripts/verify_autonomy_loop.py:109,456`;
@@ -550,7 +799,7 @@ async def ensure_healthy(cls) -> None:
        if end is not None:
            return end
    ```
-   `_supervise(seen)` holds the 88.1.8 supervisor block unchanged (`evaluate_post_run`, `fire_supervisor_followups`, `check_plan_active`, then the branches on `ev.action`), except two points: the `wait` arm (item 5), and the wave fields of `SupervisorFollowupInput`, which now come from the per-task results (item 3): `wave_status=self._wave_status`, `wave_cost_usd=self._wave_cost_usd`, `failure_reason=self._wave_failure_reason`. `check_plan_active` stays in Phase 2: 88.4.2 rewrites its body to read `missions.status`, 88.4.5 stops calling it under patch id `p88-lifecycle-signals`, and it is deleted in 88.4.5 only when no caller remains.
+   `_supervise(seen)` holds the 88.1.8 supervisor block unchanged (`evaluate_post_run`, `fire_supervisor_followups`, `check_plan_active`, then the branches on `ev.action`), except two points: the `wait` arm (item 5), and the wave fields of `SupervisorFollowupInput`, which now come from the per-task results (item 3): `wave_status=self._wave_status`, `wave_cost_usd=self._wave_cost_usd`, `failure_reason=self._wave_failure_reason`. The `advance_refine` branch formats `REFINE_PROMPT` with a `failures` block rendered by `_render_failures(self._wave_failures, self._wave_failures_truncated)` (item 3), so the Director's refine turn sees the classified failures instead of a bare "had failures". `check_plan_active` stays in Phase 2: 88.4.2 rewrites its body to read `missions.status`, 88.4.5 stops calling it under patch id `p88-lifecycle-signals`, and it is deleted in 88.4.5 only when no caller remains.
 3. **Layers.** Every activity call goes through `_exec` or `activity_kwargs`; none reads config.
    ```python
    async def _execute_layers(self, graph: RunTaskGraph) -> str | None:
@@ -585,6 +834,9 @@ async def ensure_healthy(cls) -> None:
        self._wave_status = "failed" if failed_results else "completed"
        self._wave_cost_usd = sum(r.cost_usd for r in results)
        self._wave_failure_reason = failed_results[0].failure_reason if failed_results else None
+       self._wave_failures, self._wave_failures_truncated = _failure_digests(
+           failed_results, cfg.max_failure_digests,
+       )
        return None
 
    async def _layer_boundary(self) -> str | None:
@@ -620,7 +872,9 @@ async def ensure_healthy(cls) -> None:
            await _exec(resolve_failed_task, ResolveTaskInput(self._input.mission_run_id, task_id, action),
                        self._input.config.persistence)
            if action == "skip":
-               self._wave_results[task_id] = dataclasses.replace(result, status="skipped")
+               self._wave_results[task_id] = dataclasses.replace(
+                   result, status="skipped", failure_origin=None, failure_class=None, failure_fingerprint=None,
+               )                                     # 3.3.5: failure fields are set only when status == "failed"
                return None
            if self._duration_exhausted():
                return await self._end_run("failed", "max_duration_exceeded", "max_run_duration_seconds reached before a retry")
@@ -633,8 +887,31 @@ async def ensure_healthy(cls) -> None:
            return await self._end_run("cancelled", "gate_rejected", f"aborted at post_task for {task_id}")
        return None
    ```
-   A FAILED task without a verification failure stays FAILED and no gate runs; the supervisor sees it in `evaluate_post_run`. `_layer_boundary()` runs before each chunk. 88.4.5 and 88.4.6 extend `_layer_boundary` with `_pause_point()` and `_budget_point()`.
-   - **Supervisor inputs.** When every layer has run, `_execute_layers` aggregates the final `ExecuteTaskResult` of each task (the retried result after a `retry`, `status="skipped"` after a `skip`) into `self._wave_status` (`"failed"` if any task failed, else `"completed"`), `self._wave_cost_usd` (sum of `cost_usd`) and `self._wave_failure_reason` (the first failed task's `failure_reason`, else `None`). `_supervise` builds `SupervisorFollowupInput` from these three fields (3.3.4, 3.3.5); nothing else feeds them.
+   Module-level helpers in `mission_run_workflow.py` (pure, no I/O, deterministic):
+   ```python
+   def _failure_digests(failed: list[ExecuteTaskResult], cap: int) -> tuple[list[TaskFailureDigest], int]:
+       by_fingerprint: dict[str, TaskFailureDigest] = {}
+       for r in failed:                                  # execution order, so the first task per fingerprint wins
+           seen = by_fingerprint.get(r.failure_fingerprint)
+           if seen is None:
+               by_fingerprint[r.failure_fingerprint] = TaskFailureDigest(
+                   task_id=r.task_id, origin=r.failure_origin, failure_class=r.failure_class,
+                   fingerprint=r.failure_fingerprint, summary=r.failure_reason, occurrences=1,
+               )
+           else:
+               by_fingerprint[r.failure_fingerprint] = dataclasses.replace(seen, occurrences=seen.occurrences + 1)
+       digests = list(by_fingerprint.values())
+       return digests[:cap], max(len(digests) - cap, 0)
+
+
+   def _render_failures(digests: list[TaskFailureDigest], truncated: int) -> str:
+       lines = [f"- [{d.origin}/{d.failure_class}] x{d.occurrences} task {d.task_id}: {d.summary}" for d in digests]
+       if truncated:
+           lines.append(f"- and {truncated} more distinct failures (see TaskFailedEvent history)")
+       return "\n".join(lines) if lines else "- none"
+   ```
+   A FAILED task without a verification failure stays FAILED and no gate runs; the supervisor sees it in `evaluate_post_run`, now with its class and origin. `_layer_boundary()` runs before each chunk. 88.4.5 and 88.4.6 extend `_layer_boundary` with `_pause_point()` and `_budget_point()`.
+   - **Supervisor inputs.** When every layer has run, `_execute_layers` aggregates the final `ExecuteTaskResult` of each task (the retried result after a `retry`, `status="skipped"` after a `skip`) into `self._wave_status` (`"failed"` if any task failed, else `"completed"`), `self._wave_cost_usd` (sum of `cost_usd`) and `self._wave_failure_reason` (the first failed task's `failure_reason`, else `None`). `_supervise` builds `SupervisorFollowupInput` from these three fields (3.3.4, 3.3.5); nothing else feeds them. It also builds `self._wave_failures` and `self._wave_failures_truncated`: one `TaskFailureDigest` per distinct fingerprint, capped by `RunConfigSnapshot.max_failure_digests` (contracts 3.8.6). Only `REFINE_PROMPT` uses them. `build_run_config_snapshot` gains `max_failure_digests` from `get_app_config().failure_signatures.supervisor.max_failure_digests` in this step. `REFINE_PROMPT` gains a `{failures}` placeholder.
 4. **Gate seam.**
    ```python
    async def _gate(self, gate_point: str, task_id: str | None) -> str:
@@ -677,6 +954,11 @@ async def ensure_healthy(cls) -> None:
 8. **Post-run** (`supervisor_activities._do_evaluate_post_run`, `PostRunEvalInput` unchanged from 88.1.8):
    - `GateContext.total_cost_usd` is `MissionPlanService.total_task_cost_usd(plan.id)`, a new method backed by `TaskRepository.sum_cost_by_plan(plan_id) -> float` (`SELECT coalesce(sum(cost_usd), 0) FROM tasks WHERE plan_id = :plan_id`). `budget_usd` stays `plan.budget_usd_ceiling`. This keeps breaker #1 working after `plan.total_spent_usd` stops moving. 88.4.6 replaces both with `BudgetService.check_run`.
    - Drop `max_supervisor_iterations` from the summary dict.
+   - **Failures for the reviewer** (decision 15, contracts 3.8.6). Add `summary["failures"]` and `summary["failures_truncated"]` from the run's FAILED tasks, grouped by `failure_fingerprint`.
+     - The rows come from a new `TaskRepository.failure_digests(mission_run_id, limit)`, reached through `MissionRunService`.
+     - Each entry is `{origin, failure_class, summary, occurrences}`. `summary` is the first task's `failure_reason`; `origin` and `failure_class` are lowercase values.
+     - The list is capped at `get_app_config().failure_signatures.supervisor.max_failure_digests`. The activity reads config, which workflow code may not.
+     - `GateContext.plan_task_summary` carries the result, so both the deterministic rules and the Haiku fallback see the classes, not just a FAILED count.
    - Replace the plan increment at `:169` with `MissionRunService.record_iteration(mission_run_id, input.supervisor_iteration_count)`, which sets `mission_runs.iteration_count`.
    - Delete breaker #2 (`gate_post_run.py:130-139`), the `max_supervisor_iterations` keys at `plan_introspection.py:51` and `verify_autonomy_loop.py:109,456`. `trace_execution.py:396` prints `mission_runs.iteration_count` for the run in place of the plan fields.
 9. **Retry endpoint.** `POST /missions/{id}/plan/tasks/{task_id}/retry` calls `on_tasks_approved` since 88.1.9 (trigger row 2). No change here.
@@ -710,7 +992,12 @@ async def ensure_healthy(cls) -> None:
 - `test_gate_abort_cancels_run`: patched `_gate` returns `abort` at `post_layer`; the run ends `CANCELLED/GATE_REJECTED`.
 - `test_activity_failure_ends_task_failures`: the stub raises a non-retryable `ApplicationError`; the run ends `FAILED/TASK_FAILURES` after every activity in the chunk has completed.
 - `test_activity_options_from_snapshot`: the stub reads `activity.info().heartbeat_timeout == timedelta(seconds=60)` and `start_to_close_timeout == timedelta(seconds=3600)`.
-- `test_supervisor_input_from_task_results`: one layer with two tasks; the stub returns COMPLETED with `cost_usd=0.5` for the first and FAILED with `cost_usd=0.25`, `failure_reason="boom"` and `verification_failed=False` for the second. The `fire_supervisor_followups` stub receives `wave_status == "failed"`, `wave_cost_usd == 0.75` and `failure_reason == "boom"`.
+- `test_supervisor_input_from_task_results`: one layer with two tasks. The stub returns COMPLETED with `cost_usd=0.5` for the first. For the second it returns FAILED with `cost_usd=0.25`, `failure_reason="boom"`, `failure_origin="target"`, `failure_class="target_runtime_error"`, `failure_fingerprint="f1"` and `verification_failed=False`. The `fire_supervisor_followups` stub receives `wave_status == "failed"`, `wave_cost_usd == 0.75` and `failure_reason == "boom"`.
+- `test_failures_deduped_by_fingerprint` (unit test of `_failure_digests`): three FAILED results, two sharing fingerprint `f1`, give two digests, the first with `occurrences == 2`.
+- `test_failures_cap_counts_truncated`: with `max_failure_digests=1` and two distinct fingerprints, one digest is kept and the truncated count is 1.
+- `test_skip_clears_failure_fields`: after a gate `skip`, the stored wave result has `status == "skipped"` and no failure fields.
+- `tests/integration/backend/temporal/test_supervisor_activities.py::test_post_run_context_carries_failure_digests` (real DB): two FAILED tasks sharing a fingerprint and one with another give `plan_task_summary["failures"]` with two entries, the first with `occurrences == 2`.
+- `test_refine_prompt_lists_failures`: evaluate returns `advance_refine` after a failed wave; the `start_director_turn` stub's message contains the digest line `[target/target_runtime_error]`.
 - `test_get_run_state_query`: the query during the supervisor WAIT returns `phase == "supervising"` and `pending_gate_id is None`.
 - `tests/unit/backend/mission_control/test_gate_post_run.py::test_no_iteration_breaker`: `supervisor_iteration_count=500` does not escalate.
 
@@ -810,7 +1097,8 @@ async def ensure_healthy(cls) -> None:
 **Change:**
 1. **`temporal/history_redaction.py`** (pure, no I/O):
    ```python
-   REDACT_KEYS = frozenset({"objective", "prompt", "output_data", "mission_brief", "message", "instructions"})
+   REDACT_KEYS = frozenset({"objective", "prompt", "output_data", "mission_brief", "message", "instructions",
+                            "failure_reason", "summary"})   # failure text (decision 15) never reaches a committed fixture
 
    def redact_history(history: dict) -> dict: ...
    ```
@@ -907,7 +1195,7 @@ async def ensure_healthy(cls) -> None:
 
 ```bash
 cd /Users/herman.young/development/mission-control
-pytest tests/unit/backend/temporal tests/unit/backend/core/test_config_schema_plan88_phase2.py tests/unit/backend/core/test_copilot_health.py tests/unit/backend/mission_control tests/unit/backend/agents/mission_control -q
+pytest tests/unit/backend/temporal tests/unit/backend/core/test_config_schema_plan88_phase2.py tests/unit/backend/core/test_copilot_health.py tests/unit/backend/core/test_failure_classification.py tests/unit/backend/core/test_failure_signatures_config.py tests/unit/backend/mission_control tests/unit/backend/agents -q
 pytest tests/integration/backend/services/test_run_task_execution.py tests/integration/backend/temporal/test_mission_run_workflow.py -q
 pytest tests/unit/backend/temporal/test_replay_histories.py tests/unit/backend/temporal/test_history_redaction.py -q
 lint-imports
@@ -918,6 +1206,9 @@ grep -rn "get_app_config\|get_default_budget_usd\|get_settings" modules/backend/
 grep -rnwE "execute_mission|persist_mission_outcome|AgentMissionWorkflow|dispatch_approved|MissionWorkflowInput" modules/backend/temporal modules/backend/services scripts   # expect no output
 grep -rnE --exclude-dir=migrations "budget_timeout_multiplier_seconds|execution_retry_|notification_timeout_seconds|wait_action_sleep_seconds" config modules/backend   # expect no output
 grep -rn "max_supervisor_iterations" modules/backend/temporal modules/backend/agents scripts/trace_execution.py scripts/verify_autonomy_loop.py   # expect no output
+grep -rn "_run_local\|falling back to local\|Avoid this error\|Task failed during dispatch" modules/backend   # expect no output
+grep -n "find_project_root" modules/backend/agents/mission_control/helpers/cli_executor.py   # expect no output
+grep -n "repo_root.*find_project_root" modules/backend/agents/mission_control/runtime.py   # expect no output
 python scripts/record_workflow_history.py tree
 MISSION_SLUG=replay-fixture python scripts/trace_execution.py --mission "$MISSION_SLUG" --last --filter errors,transitions
 ```
@@ -929,6 +1220,10 @@ Then run a crash drill on the dev stack:
    - task 1 executed exactly once: one `task_executions` row, and the `llm_calls` count `WHERE task_id = <task 1 id>` unchanged after the restart;
    - task 2 re-executed under the same idempotency key, ending `:0`;
    - the run reaching `SUCCEEDED`.
+
+Then run a failure drill on the dev stack:
+1. Start a run in container mode with Docker stopped. Every task's `tasks` row has `failure_class = 'ENV_UNAVAILABLE'` (stored name), no task runs locally, and the run does not end as `task_failures`.
+2. Start a run whose target repository imports a package that is not installed. Use an agent whose tools include `run_tests`, on a task whose tier 2 verification requires passing tests, so the task fails through `verification_failed` with platform-issued `run_tests` evidence. The task's `task_executions` row has `failure_origin = 'TARGET'` and `failure_class = 'TARGET_DEPENDENCY_MISSING'` (stored names), the mission event stream shows one `task.failed` event, and the Director's refine message lists the digest.
 
 ### Risks
 
@@ -951,3 +1246,16 @@ Then run a crash drill on the dev stack:
 6. **Phases 2 and 3 run without budget enforcement or in-run gates.** contracts 3.0.1 places budget enforcement in 88.4.6 and durable gates in 88.4.8. From 88.2.6, the Temporal path has no plan-ceiling check (it lived in `dispatch_approved`), and the `post_task`, `verification_failed` and `post_layer` gates return `continue` for every gate mode. MANUAL and AI_ASSISTED missions keep human control only through task approval (PROPOSED→APPROVED). **Mitigation:**
    - post-run breaker #1 still escalates a run when the plan's summed task cost reaches `budget_usd_ceiling` (88.2.6 item 8);
    - **Operational rule** (also a Phase 2 entry criterion): until Phase 4 is complete, production keeps mission schedules disabled (`missions.recurrence.enabled: false`, set in 88.2.10 step 1; `MissionScheduleService.create_schedule` and the tick workflow refuse while it is false, 88.1.1) and does not dispatch MANUAL or AI_ASSISTED missions.
+7. **Fail-closed boundary breaks work that relied on the silent fallback.** From 88.2.3a, the following fail with `ENV_UNAVAILABLE` instead of running locally:
+   - the two write-capable security agents in a local-mode mission (the default), through the write guard;
+   - container missions without Docker or without `repo_root`;
+   - container workflow steps (for example the `security.webapp-assessment` steps) on a mission without `repo_root`.
+
+   Worktree is rejected at mission create and update, because no backend exists. **Mitigation:** this is the intended behaviour (P8, decision 15). The failure is typed and visible in the Console, and the fix is to provide the environment or set `repo_root`, never to restore the fallback.
+8. **Misclassification.** An ordered signature list can put a failure in the wrong class. The worst cases are `TARGET` for a platform fault, which would invite a later repair loop to edit the wrong code, and `retryable=True` for a deterministic fault, which wastes retries. **Mitigation:**
+   - `PLATFORM`, `PROVIDER`, `ENVIRONMENT`, `CONTROL` and `UPSTREAM` origins come from mechanical rules or explicit constructors (3.8.3);
+   - `TARGET` comes only from an `applies_to: command` rule over evidence with `issued_by="platform"` and `in_environment=True`, so an agent cannot choose its own origin by printing an error message;
+   - agent-raised tool errors are `AGENT_TOOL_ERROR`, not platform defects (3.8.3 step 8);
+   - the schema forbids command rules from claiming platform origin and never-retryable classes from being retryable;
+   - `rule_id` is stored with every record, so a wrong rule can be found and fixed in config;
+   - Plan 88 acts on the class only to stop retries and to inform the supervisor; no repair runs on it.
