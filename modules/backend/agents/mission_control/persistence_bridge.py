@@ -1,7 +1,7 @@
 """Bridge between Mission Control dispatch and the persistence layer.
 
 Converts ExecutionOutcome (in-memory) to persisted ExecutionRecord (database).
-Best-effort — persistence failure does not crash the execution.
+Raises on failure; only per-artifact creation is best-effort.
 """
 
 from __future__ import annotations
@@ -32,11 +32,10 @@ async def persist_mission_results(
     mission_id: str | None = None,
     db_session: AsyncSession,
     execution_record_id: str | None = None,
-) -> str | None:
-    """Persist execution results. Best-effort — does not raise.
+) -> str:
+    """Persist execution results. Raises on failure; the caller's activity retry policy decides.
 
-    Returns the ExecutionRecord id on success, or None if persistence
-    failed (best-effort semantics preserved).
+    Returns the ExecutionRecord id.
 
     When ``execution_record_id`` is provided, the existing record
     (created at dispatch start) is updated with final results instead
@@ -176,14 +175,14 @@ async def persist_mission_results(
         return record.id
 
     except (OSError, ValueError, RuntimeError) as e:
-        # best-effort — this function is documented best-effort persistence
-        # (see module/function docstrings); no event_bus is available here
-        # to surface the failure as a mission event.
+        # non-critical log: the error is re-raised below; no event_bus is
+        # threaded through this bridge, so the calling activity emits the event.
         logger.error(
             "Failed to persist execution results",
             extra={"session_id": session_id, "error": str(e), "mission_id": mission_id},
         )
-        return None
+        await db_session.rollback()
+        raise
 
 
 async def _maybe_create_artifact(

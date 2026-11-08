@@ -62,11 +62,18 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     """
     from redis.asyncio import Redis as AsyncRedis
 
-    from modules.backend.core.config import get_redis_url
+    from modules.backend.core.config import get_app_config, get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+
+    interval = get_app_config().temporal.mission_run.task_heartbeat_interval_seconds
+
+    async def _beat() -> None:
+        while True:
+            activity.heartbeat({"phase": "dispatch"})
+            await asyncio.sleep(interval)
 
     activity.logger.info(
         "execute_mission started",
@@ -81,6 +88,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
     event_bus = SessionEventBus(redis, mission_id=input.mission_id)
 
     async with get_async_session() as db:
+        beat = asyncio.create_task(_beat())
         try:
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(input.mission_id)
@@ -135,9 +143,9 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
 
         except (asyncio.CancelledError, KeyboardInterrupt) as e:
             # CancelledError is a BaseException — not caught by
-            # "except Exception".  When Temporal cancels the activity
-            # (timeout or workflow cancellation), this prevents the
-            # error from propagating uncaught and causing silent retries.
+            # "except Exception".  Temporal delivers cancellation (timeout
+            # or workflow cancellation) through the heartbeat; record it,
+            # then re-raise so Temporal sees the cancellation.
             activity.logger.warning(
                 "Mission execution cancelled",
                 extra={"mission_run_id": input.mission_run_id, "mission_id": input.mission_id},
@@ -162,11 +170,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 logger.debug(
                     "error event publish failed in Temporal activity (best-effort)", exc_info=True
                 )
-            return MissionExecutionResult(
-                mission_id=input.mission_run_id,
-                status="failed",
-                outcome_json={"error": f"Activity cancelled: {type(e).__name__}"},
-            )
+            raise
 
         except Exception as e:
             # Produce a clean, structured error message — especially for
@@ -202,12 +206,9 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 logger.debug(
                     "error event publish failed in Temporal activity (best-effort)", exc_info=True
                 )
-            return MissionExecutionResult(
-                mission_id=input.mission_run_id,
-                status="failed",
-                outcome_json={"error": clean_msg},
-            )
+            raise
         finally:
+            beat.cancel()
             await redis.aclose()
 
 
@@ -219,24 +220,11 @@ async def persist_mission_outcome(
     outcome_json: dict,
     mission_id: str | None = None,
 ) -> bool:
-    """Persist mission results to PostgreSQL. Best-effort."""
+    """Persist mission results to PostgreSQL. Raises on failure; the retry policy decides."""
     from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
     from modules.backend.core.database import get_async_session
 
     try:
-        # If outcome_json is an error stub (e.g. from a failed execute_mission),
-        # skip persistence — there's nothing meaningful to persist.
-        if (
-            isinstance(outcome_json, dict)
-            and "error" in outcome_json
-            and "mission_id" not in outcome_json
-        ):
-            activity.logger.info(
-                "Skipping persist — outcome is an error stub",
-                extra={"mission_id": mission_id, "error": str(outcome_json.get("error"))[:200]},
-            )
-            return False
-
         outcome = ExecutionOutcome.model_validate(outcome_json)
 
         # If execution_record_id is set, handle_mission already persisted
@@ -317,7 +305,7 @@ async def persist_mission_outcome(
                 logger.debug(
                     "notification publish failed in Temporal activity (best-effort)", exc_info=True
                 )
-        return False
+        raise
 
 
 @activity.defn

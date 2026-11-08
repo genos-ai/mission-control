@@ -441,7 +441,7 @@ async def handle_mission(
 
     outcome.summary = await summarize_outcome(outcome)
 
-    # Best-effort persistence
+    # Persistence (raises on failure)
     if db_session is not None:
         record_id = await persist_mission_results(
             outcome,

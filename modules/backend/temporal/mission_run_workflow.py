@@ -27,6 +27,8 @@ with workflow.unsafe.imports_passed_through():
     from modules.backend.models.mission_plan import resolve_gate_mode
     from modules.backend.temporal import activities
     from modules.backend.temporal import supervisor_activities as sup
+    from modules.backend.temporal.activity_options import activity_kwargs
+    from modules.backend.temporal.config_snapshots import policy_snapshot
     from modules.backend.temporal.models import MissionWorkflowInput, NotificationPayload
 
 
@@ -71,13 +73,6 @@ class MissionRunWorkflow:
         )
         persist_timeout = timedelta(seconds=config.persistence_timeout_seconds)
 
-        activity_timeout = timedelta(
-            seconds=max(
-                input.mission_budget_usd * config.budget_timeout_multiplier_seconds,
-                config.min_activity_timeout_seconds,
-            ),
-        )
-
         max_loop_iterations = config.max_supervisor_iterations
 
         while self._iteration < max_loop_iterations:
@@ -87,11 +82,8 @@ class MissionRunWorkflow:
             result = await workflow.execute_activity(
                 activities.execute_mission,
                 input,
-                start_to_close_timeout=activity_timeout,
-                retry_policy=RetryPolicy(
-                    maximum_attempts=config.execution_retry_max_attempts,
-                    non_retryable_error_types=["BudgetExceededError"],
-                ),
+                cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+                **activity_kwargs(policy_snapshot(config.mission_run.activities.execute_task)),
             )
 
             self._total_cost += result.total_cost_usd
@@ -283,7 +275,9 @@ class MissionRunWorkflow:
                         _session_id,
                         prompt,
                     ],
-                    start_to_close_timeout=activity_timeout,
+                    start_to_close_timeout=timedelta(
+                        seconds=config.mission_run.activities.director_turn.start_to_close_seconds,
+                    ),
                     retry_policy=RetryPolicy(maximum_attempts=1),
                 )
                 break
@@ -302,7 +296,9 @@ class MissionRunWorkflow:
                         _session_id,
                         prompt,
                     ],
-                    start_to_close_timeout=activity_timeout,
+                    start_to_close_timeout=timedelta(
+                        seconds=config.mission_run.activities.director_turn.start_to_close_seconds,
+                    ),
                     retry_policy=RetryPolicy(maximum_attempts=1),
                 )
                 await workflow.execute_activity(
@@ -344,7 +340,9 @@ class MissionRunWorkflow:
                     f"Please inform the user and ask whether to continue "
                     f"or wrap up.",
                 ],
-                start_to_close_timeout=activity_timeout,
+                start_to_close_timeout=timedelta(
+                    seconds=config.mission_run.activities.director_turn.start_to_close_seconds,
+                ),
                 retry_policy=RetryPolicy(maximum_attempts=1),
             )
             await workflow.execute_activity(

@@ -4,6 +4,7 @@ send_notification is tested live (it's a stub that logs).
 execute_mission mocks handle_mission (LLM calls — not infra we operate).
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -92,6 +93,9 @@ class TestExecuteMission:
         patches["event_bus"] = patch(
             "modules.backend.events.bus.SessionEventBus",
         )
+        patches["heartbeat"] = patch(
+            "modules.backend.temporal.activities.activity.heartbeat",
+        )
 
         class _Ctx:
             async def __aenter__(self_ctx):
@@ -176,21 +180,94 @@ class TestExecuteMission:
             assert result.success_count == 1
 
     @pytest.mark.asyncio
-    async def test_returns_failed_on_exception(self):
+    async def test_execute_mission_reraises_cancelled_error(self):
         from modules.backend.temporal.activities import execute_mission
 
-        async with self._patch_infra(
-            dispatch_side_effect=RuntimeError("boom"),
-        ):
-            result = await execute_mission(
-                MissionWorkflowInput(
-                    mission_run_id="test-3",
-                    session_id="80d00060-470d-5db0-aa70-5adc526200ea",
-                    mission_brief="Failing mission",
-                    mission_id="00000000-0000-0000-0000-000000000003",
-                ),
-            )
+        async with self._patch_infra(dispatch_side_effect=asyncio.CancelledError()):
+            with pytest.raises(asyncio.CancelledError):
+                await execute_mission(
+                    MissionWorkflowInput(
+                        mission_run_id="test-3",
+                        session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                        mission_brief="Cancelled mission",
+                        mission_id="00000000-0000-0000-0000-000000000003",
+                    ),
+                )
 
-            assert result.status == "failed"
-            assert result.mission_id == "test-3"
-            assert "boom" in result.outcome_json["error"]
+    @pytest.mark.asyncio
+    async def test_execute_mission_reraises_dispatch_exception(self):
+        from modules.backend.events.types import SystemEvent
+        from modules.backend.temporal.activities import execute_mission
+
+        async with self._patch_infra(dispatch_side_effect=RuntimeError("boom")) as entered:
+            publish = AsyncMock()
+            entered["event_bus"].return_value.publish_to_mission = publish
+            with pytest.raises(RuntimeError, match="boom"):
+                await execute_mission(
+                    MissionWorkflowInput(
+                        mission_run_id="test-4",
+                        session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                        mission_brief="Failing mission",
+                        mission_id="00000000-0000-0000-0000-000000000004",
+                    ),
+                )
+
+            publish.assert_awaited_once()
+            event = publish.await_args.args[1]
+            assert isinstance(event, SystemEvent)
+            assert event.level == "error"
+
+    @pytest.mark.asyncio
+    async def test_execute_mission_heartbeats_while_dispatching(self):
+        from modules.backend.temporal.activities import execute_mission
+
+        async def _slow_dispatch(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return {}
+
+        app_config = MagicMock()
+        app_config.temporal.mission_run.task_heartbeat_interval_seconds = 0.01
+
+        async with self._patch_infra(dispatch_side_effect=_slow_dispatch) as entered:
+            with patch(
+                "modules.backend.core.config.get_app_config",
+                return_value=app_config,
+            ):
+                await execute_mission(
+                    MissionWorkflowInput(
+                        mission_run_id="test-5",
+                        session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                        mission_brief="Slow mission",
+                        mission_id="00000000-0000-0000-0000-000000000005",
+                    ),
+                )
+
+            heartbeat = entered["heartbeat"]
+            assert heartbeat.call_count >= 3
+            for call in heartbeat.call_args_list:
+                assert call.args == ({"phase": "dispatch"},)
+
+
+class TestPersistMissionOutcome:
+    @pytest.mark.asyncio
+    async def test_persist_mission_outcome_reraises_on_failure(self):
+        from modules.backend.temporal.activities import persist_mission_outcome
+
+        with (
+            patch(
+                "modules.backend.core.database.get_async_session",
+                side_effect=_mock_db_session_ctx(AsyncMock()),
+            ),
+            patch(
+                "modules.backend.agents.mission_control.persistence_bridge.persist_mission_results",
+                AsyncMock(side_effect=RuntimeError("db down")),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="db down"):
+                await persist_mission_outcome(
+                    "run-1",
+                    "80d00060-470d-5db0-aa70-5adc526200ea",
+                    "default",
+                    {"mission_id": "m-1", "status": "success"},
+                    None,
+                )
