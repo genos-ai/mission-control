@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.agent_registry import get_registry
 from modules.backend.core.exceptions import (
     ConflictError,
+    ExternalServiceError,
     NotFoundError,
     ValidationError,
 )
@@ -198,7 +199,8 @@ class MissionService(BaseService):
         """Permanently delete a mission and all related data.
 
         Cleanup order:
-        1. Terminate the mission's running Temporal workflows (fails closed)
+        1. Delete the mission's Temporal schedules, then terminate its running
+           Temporal workflows (fails closed)
         2. Remove Docker containers
         3. Clear user.current_mission_id references
         4. Delete all DB records in FK order (deepest children first)
@@ -214,9 +216,28 @@ class MissionService(BaseService):
         # Stop the mission's Temporal workflows before any DB delete. Terminate,
         # not cancel: the rows are about to go, so no cleanup activity may run.
         # ExternalServiceError aborts the delete (fail closed).
+        from temporalio.service import RPCError
+
         from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
         from modules.backend.repositories.mission_run import MissionRunRepository
+        from modules.backend.repositories.mission_schedule import MissionScheduleRepository
+        from modules.backend.temporal.schedule_gateway import TemporalScheduleGateway
         from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+
+        # Schedules first, so no new tick starts a run during the delete.
+        # The gateway treats NOT_FOUND as success.
+        schedules = await MissionScheduleRepository(self._session).list_by_mission(
+            mission_id, include_archived=True
+        )
+        schedule_ids = [s.temporal_schedule_id for s in schedules]
+        try:
+            schedule_gateway = await TemporalScheduleGateway.create()
+            for schedule_id in schedule_ids:
+                await schedule_gateway.delete(schedule_id)
+        except (RuntimeError, RPCError) as exc:
+            raise ExternalServiceError(
+                f"Temporal schedule delete failed for mission {mission_id}: {exc}"
+            ) from exc
 
         active_run = await MissionRunRepository(self._session).get_active_for_mission(mission_id)
         result = await self._session.execute(

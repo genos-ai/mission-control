@@ -5,11 +5,17 @@ from uuid import UUID, uuid5
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError, RPCStatusCode
 
 from modules.backend.core import security
 from modules.backend.core.exceptions import ExternalServiceError, NotFoundError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.mission_run import MissionRun, MissionRunStatus, MissionRunTrigger
+from modules.backend.models.mission_schedule import (
+    MissionSchedule,
+    MissionScheduleKind,
+    MissionScheduleStatus,
+)
 from modules.backend.models.user import User
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services.mission import MissionService
@@ -19,6 +25,7 @@ from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
 _CONNECT = "modules.backend.temporal.workflow_gateway.TemporalWorkflowGateway.connect"
+_SCHEDULE_CREATE = "modules.backend.temporal.schedule_gateway.TemporalScheduleGateway.create"
 
 
 class TestCreateMission:
@@ -271,7 +278,10 @@ class TestDeleteMissionTemporal:
 
         gateway = MagicMock()
         gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
-        with patch(_CONNECT, AsyncMock(return_value=gateway)):
+        with (
+            patch(_SCHEDULE_CREATE, AsyncMock(return_value=_schedule_gateway())),
+            patch(_CONNECT, AsyncMock(return_value=gateway)),
+        ):
             await service.delete_mission(mission_id)
 
         gateway.terminate.assert_awaited_once_with(
@@ -293,8 +303,128 @@ class TestDeleteMissionTemporal:
         mission_id = mission.id
         await MissionPlanService(db_session).get_or_create_plan(mission_id)
 
-        with patch(_CONNECT, AsyncMock(side_effect=ExternalServiceError("Temporal unavailable"))):
+        with (
+            patch(_SCHEDULE_CREATE, AsyncMock(return_value=_schedule_gateway())),
+            patch(_CONNECT, AsyncMock(side_effect=ExternalServiceError("Temporal unavailable"))),
+        ):
             with pytest.raises(ExternalServiceError):
                 await service.delete_mission(mission_id)
 
         assert (await service.get_mission(mission_id)).id == mission_id
+
+    async def test_delete_removes_temporal_schedules(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        service = MissionService(db_session)
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="p88-delete-schedules",
+            description="tmp",
+            owner_id=regular_user.id,
+        )
+        mission_id = mission.id
+        active = _seed_schedule(mission_id, regular_user.id, "hourly")
+        archived = _seed_schedule(mission_id, regular_user.id, "old")
+        db_session.add_all([active, archived])
+        await db_session.flush()
+        archived.status = MissionScheduleStatus.ARCHIVED
+        await db_session.flush()
+        expected = {active.temporal_schedule_id, archived.temporal_schedule_id}
+
+        schedule_gateway = _schedule_gateway()
+        workflow_gateway = MagicMock()
+        workflow_gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
+        with (
+            patch(_SCHEDULE_CREATE, AsyncMock(return_value=schedule_gateway)),
+            patch(_CONNECT, AsyncMock(return_value=workflow_gateway)),
+        ):
+            await service.delete_mission(mission_id)
+
+        deleted = {c.args[0] for c in schedule_gateway.delete.await_args_list}
+        assert deleted == expected
+        with pytest.raises(NotFoundError):
+            await service.get_mission(mission_id)
+
+    async def test_delete_terminates_active_run(self, db_session: AsyncSession, regular_user: User):
+        service = MissionService(db_session)
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="p88-delete-active-run",
+            description="tmp",
+            owner_id=regular_user.id,
+        )
+        mission_id = mission.id
+        plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
+        run = MissionRun(
+            mission_id=mission_id,
+            plan_id=plan.id,
+            sequence=await MissionRepository(db_session).increment_run_sequence(mission_id),
+            trigger=MissionRunTrigger.MANUAL,
+            status=MissionRunStatus.PENDING,
+        )
+        db_session.add(run)
+        await db_session.flush()
+        run.temporal_workflow_id = mission_run_workflow_id(run.id)
+        await db_session.flush()
+        expected_wid = mission_run_workflow_id(run.id)
+
+        gateway = MagicMock()
+        gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
+        with (
+            patch(_SCHEDULE_CREATE, AsyncMock(return_value=_schedule_gateway())),
+            patch(_CONNECT, AsyncMock(return_value=gateway)),
+        ):
+            await service.delete_mission(mission_id)
+
+        gateway.terminate.assert_awaited_once_with(
+            expected_wid, reason="Mission p88-delete-active-run deleted"
+        )
+
+    async def test_delete_aborts_when_schedule_delete_fails(
+        self, db_session: AsyncSession, regular_user: User
+    ):
+        service = MissionService(db_session)
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="p88-delete-schedule-fails",
+            description="tmp",
+            owner_id=regular_user.id,
+        )
+        mission_id = mission.id
+        db_session.add(_seed_schedule(mission_id, regular_user.id, "hourly"))
+        await db_session.flush()
+
+        schedule_gateway = MagicMock()
+        schedule_gateway.delete = AsyncMock(
+            side_effect=RPCError("unavailable", RPCStatusCode.UNAVAILABLE, b"")
+        )
+        workflow_gateway = MagicMock()
+        workflow_gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
+        with (
+            patch(_SCHEDULE_CREATE, AsyncMock(return_value=schedule_gateway)),
+            patch(_CONNECT, AsyncMock(return_value=workflow_gateway)),
+        ):
+            with pytest.raises(ExternalServiceError):
+                await service.delete_mission(mission_id)
+
+        workflow_gateway.terminate.assert_not_awaited()
+        assert (await service.get_mission(mission_id)).id == mission_id
+
+
+def _schedule_gateway() -> MagicMock:
+    gateway = MagicMock()
+    gateway.delete = AsyncMock(return_value=None)
+    return gateway
+
+
+def _seed_schedule(mission_id: str, owner_id: str, name: str) -> MissionSchedule:
+    return MissionSchedule(
+        mission_id=mission_id,
+        name=name,
+        kind=MissionScheduleKind.OBJECTIVE,
+        objective_template="do it",
+        cron_expression="0 * * * *",
+        time_zone_name="UTC",
+        catch_up_window_seconds=3600,
+        created_by_user_id=owner_id,
+    )
