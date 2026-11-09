@@ -39,6 +39,7 @@ from modules.clients.cli.admin_groups.db import db  # noqa: E402
 from modules.clients.cli.admin_groups.execution import execution  # noqa: E402
 from modules.clients.cli.admin_groups.migrate import migrate  # noqa: E402
 from modules.clients.cli.admin_groups.mission import mission  # noqa: E402
+from modules.clients.cli.admin_groups.reconcile import reconcile  # noqa: E402
 from modules.clients.cli.admin_groups.server import server  # noqa: E402
 from modules.clients.cli.admin_groups.workflow import workflow  # noqa: E402
 from modules.clients.cli.admin_groups.workshop import workshop  # noqa: E402
@@ -193,6 +194,7 @@ admin_cli.add_command(migrate)
 admin_cli.add_command(execution)
 admin_cli.add_command(workflow)
 admin_cli.add_command(mission)
+admin_cli.add_command(reconcile)
 admin_cli.add_command(context)
 admin_cli.add_command(db)
 # =============================================================================

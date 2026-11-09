@@ -1834,7 +1834,7 @@ def build_retention_input(config: AppConfig) -> RetentionInput   # the only plac
 
 | Repository | Required methods beyond `BaseRepository` | Step |
 |---|---|---|
-| `MissionRunRepository` | `get_active_for_mission(mission_id)`, `get_latest_with_digest(mission_id)`, `get_by_sequence(mission_id, seq)`, `get_for_mission(mission_id, run_id)`, `get_by_slot(schedule_id, scheduled_for)`, `insert_occurrence(...)` (ON CONFLICT on the slot DO NOTHING RETURNING), `list_active_older_than(cutoff)` | 88.1.4 |
+| `MissionRunRepository` | `get_active_for_mission(mission_id)`, `get_latest_with_digest(mission_id)`, `get_by_sequence(mission_id, seq)`, `get_for_mission(mission_id, run_id)`, `get_by_slot(schedule_id, scheduled_for)`, `insert_occurrence(...)` (ON CONFLICT on the slot DO NOTHING RETURNING), `list_active_older_than(cutoff)`; 88.1.10a adds `lock_stale(run_id, status, cutoff) -> MissionRun \| None` (the reconciler's write re-select: same status, `updated_at < cutoff`, `FOR UPDATE SKIP LOCKED`, `populate_existing`) | 88.1.4, 88.1.10a |
 | `MissionScheduleRepository` | `get_for_mission(mission_id, schedule_id)`, `lock(schedule_id)` (with `populate_existing`, 88.1.6), `list_by_mission(mission_id, include_archived)`, `list_syncable()`; 88.1.6 adds `list_temporal_schedule_ids() -> set[str]` for the orphan sweep | 88.1.4, 88.1.6 |
 | `MissionRunDigestRepository` | `get_by_run(run_id)` | 88.1.4 |
 | `UserChannelIdentityRepository` | `get_by_external(channel, external_id, *, verified_only: bool)`, `get_by_user(user_id, channel, *, verified_only: bool)`, `list_by_user(user_id)` | 88.4.3 |

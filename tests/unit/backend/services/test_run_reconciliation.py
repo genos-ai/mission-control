@@ -1,4 +1,4 @@
-"""Plan 88 step 88.0.10: RunReconciliationService (real db_session, fake gateway).
+"""Plan 88 steps 88.0.10 and 88.1.10a: RunReconciliationService (real db_session, fake gateway).
 
 The service clock is frozen in 2001 and every test row is backdated against
 it, so the shared database's own in-flight rows (all newer than the cutoff)
@@ -17,12 +17,20 @@ from modules.backend.core.exceptions import ExternalServiceError
 from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
+from modules.backend.models.mission_run import (
+    MissionRun,
+    MissionRunStatus,
+    MissionRunStatusReason,
+    MissionRunTrigger,
+)
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
+from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.services.run_reconciliation import RunReconciliationService
 from modules.backend.temporal.workflow_gateway import WorkflowState
+from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 NOW = datetime(2001, 1, 1, tzinfo=UTC)
 GRACE = 600
@@ -53,6 +61,13 @@ class FakeGateway:
         return self.states.get(workflow_id, WorkflowState.CLOSED)
 
 
+class NullBus:
+    """Event bus that drops every event."""
+
+    async def publish_to_mission(self, mission_id: str, event) -> None:
+        return None
+
+
 @pytest.fixture(autouse=True)
 def frozen_clock():
     with patch("modules.backend.services.run_reconciliation.utc_now", return_value=NOW):
@@ -60,7 +75,7 @@ def frozen_clock():
 
 
 async def _reconcile(db: AsyncSession, gateway: FakeGateway):
-    service = RunReconciliationService(db, gateway, None)  # type: ignore[arg-type]
+    service = RunReconciliationService(db, gateway, NullBus())  # type: ignore[arg-type]
     return await service.reconcile(GRACE)
 
 
@@ -85,6 +100,7 @@ async def _task(
     plan_id: str,
     status: TaskStatus = TaskStatus.RUNNING,
     updated_at: datetime = OLD,
+    mission_run_id: str | None = None,
 ) -> Task:
     task = await TaskRepository(db).create_task(
         plan_id=plan_id,
@@ -93,6 +109,7 @@ async def _task(
         description="In-flight task",
         instructions="Do the thing",
         status=status,
+        mission_run_id=mission_run_id,
     )
     task.updated_at = updated_at
     await db.flush()
@@ -153,54 +170,128 @@ async def _run(
     return run
 
 
+async def _mission_run(
+    db: AsyncSession,
+    mission_id: str,
+    plan_id: str,
+    *,
+    status: MissionRunStatus = MissionRunStatus.RUNNING,
+    updated_at: datetime = OLD,
+) -> MissionRun:
+    run = MissionRun(
+        mission_id=mission_id,
+        plan_id=plan_id,
+        sequence=await MissionRepository(db).increment_run_sequence(mission_id),
+        trigger=MissionRunTrigger.MANUAL,
+        status=status,
+    )
+    db.add(run)
+    await db.flush()
+    run.temporal_workflow_id = mission_run_workflow_id(run.id)
+    run.updated_at = updated_at
+    await db.flush()
+    return run
+
+
 async def _status(db: AsyncSession, row) -> str:
     await db.refresh(row)
     return row.status
+
+
+# ── Mission runs ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_running_workflow_leaves_tasks_untouched(db_session: AsyncSession, test_user):
+    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
+    run = await _mission_run(db_session, mission_id, plan_id)
+    task = await _task(db_session, mission_id, plan_id, mission_run_id=run.id)
+    gateway = FakeGateway({run.temporal_workflow_id: WorkflowState.RUNNING})
+
+    stats = await _reconcile(db_session, gateway)
+
+    assert await _status(db_session, run) == MissionRunStatus.RUNNING
+    assert await _status(db_session, task) == TaskStatus.RUNNING
+    assert stats.examined_mission_runs == 1
+    assert stats.failed_mission_runs == 0
+    assert stats.left_running == 1
+    assert stats.failed_tasks == 0
+
+
+@pytest.mark.asyncio
+async def test_closed_workflow_fails_run_and_tasks(db_session: AsyncSession, test_user):
+    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
+    run = await _mission_run(db_session, mission_id, plan_id)
+    running = await _task(db_session, mission_id, plan_id, mission_run_id=run.id)
+    approved = await _task(
+        db_session, mission_id, plan_id, TaskStatus.APPROVED, mission_run_id=run.id
+    )
+    gateway = FakeGateway({run.temporal_workflow_id: WorkflowState.CLOSED})
+
+    stats = await _reconcile(db_session, gateway)
+
+    assert await _status(db_session, run) == MissionRunStatus.FAILED
+    assert run.status_reason == MissionRunStatusReason.ORPHANED_WORKFLOW_CLOSED
+    assert run.status_detail == f"workflow {run.temporal_workflow_id} closed"
+    assert await _status(db_session, running) == TaskStatus.FAILED
+    assert await _status(db_session, approved) == TaskStatus.APPROVED
+    assert approved.mission_run_id is None
+    assert stats.failed_mission_runs == 1
+
+
+@pytest.mark.asyncio
+async def test_runs_inside_grace_untouched(db_session: AsyncSession, test_user):
+    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
+    run = await _mission_run(
+        db_session, mission_id, plan_id, updated_at=NOW - timedelta(seconds=60)
+    )
+    gateway = FakeGateway()
+
+    stats = await _reconcile(db_session, gateway)
+
+    assert await _status(db_session, run) == MissionRunStatus.RUNNING
+    assert stats.examined_mission_runs == 0
+    assert gateway.calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_progressed_between_resolve_and_write_skipped(
+    db_session: AsyncSession, test_user
+):
+    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
+    run = await _mission_run(db_session, mission_id, plan_id)
+
+    async def finish_run(_: str) -> None:
+        run.transition_status(
+            MissionRunStatus.SUCCEEDED, MissionRunStatusReason.OBJECTIVE_MET, None
+        )
+        await db_session.flush()
+
+    gateway = FakeGateway({run.temporal_workflow_id: WorkflowState.CLOSED}, on_state=finish_run)
+
+    stats = await _reconcile(db_session, gateway)
+
+    assert await _status(db_session, run) == MissionRunStatus.SUCCEEDED
+    assert run.status_reason == MissionRunStatusReason.OBJECTIVE_MET
+    assert stats.failed_mission_runs == 0
 
 
 # ── Tasks ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_running_workflow_leaves_tasks_untouched(db_session: AsyncSession, test_user):
+async def test_backlog_task_without_workflow_run_untouched(db_session: AsyncSession, test_user):
     mission_id, plan_id = await _mission_plan(db_session, test_user.id)
     task = await _task(db_session, mission_id, plan_id)
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.RUNNING})
+    gateway = FakeGateway()
 
     stats = await _reconcile(db_session, gateway)
 
     assert await _status(db_session, task) == TaskStatus.RUNNING
-    assert stats.left_running == 1
+    assert stats.examined_tasks == 1
     assert stats.failed_tasks == 0
-
-
-@pytest.mark.asyncio
-async def test_closed_workflow_fails_running_and_queued_tasks(db_session: AsyncSession, test_user):
-    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
-    running = await _task(db_session, mission_id, plan_id, TaskStatus.RUNNING)
-    queued = await _task(db_session, mission_id, plan_id, TaskStatus.QUEUED)
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.CLOSED})
-
-    stats = await _reconcile(db_session, gateway)
-
-    for task in (running, queued):
-        assert await _status(db_session, task) == TaskStatus.FAILED
-        assert task.failure_reason.startswith("orphaned: workflow mission-run-")
-        assert task.last_attempt_at == NOW
-    assert stats.failed_tasks == 2
-
-
-@pytest.mark.asyncio
-async def test_not_found_workflow_fails_tasks(db_session: AsyncSession, test_user):
-    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
-    task = await _task(db_session, mission_id, plan_id)
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.NOT_FOUND})
-
-    stats = await _reconcile(db_session, gateway)
-
-    assert await _status(db_session, task) == TaskStatus.FAILED
-    assert task.failure_reason.endswith("not_found")
-    assert stats.failed_tasks == 1
+    assert stats.left_in_process == 1
+    assert gateway.calls == []
 
 
 @pytest.mark.asyncio
@@ -227,12 +318,7 @@ async def test_task_owned_by_live_workflow_run_untouched(db_session: AsyncSessio
     mission_id, plan_id = await _mission_plan(db_session, test_user.id)
     task = await _task(db_session, mission_id, plan_id)
     await _run(db_session, mission_id, record_workflow_id="run-workflow-x")
-    gateway = FakeGateway(
-        {
-            f"mission-run-{plan_id}": WorkflowState.CLOSED,
-            "run-workflow-x": WorkflowState.RUNNING,
-        }
-    )
+    gateway = FakeGateway({"run-workflow-x": WorkflowState.RUNNING})
 
     stats = await _reconcile(db_session, gateway)
 
@@ -252,11 +338,12 @@ async def test_task_owned_by_awaiting_input_workflow_run_untouched(
         record_workflow_id="run-workflow-awaiting",
         status=WorkflowRunState.AWAITING_INPUT,
     )
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.CLOSED})
+    gateway = FakeGateway()
 
-    await _reconcile(db_session, gateway)
+    stats = await _reconcile(db_session, gateway)
 
     assert await _status(db_session, task) == TaskStatus.RUNNING
+    assert stats.left_running == 1
     assert "run-workflow-awaiting" not in gateway.calls
 
 
@@ -265,7 +352,7 @@ async def test_task_owned_by_in_process_workflow_run_untouched(db_session: Async
     mission_id, plan_id = await _mission_plan(db_session, test_user.id)
     task = await _task(db_session, mission_id, plan_id)
     await _run(db_session, mission_id, record_workflow_id=None)
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.CLOSED})
+    gateway = FakeGateway()
 
     stats = await _reconcile(db_session, gateway)
 
@@ -381,11 +468,13 @@ async def test_temporal_unavailable_raises_and_writes_nothing(db_session: AsyncS
     task = await _task(db_session, mission_id, plan_id)
     rec = await _record(db_session, mission_id, temporal_workflow_id="execution-a")
     run = await _run(db_session, mission_id, record_workflow_id="run-workflow-x", updated_at=OLD)
+    mission_run = await _mission_run(db_session, mission_id, plan_id)
     gateway = FakeGateway(error=ExternalServiceError("Temporal unavailable"))
 
     with pytest.raises(ExternalServiceError):
         await _reconcile(db_session, gateway)
 
+    assert await _status(db_session, mission_run) == MissionRunStatus.RUNNING
     assert await _status(db_session, task) == TaskStatus.RUNNING
     assert await _status(db_session, rec) == ExecutionRecordStatus.RUNNING
     assert await _status(db_session, run) == WorkflowRunState.RUNNING
@@ -396,11 +485,12 @@ async def test_state_cached_per_workflow_id(db_session: AsyncSession, test_user)
     mission_id, plan_id = await _mission_plan(db_session, test_user.id)
     for _ in range(3):
         await _task(db_session, mission_id, plan_id)
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.RUNNING})
+    await _run(db_session, mission_id, record_workflow_id="run-workflow-x")
+    gateway = FakeGateway({"run-workflow-x": WorkflowState.RUNNING})
 
     await _reconcile(db_session, gateway)
 
-    assert gateway.calls == [f"mission-run-{plan_id}"]
+    assert gateway.calls == ["run-workflow-x"]
 
 
 @pytest.mark.asyncio
@@ -408,22 +498,3 @@ async def test_reconcile_returns_no_schedule_sync(db_session: AsyncSession, test
     stats = await _reconcile(db_session, FakeGateway())
 
     assert stats.schedule_sync is None
-
-
-@pytest.mark.asyncio
-async def test_row_progressed_between_resolve_and_write_skipped(
-    db_session: AsyncSession, test_user
-):
-    mission_id, plan_id = await _mission_plan(db_session, test_user.id)
-    task = await _task(db_session, mission_id, plan_id)
-
-    async def complete_task(_: str) -> None:
-        task.status = TaskStatus.COMPLETED
-        await db_session.flush()
-
-    gateway = FakeGateway({f"mission-run-{plan_id}": WorkflowState.CLOSED}, on_state=complete_task)
-
-    stats = await _reconcile(db_session, gateway)
-
-    assert await _status(db_session, task) == TaskStatus.COMPLETED
-    assert stats.failed_tasks == 0

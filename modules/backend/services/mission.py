@@ -215,10 +215,10 @@ class MissionService(BaseService):
         # not cancel: the rows are about to go, so no cleanup activity may run.
         # ExternalServiceError aborts the delete (fail closed).
         from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+        from modules.backend.repositories.mission_run import MissionRunRepository
         from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
-        from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
-        plan = await MissionPlanRepository(self._session).get_by_mission_id(mission_id)
+        active_run = await MissionRunRepository(self._session).get_active_for_mission(mission_id)
         result = await self._session.execute(
             select(ExecutionRecord.temporal_workflow_id).where(
                 ExecutionRecord.mission_id == mission_id,
@@ -229,8 +229,8 @@ class MissionService(BaseService):
             )
         )
         workflow_ids = set(result.scalars().all())
-        if plan is not None:
-            workflow_ids.add(mission_run_workflow_id(plan.id))
+        if active_run is not None and active_run.temporal_workflow_id is not None:
+            workflow_ids.add(active_run.temporal_workflow_id)
         await self._session.commit()
 
         gateway = await TemporalWorkflowGateway.connect()

@@ -57,6 +57,8 @@ class ReconcileStats:
     left_running: int
     left_in_process: int
     schedule_sync: ScheduleSyncStats | None
+    examined_mission_runs: int
+    failed_mission_runs: int
 
 
 @dataclass(frozen=True)

@@ -38,6 +38,8 @@ _STATS = ReconcileStats(
     left_running=2,
     left_in_process=1,
     schedule_sync=None,
+    examined_mission_runs=1,
+    failed_mission_runs=0,
 )
 
 

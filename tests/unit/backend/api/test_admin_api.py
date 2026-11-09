@@ -330,3 +330,91 @@ class TestSeedCatalog:
         resp = await client.post("/admin/seed-catalog?force=false")
         assert resp.status_code == 200
         assert resp.json()["data"]["seeded"] == 5
+
+
+RECONCILE = "modules.backend.services.run_reconciliation.RunReconciliationService.reconcile"
+CONNECT = "modules.backend.temporal.workflow_gateway.TemporalWorkflowGateway.connect"
+REDIS_FROM_URL = "redis.asyncio.Redis.from_url"
+
+
+def _stats():
+    from modules.backend.temporal.mission_run_models import ReconcileStats
+
+    return ReconcileStats(
+        examined_tasks=3,
+        examined_execution_records=2,
+        examined_workflow_runs=1,
+        failed_tasks=0,
+        failed_execution_records=1,
+        failed_workflow_runs=0,
+        left_running=2,
+        left_in_process=1,
+        schedule_sync=None,
+        examined_mission_runs=4,
+        failed_mission_runs=1,
+    )
+
+
+class TestReconcile:
+    @pytest.mark.asyncio
+    async def test_admin_reconcile_requires_admin(self, mock_db):
+        from modules.backend.api.v1.endpoints import admin as admin_module
+        from modules.backend.core.dependencies import get_current_user
+        from modules.backend.core.exception_handlers import register_exception_handlers
+
+        _app = FastAPI()
+        register_exception_handlers(_app)
+        _app.include_router(admin_module.router, prefix="/admin")
+
+        async def _regular_user():
+            return MagicMock(
+                id="test-user",
+                system_role="user",
+                has_role=lambda r: False,
+                is_active=True,
+            )
+
+        async def _mock_db_session():
+            return mock_db
+
+        _app.dependency_overrides[get_current_user] = _regular_user
+        _app.dependency_overrides[get_db_session] = _mock_db_session
+
+        with patch(RECONCILE, AsyncMock(return_value=_stats())) as reconcile:
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                resp = await c.post("/admin/reconcile/run")
+
+        assert resp.status_code == 403
+        reconcile.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_admin_reconcile_returns_stats(self, client, mock_db):
+        redis = MagicMock()
+        redis.aclose = AsyncMock()
+        with (
+            patch(CONNECT, AsyncMock(return_value=MagicMock())),
+            patch(REDIS_FROM_URL, return_value=redis),
+            patch(RECONCILE, AsyncMock(return_value=_stats())) as reconcile,
+        ):
+            resp = await client.post("/admin/reconcile/run")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"] == {
+            "examined_tasks": 3,
+            "examined_execution_records": 2,
+            "examined_workflow_runs": 1,
+            "failed_tasks": 0,
+            "failed_execution_records": 1,
+            "failed_workflow_runs": 0,
+            "left_running": 2,
+            "left_in_process": 1,
+            "schedule_sync": None,
+            "examined_mission_runs": 4,
+            "failed_mission_runs": 1,
+        }
+        reconcile.assert_awaited_once()
+        redis.aclose.assert_awaited_once()
+        mock_db.commit.assert_awaited_once()

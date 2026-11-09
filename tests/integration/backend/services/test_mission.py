@@ -9,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core import security
 from modules.backend.core.exceptions import ExternalServiceError, NotFoundError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.mission_run import MissionRun, MissionRunStatus, MissionRunTrigger
 from modules.backend.models.user import User
+from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.temporal.workflow_gateway import WorkflowState
+from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _NS = UUID("00000000-0000-0000-0000-000000000000")
 _CONNECT = "modules.backend.temporal.workflow_gateway.TemporalWorkflowGateway.connect"
@@ -253,7 +256,18 @@ class TestDeleteMissionTemporal:
         )
         mission_id = mission.id
         plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
-        plan_id = plan.id
+        run = MissionRun(
+            mission_id=mission_id,
+            plan_id=plan.id,
+            sequence=await MissionRepository(db_session).increment_run_sequence(mission_id),
+            trigger=MissionRunTrigger.MANUAL,
+            status=MissionRunStatus.RUNNING,
+        )
+        db_session.add(run)
+        await db_session.flush()
+        run.temporal_workflow_id = mission_run_workflow_id(run.id)
+        await db_session.flush()
+        run_wid = run.temporal_workflow_id
 
         gateway = MagicMock()
         gateway.terminate = AsyncMock(return_value=WorkflowState.RUNNING)
@@ -261,7 +275,7 @@ class TestDeleteMissionTemporal:
             await service.delete_mission(mission_id)
 
         gateway.terminate.assert_awaited_once_with(
-            f"mission-run-{plan_id}", reason="Mission p88-delete-terminates deleted"
+            run_wid, reason="Mission p88-delete-terminates deleted"
         )
         with pytest.raises(NotFoundError):
             await service.get_mission(mission_id)

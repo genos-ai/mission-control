@@ -846,3 +846,42 @@ async def admin_emergency_stop(
         },
         metadata={"request_id": request_id},
     )
+
+
+# ---- Run reconciliation (Plan 88 step 88.1.10a) ----
+
+
+@router.post(
+    "/reconcile/run",
+    response_model=ApiResponse,
+    summary="Run one reconciliation pass now",
+)
+async def admin_reconcile_run(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+) -> ApiResponse:
+    """Fail mission runs, execution records and workflow runs whose workflow is gone.
+
+    For the web; ``admin reconcile run`` calls the service in-process.
+    """
+    from dataclasses import asdict
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.services.run_reconciliation import RunReconciliationService
+    from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+
+    gateway = await TemporalWorkflowGateway.connect()
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        event_bus = SessionEventBus(redis)
+        stats = await RunReconciliationService(db, gateway, event_bus).reconcile(
+            get_app_config().temporal.reconciler.orphan_grace_seconds
+        )
+        await db.commit()
+    finally:
+        await redis.aclose()
+    return ApiResponse(success=True, data=asdict(stats), metadata={"request_id": request_id})

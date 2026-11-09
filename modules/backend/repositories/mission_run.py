@@ -132,6 +132,26 @@ class MissionRunRepository(BaseRepository[MissionRun]):
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def lock_stale(
+        self, run_id: str, status: MissionRunStatus, cutoff: datetime
+    ) -> MissionRun | None:
+        """Lock the run if it is still in ``status`` and not updated since cutoff.
+
+        SKIP LOCKED: a row another transaction holds, or one that progressed,
+        returns None (reconciler write re-select).
+        """
+        stmt = (
+            select(MissionRun)
+            .where(
+                MissionRun.id == run_id,
+                MissionRun.status == status,
+                MissionRun.updated_at < cutoff,
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update(skip_locked=True)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def list_for_mission(
         self,
         mission_id: str,
