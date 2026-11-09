@@ -1,14 +1,26 @@
 /**
  * WorkflowsPanel — the mission's Workflows tab.
  *
- * Mission workflows and schedules, plus system templates that can be cloned
+ * Mission workflows and mission schedules, plus system templates that can be cloned
  * into the mission. Each workflow is a card; the visual editor opens from its
  * Edit action. The route /missions/:id/workflows is the primary access point.
  */
 
 import { useNavigate } from 'react-router-dom'
-import { useState } from 'react'
-import { GitBranch, Play, Pencil, Copy, Plus, Clock, Loader2, Trash2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import {
+  Archive,
+  ChevronRight,
+  GitBranch,
+  Play,
+  Pause,
+  Pencil,
+  Copy,
+  Plus,
+  Clock,
+  Loader2,
+  Trash2,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -17,7 +29,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Panel } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
 import {
   useMissionWorkflows,
   useWorkflowTemplates,
@@ -25,17 +36,27 @@ import {
   useCreateWorkflow,
   useRunWorkflow,
   useDeleteWorkflow,
-  useSchedules,
-  useUpdateSchedule,
-  useDeleteSchedule,
 } from '@/hooks/use-workflows'
+import {
+  useArchiveMissionSchedule,
+  useMissionSchedule,
+  useMissionSchedules,
+  usePauseMissionSchedule,
+  useResumeMissionSchedule,
+} from '@/hooks/use-mission-schedules'
 import { ScheduleModal } from '@/components/workflow/schedule-modal'
 import { cn } from '@/lib/cn'
 import { describeCronExpression } from '@/lib/cron'
 import { formatUtc } from '@/lib/format-date'
+import { statusLabel } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/lib/constants'
-import type { MissionWorkflow, WorkflowListItem, WorkflowSchedule } from '@/types'
+import type {
+  MissionScheduleResponse,
+  MissionScheduleStatus,
+  MissionWorkflow,
+  WorkflowListItem,
+} from '@/types'
 
 const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-gutter'
 // Row actions stay visible: they are the card's main controls, and touch has no hover.
@@ -43,11 +64,20 @@ const ACTIONS = 'flex shrink-0 items-center gap-0.5'
 
 const stepsLabel = (n: number) => `${n} step${n === 1 ? '' : 's'}`
 
-function SectionHeader({ title, count }: { title: string; count: number | undefined }) {
+function SectionHeader({
+  title,
+  count,
+  action,
+}: {
+  title: string
+  count: number | undefined
+  action?: ReactNode
+}) {
   return (
     <div className="mb-2 flex items-center gap-2 px-1">
       <h2 className="text-base font-medium">{title}</h2>
       {count !== undefined && <span className="text-xs text-subtle">{count}</span>}
+      {action && <div className="ml-auto">{action}</div>}
     </div>
   )
 }
@@ -70,7 +100,7 @@ export function WorkflowsPanel({ missionId }: { missionId: string }) {
   const navigate = useNavigate()
   const { data: missionWorkflows, isLoading: loadingMission } = useMissionWorkflows(missionId)
   const { data: templates, isLoading: loadingTemplates } = useWorkflowTemplates()
-  const { data: schedules, isLoading: loadingSchedules } = useSchedules(missionId)
+  const { data: schedules, isLoading: loadingSchedules } = useMissionSchedules(missionId, false)
   const createWorkflow = useCreateWorkflow(missionId)
 
   const handleCreate = () => {
@@ -283,6 +313,13 @@ function MissionWorkflowCard({
 
 // ── Schedules section ───────────────────────────────────────────────────
 
+const SCHEDULE_STATUS_TONE: Record<MissionScheduleStatus, 'success' | 'warning' | 'neutral'> = {
+  active: 'success',
+  paused: 'warning',
+  completed: 'neutral',
+  archived: 'neutral',
+}
+
 function SchedulesSection({
   missionId,
   schedules,
@@ -290,20 +327,30 @@ function SchedulesSection({
   loading,
 }: {
   missionId: string
-  schedules: WorkflowSchedule[] | undefined
+  schedules: MissionScheduleResponse[] | undefined
   workflows: MissionWorkflow[] | undefined
   loading: boolean
 }) {
   const nameById = new Map((workflows ?? []).map((w) => [w.id, w.name]))
+  const [showCreate, setShowCreate] = useState(false)
 
   return (
     <div>
-      <SectionHeader title="Schedules" count={schedules?.length} />
+      <SectionHeader
+        title="Schedules"
+        count={schedules?.length}
+        action={
+          <Button size="sm" variant="secondary" onClick={() => setShowCreate(true)}>
+            <Plus className="h-3 w-3" />
+            New schedule
+          </Button>
+        }
+      />
 
       {loading ? (
         <LoadingPanel />
       ) : !schedules || schedules.length === 0 ? (
-        <NoticePanel>No schedules. Use the clock icon on a workflow to create one.</NoticePanel>
+        <NoticePanel>No schedules. Create one, or use the clock icon on a workflow.</NoticePanel>
       ) : (
         <div className="flex flex-col gap-gutter">
           {schedules.map((s) => (
@@ -311,10 +358,17 @@ function SchedulesSection({
               key={s.id}
               schedule={s}
               missionId={missionId}
-              workflowName={nameById.get(s.workflow_definition_id)}
+              workflowName={
+                s.workflow_definition_id
+                  ? nameById.get(s.workflow_definition_id) ?? s.workflow_definition_id
+                  : undefined
+              }
             />
           ))}
         </div>
+      )}
+      {showCreate && (
+        <ScheduleModal missionId={missionId} onClose={() => setShowCreate(false)} />
       )}
     </div>
   )
@@ -325,104 +379,147 @@ function ScheduleRow({
   missionId,
   workflowName,
 }: {
-  schedule: WorkflowSchedule
+  schedule: MissionScheduleResponse
   missionId: string
   workflowName: string | undefined
 }) {
-  const updateMutation = useUpdateSchedule(missionId, schedule.id)
-  const deleteMutation = useDeleteSchedule(missionId)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const pauseMutation = usePauseMissionSchedule(missionId)
+  const resumeMutation = useResumeMissionSchedule(missionId)
+  const archiveMutation = useArchiveMissionSchedule(missionId)
+  const [expanded, setExpanded] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const busy = pauseMutation.isPending || resumeMutation.isPending || archiveMutation.isPending
 
-  function handleToggle() {
-    updateMutation.mutate(
-      { enabled: !schedule.enabled },
-      {
-        onSuccess: () =>
-          toast.success(schedule.enabled ? 'Schedule disabled' : 'Schedule enabled'),
-        onError: (err) =>
-          toast.error(err instanceof Error ? err.message : 'Toggle failed'),
-      },
-    )
+  function run(mutation: typeof pauseMutation, done: string) {
+    mutation.mutate(schedule.id, {
+      onSuccess: () => toast.success(done),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Schedule update failed'),
+    })
   }
 
-  async function handleDelete() {
-    if (!confirmDelete) { setConfirmDelete(true); return }
-    try {
-      await deleteMutation.mutateAsync(schedule.id)
-      toast.success('Schedule deleted')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed')
-    }
-    setConfirmDelete(false)
+  function handleArchive() {
+    if (!confirmArchive) { setConfirmArchive(true); return }
+    run(archiveMutation, 'Schedule archived')
+    setConfirmArchive(false)
   }
 
-  const displayName = workflowName ?? schedule.workflow_definition_id
+  const target = schedule.kind === 'objective' ? schedule.objective_template : `workflow ${workflowName}`
   const editTitle = 'Edit schedule'
-  const deleteTitle = confirmDelete ? 'Click again to confirm delete' : 'Delete schedule'
-  const iterations = schedule.max_iterations
-    ? `${schedule.iteration_count}/${schedule.max_iterations}`
-    : `${schedule.iteration_count}`
+  const archiveTitle = confirmArchive ? 'Click again to confirm archive' : 'Archive schedule'
+  const runs = schedule.max_runs
+    ? `${schedule.executed_run_count}/${schedule.max_runs}`
+    : `${schedule.executed_run_count}`
 
   return (
     <>
-      <Panel
-        className="group flex items-center gap-3 px-4 py-3"
-        onMouseLeave={() => setConfirmDelete(false)}
-      >
-        <Switch
-          checked={schedule.enabled}
-          onChange={handleToggle}
-          label={`Enable schedule for ${displayName}`}
-          disabled={updateMutation.isPending}
-        />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-md font-medium">{displayName}</p>
-            <Badge>{describeCronExpression(schedule.cron_expression)}</Badge>
-          </div>
-          {schedule.description && (
-            <p className="mt-0.5 truncate text-xs text-text-3">{schedule.description}</p>
-          )}
-          <p className="mt-0.5 text-2xs text-subtle">
-            next {formatUtc(schedule.next_fire_at)} · last {formatUtc(schedule.last_fired_at)}
-            {' · '}runs {iterations} · {schedule.timezone}
-            {' · '}<span className="font-mono">{schedule.cron_expression}</span>
-          </p>
-        </div>
-
-        <div className={ACTIONS}>
+      <Panel className="group px-4 py-3" onMouseLeave={() => setConfirmArchive(false)}>
+        <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon-sm"
-            title={editTitle}
-            aria-label={editTitle}
-            onClick={() => setShowEdit(true)}
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Hide next fire time' : 'Show next fire time'}
+            onClick={() => setExpanded((e) => !e)}
           >
-            <Pencil className="h-3 w-3" />
+            <ChevronRight
+              className={cn('h-3 w-3 transition-transform duration-150', expanded && 'rotate-90')}
+            />
           </Button>
-          <Button
-            variant={confirmDelete ? 'destructive' : 'ghost'}
-            size="icon-sm"
-            title={deleteTitle}
-            aria-label={deleteTitle}
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-          >
-            {deleteMutation.isPending ? <Spinner className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
-          </Button>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-md font-medium">{schedule.name}</p>
+              <StatusPill tone={SCHEDULE_STATUS_TONE[schedule.status]}>
+                {statusLabel(schedule.status)}
+              </StatusPill>
+              {schedule.temporal_sync_state !== 'synced' && (
+                <span title={schedule.temporal_sync_error ?? undefined}>
+                  <StatusPill tone={schedule.temporal_sync_state === 'failed' ? 'danger' : 'warning'}>
+                    sync {schedule.temporal_sync_state}
+                  </StatusPill>
+                </span>
+              )}
+              <Badge>{describeCronExpression(schedule.cron_expression)}</Badge>
+            </div>
+            {target && <p className="mt-0.5 truncate text-xs text-text-3">{target}</p>}
+            <p className="mt-0.5 text-2xs text-subtle">
+              runs {runs} · last {formatUtc(schedule.last_claimed_scheduled_for)}
+              {' · '}{schedule.time_zone_name}
+              {' · '}<span className="font-mono">{schedule.cron_expression}</span>
+            </p>
+          </div>
+
+          <div className={ACTIONS}>
+            {schedule.status === 'active' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="Pause schedule"
+                aria-label="Pause schedule"
+                onClick={() => run(pauseMutation, 'Schedule paused')}
+                disabled={busy}
+              >
+                <Pause className="h-3 w-3" />
+              </Button>
+            )}
+            {schedule.status === 'paused' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="Resume schedule"
+                aria-label="Resume schedule"
+                onClick={() => run(resumeMutation, 'Schedule resumed')}
+                disabled={busy}
+              >
+                <Play className="h-3 w-3" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={editTitle}
+              aria-label={editTitle}
+              onClick={() => setShowEdit(true)}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button
+              variant={confirmArchive ? 'destructive' : 'ghost'}
+              size="icon-sm"
+              title={archiveTitle}
+              aria-label={archiveTitle}
+              onClick={handleArchive}
+              disabled={busy}
+            >
+              {archiveMutation.isPending ? <Spinner className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
+            </Button>
+          </div>
         </div>
+        {expanded && <NextFire missionId={missionId} scheduleId={schedule.id} />}
       </Panel>
       {showEdit && (
         <ScheduleModal
           missionId={missionId}
-          workflowDefinitionId={schedule.workflow_definition_id}
           schedule={schedule}
           onClose={() => setShowEdit(false)}
         />
       )}
     </>
+  )
+}
+
+/** The next fire time, read from Temporal through the single-schedule query. */
+function NextFire({ missionId, scheduleId }: { missionId: string; scheduleId: string }) {
+  const { data, isLoading } = useMissionSchedule(missionId, scheduleId)
+  return (
+    <p className="mt-2 pl-9 text-xs text-muted-foreground">
+      {isLoading ? (
+        <Spinner className="h-3 w-3" />
+      ) : (
+        <>next fire {formatUtc(data?.next_fire_times[0] ?? null)}</>
+      )}
+    </p>
   )
 }
 

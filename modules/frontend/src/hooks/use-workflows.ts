@@ -7,9 +7,6 @@ import type {
   WorkflowStep,
   MissionWorkflow,
   WorkflowRunRecord,
-  WorkflowSchedule,
-  WorkflowScheduleCreateRequest,
-  WorkflowScheduleUpdateRequest,
   ArchitectChatResponse,
 } from '@/types'
 import type { WorkflowDetailFull, CanvasState } from '@/components/workflow/workflow-editor-types'
@@ -21,8 +18,6 @@ export const workflowKeys = {
   templateDetail: (name: string) => ['workflow-templates', name] as const,
   missionWorkflows: (missionId: string) =>
     ['missions', missionId, 'workflows'] as const,
-  schedules: (missionId: string) =>
-    ['missions', missionId, 'schedules'] as const,
   editorDefaults: ['workflow-editor-defaults'] as const,
 }
 
@@ -193,62 +188,6 @@ export function useDeleteWorkflow(missionId: string) {
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: workflowKeys.missionWorkflows(missionId),
-      })
-    },
-  })
-}
-
-// ---- Schedules ----
-
-export function useSchedules(missionId: string | undefined) {
-  return useQuery({
-    queryKey: workflowKeys.schedules(missionId!),
-    queryFn: () =>
-      api.get<{ schedules: WorkflowSchedule[]; total: number }>(
-        `/missions/${missionId}/schedules?enabled_only=false`,
-      ),
-    select: (data) => data.schedules,
-    enabled: !!missionId,
-  })
-}
-
-export function useCreateSchedule(missionId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: WorkflowScheduleCreateRequest) =>
-      api.post<WorkflowSchedule>(`/missions/${missionId}/schedules`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: workflowKeys.schedules(missionId),
-      })
-    },
-  })
-}
-
-export function useUpdateSchedule(missionId: string, scheduleId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: WorkflowScheduleUpdateRequest) =>
-      api.patch<WorkflowSchedule>(
-        `/missions/${missionId}/schedules/${scheduleId}`,
-        data,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: workflowKeys.schedules(missionId),
-      })
-    },
-  })
-}
-
-export function useDeleteSchedule(missionId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (scheduleId: string) =>
-      api.del(`/missions/${missionId}/schedules/${scheduleId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: workflowKeys.schedules(missionId),
       })
     },
   })

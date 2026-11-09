@@ -89,9 +89,8 @@ function absorb(group: NarrativeGroup, event: ConsoleEvent): void {
       group.costUsd = amount(d.total_cost_usd)
       group.durationSeconds = amount(d.duration_seconds)
       break
-    case 'mission_plan.run.completed':
-      group.status = text(d.run_status)
-      group.costUsd = amount(d.run_cost_usd)
+    case 'mission_run.status_changed':
+      group.status = text(d.to_status)
       break
     case 'session.cost.updated':
       // A running total, superseded by the cost the completed event reports.

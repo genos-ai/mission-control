@@ -18,7 +18,7 @@ import {
   useLastSupervisorDecision,
   type MissionPlan,
 } from '@/hooks/use-mission-plan'
-import { fmtCost, fmtUsd } from '@/lib/format'
+import { fmtUsd } from '@/lib/format'
 import { planProgress } from '@/lib/plan-progress'
 import type { Tone } from '@/lib/status-tone'
 import type { GateMode } from '@/types/mission'
@@ -84,12 +84,8 @@ export function PlanTopBar({
 
   async function doDispatch() {
     try {
-      const result = await dispatch.mutateAsync()
-      if (result.outcome_status === 'dispatching') {
-        toast.success('Dispatched — streaming progress via console')
-      } else {
-        toast.success(`Run ${result.outcome_status} — ${fmtCost(result.total_cost_usd)}`)
-      }
+      const run = await dispatch.mutateAsync()
+      toast.success(`Run #${run.sequence} started — streaming progress via console`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Dispatch failed')
     }

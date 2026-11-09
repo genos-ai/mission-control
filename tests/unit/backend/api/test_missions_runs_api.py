@@ -153,13 +153,17 @@ async def test_start_run_conflict_409(client, svc):
 async def test_get_by_sequence(client, svc):
     run = _run(sequence=7)
     svc.get_run_detail.return_value = MissionRunDetailResponse(
-        run=MissionRunResponse.model_validate(run), digest=None, tasks=[]
+        run=MissionRunResponse.model_validate(run),
+        execution_record_id=None,
+        digest=None,
+        tasks=[],
     )
     response = await client.get(_url("/7"))
     assert response.status_code == 200
     svc.get_run_detail.assert_awaited_once_with(MISSION_ID, "7")
     data = response.json()["data"]
     assert data["run"]["sequence"] == 7
+    assert data["execution_record_id"] is None
     assert data["digest"] is None
     assert data["tasks"] == []
     assert "gates" not in data

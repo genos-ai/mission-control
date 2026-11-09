@@ -93,27 +93,6 @@ export function useBackgroundTasks(missionId: string | undefined) {
   }
 }
 
-/** Plan 62: unified execution via the plan path. */
-export function useRunObjective(missionId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: {
-      objective: string
-      gate_mode?: string
-      budget_ceiling_usd?: number
-    }) =>
-      api.post<{
-        plan_id: string
-        outcome_status: string
-        workflow_id?: string
-      }>(`/missions/${missionId}/plan/run-objective`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['executions'] })
-      qc.invalidateQueries({ queryKey: ['plan', missionId] })
-    },
-  })
-}
-
 export function useStartExecution() {
   const qc = useQueryClient()
   return useMutation({

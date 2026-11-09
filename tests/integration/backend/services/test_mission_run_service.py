@@ -293,6 +293,20 @@ async def test_begin_creates_one_execution_record(db_session_factory, gateway, o
     assert records[0].task_params == {"mission_run_id": run.id}
 
 
+async def test_run_detail_carries_execution_record_id(db_session_factory, gateway, owner) -> None:
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+
+    async with db_session_factory() as session:
+        before = await _svc(session).get_run_detail(mission.id, str(run.sequence))
+    assert before.execution_record_id is None
+
+    begun = await _begin(db_session_factory, run.id)
+    async with db_session_factory() as session:
+        after = await _svc(session).get_run_detail(mission.id, run.id)
+    assert after.execution_record_id == begun.execution_record_id
+
+
 # ── waves ─────────────────────────────────────────────────────────────────
 
 

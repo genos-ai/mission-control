@@ -31,7 +31,7 @@ import {
 
 import type { PlanTaskStatus } from '@/hooks/use-mission-plan'
 import type { ConsoleEvent } from '@/stores/console'
-import type { AttentionKind, MissionStatus, RunStatus } from '@/types'
+import type { AttentionKind, MissionRunStatus, MissionStatus, RunStatus } from '@/types'
 
 export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'violet' | 'neutral'
 
@@ -65,6 +65,20 @@ export const runTone: Record<RunStatus, StatusStyle> = {
   failed: { tone: 'danger', icon: XCircle },
   cancelled: { tone: 'neutral', icon: CircleSlash },
   timed_out: { tone: 'danger', icon: Clock },
+}
+
+/** A mission run (Plan 88), whose statuses differ from an execution record's. */
+export const missionRunTone: Record<MissionRunStatus, StatusStyle> = {
+  pending: { tone: 'neutral', icon: Circle },
+  running: { tone: 'warning', icon: Loader2 },
+  awaiting_gate: { tone: 'brand', icon: User },
+  paused: { tone: 'warning', icon: PauseCircle },
+  succeeded: { tone: 'success', icon: CheckCircle2 },
+  failed: { tone: 'danger', icon: XCircle },
+  cancelled: { tone: 'neutral', icon: CircleSlash },
+  budget_stopped: { tone: 'danger', icon: CircleSlash },
+  skipped: { tone: 'neutral', icon: MinusCircle },
+  missed: { tone: 'neutral', icon: Clock },
 }
 
 /** What each kind of attention item looks like: a decision to make, a question to answer, a failure to retry. */

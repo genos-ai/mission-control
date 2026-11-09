@@ -1649,6 +1649,9 @@ class MissionRunService(BaseService):
 #   cost_usd, created_at}; MissionRunDigestResponse carries every mission_run_digests column except updated_at.
 # 88.1.12: MissionRunService.get_run_detail(mission_id, run_id_or_sequence) -> MissionRunDetailResponse
 #   (get_run, then MissionRunDigestRepository.get_by_run and TaskRepository.list_by_run; 88.4.8 adds gates).
+#   88.1.14: MissionRunDetailResponse.execution_record_id (str or None) is the run's ExecutionRecord id from
+#   ExecutionRecordRepository.get_by_mission_run, None before begin_mission_run creates it; the web Runs tab
+#   links the run to its execution record (events, output, cost) through it.
 #   services/mission_run.DEFAULT_RUN_LIST_LIMIT = 50 is the GET /runs page size when no limit is sent,
 #   until 88.1.13's cli.yaml; next_before_sequence is the last run's sequence when the page is full.
 
@@ -1866,7 +1869,7 @@ All endpoints return `ApiResponse`. `require_mission_operator(db, mission_id, us
 | `DELETE /missions/{id}/schedules/{sid}` | operator | none | `MissionScheduleResponse` (status `archived`) | 88.1.12 |
 | `POST /missions/{id}/runs` | operator | `MissionRunCreate{objective: str}` | `MissionRunResponse` | 88.1.12 |
 | `GET /missions/{id}/runs?status=&limit=&before_sequence=` | access | none; `status` repeats and takes `MissionRunStatus` values (`?status=running&status=failed`) | `{runs: [MissionRunResponse], next_before_sequence}` | 88.1.12 |
-| `GET /missions/{id}/runs/{run_id_or_seq}` | access | none | `MissionRunDetailResponse{run, digest, tasks: [TaskSummary]}`; `gates: [GateRequestSummary]` added in 88.4.8, because `gate_requests.mission_run_id` arrives in `plan88_006` | 88.1.12, 88.4.8 |
+| `GET /missions/{id}/runs/{run_id_or_seq}` | access | none | `MissionRunDetailResponse{run, execution_record_id, digest, tasks: [TaskSummary]}` (`execution_record_id` added in 88.1.14); `gates: [GateRequestSummary]` added in 88.4.8, because `gate_requests.mission_run_id` arrives in `plan88_006` | 88.1.12, 88.4.8 |
 | `GET /missions/{id}/runs/{run_id_or_seq}/live` | access | none | `MissionRunLiveStateResponse{run: MissionRunResponse, workflow_state: WorkflowStatusDescription or None, state: MissionRunWorkflowStatus or None}` | 88.5.8 |
 | `GET /missions/{id}/runs/{run_id_or_seq}/history` | access | none | `MissionRunHistoryResponse{run: MissionRunResponse, still_running: bool, events: list[dict]}`; 404 "history expired" when Temporal no longer holds it | 88.5.8 |
 | `POST /missions/{id}/runs/{run_id}/cancel` | operator | none | `MissionRunResponse` | 88.1.12 |

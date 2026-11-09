@@ -1,10 +1,12 @@
 /**
- * RunDetailPanel — floating panel beside the runs table showing one run's
- * events, output or cost breakdown. Opened from a row's detail buttons.
+ * RunDetailPanel — floating panel beside the runs table showing one mission
+ * run's tasks and digest, or its execution record's events, output or cost
+ * breakdown. Opened from a row's detail buttons.
  */
 
 import { X } from 'lucide-react'
 import { useExecution, useExecutionCost } from '@/hooks/use-executions'
+import { useMissionRun } from '@/hooks/use-mission-runs'
 import { useResizable } from '@/hooks/use-resizable'
 import { OutputPreviewContent } from '@/components/drawer/output-preview-panel'
 import { Badge } from '@/components/ui/badge'
@@ -13,17 +15,24 @@ import { DetailSection } from '@/components/ui/detail-section'
 import { MetricTile } from '@/components/ui/metric-tile'
 import { Panel, PanelHeader } from '@/components/ui/panel'
 import { Spinner } from '@/components/ui/spinner'
+import { StatusIcon } from '@/components/ui/status-icon'
 import { StatusPill } from '@/components/ui/status-pill'
 import { fmtCost } from '@/lib/format'
 import { parseUtc } from '@/lib/format-date'
+import { styleFor, taskTone } from '@/lib/status-tone'
+import type { MissionRunDigestResponse } from '@/types'
 
 export type RunDetailView = {
-  type: 'events' | 'output' | 'cost'
-  executionId: string
+  type: 'run' | 'events' | 'output' | 'cost'
+  missionId: string
+  runId: string
+  /** The run's ExecutionRecord, from the run detail response; null until the run has begun. */
+  executionId: string | null
   content?: Record<string, unknown>
 }
 
 const TITLE: Record<RunDetailView['type'], string> = {
+  run: 'Tasks and digest',
   events: 'Event log',
   output: 'Output',
   cost: 'Cost breakdown',
@@ -48,6 +57,7 @@ export function RunDetailPanel({ view, onClose }: { view: RunDetailView; onClose
         }
       />
       <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {view.type === 'run' && <RunContent missionId={view.missionId} runId={view.runId} />}
         {view.type === 'events' && <EventLogContent executionId={view.executionId} />}
         {view.type === 'output' && <OutputContent content={view.content} />}
         {view.type === 'cost' && <CostContent executionId={view.executionId} />}
@@ -57,12 +67,90 @@ export function RunDetailPanel({ view, onClose }: { view: RunDetailView; onClose
 }
 
 // ---------------------------------------------------------------------------
+// Tasks and digest
+// ---------------------------------------------------------------------------
+
+function RunContent({ missionId, runId }: { missionId: string; runId: string }) {
+  const { data: detail, isLoading } = useMissionRun(missionId, runId)
+
+  if (isLoading) return <Spinner />
+  if (!detail) return <p className="text-xs text-subtle">No run data.</p>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <DetailSection label={`Tasks (${detail.tasks.length})`}>
+        {detail.tasks.length === 0 ? (
+          <p className="text-xs text-subtle">No tasks.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {detail.tasks.map((task) => (
+              <div key={task.id} className="rounded-card bg-raised px-2.5 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <StatusIcon {...styleFor(taskTone, task.status, 'task')} />
+                    <span className="truncate font-medium">{task.agent}</span>
+                  </span>
+                  <span className="shrink-0 font-mono text-2xs text-subtle">{fmtCost(task.cost_usd)}</span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 text-2xs text-subtle">{task.description}</p>
+                {task.failure_reason && (
+                  <p className="mt-0.5 text-2xs text-danger [overflow-wrap:anywhere]">{task.failure_reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </DetailSection>
+      {detail.digest ? (
+        <DigestContent digest={detail.digest} />
+      ) : (
+        <p className="text-xs text-subtle">No digest yet.</p>
+      )}
+    </div>
+  )
+}
+
+const DIGEST_LISTS = [
+  ['outcomes', 'Outcomes'],
+  ['decisions', 'Decisions'],
+  ['open_items', 'Open items'],
+  ['context_changes', 'Context changes'],
+] as const
+
+function DigestContent({ digest }: { digest: MissionRunDigestResponse }) {
+  return (
+    <DetailSection label="Digest">
+      <p className="text-xs leading-relaxed [overflow-wrap:anywhere]">{digest.summary}</p>
+      {DIGEST_LISTS.map(([key, label]) =>
+        digest[key].length > 0 ? (
+          <div key={key} className="mt-2">
+            <p className="text-2xs font-medium text-muted-foreground">{label}</p>
+            <ul className="mt-0.5 list-disc pl-4 text-2xs text-subtle">
+              {digest[key].map((item, i) => (
+                <li key={i} className="[overflow-wrap:anywhere]">
+                  {typeof item === 'string' ? item : JSON.stringify(item)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null,
+      )}
+    </DetailSection>
+  )
+}
+
+function NoExecutionRecord() {
+  return <p className="text-xs text-subtle">This run has no execution record yet.</p>
+}
+
+// ---------------------------------------------------------------------------
 // Event Log
 // ---------------------------------------------------------------------------
 
-function EventLogContent({ executionId }: { executionId: string }) {
-  const { data: detail, isLoading } = useExecution(executionId)
+function EventLogContent({ executionId }: { executionId: string | null }) {
+  const { data: detail, isLoading } = useExecution(executionId ?? undefined)
 
+  if (!executionId) return <NoExecutionRecord />
   if (isLoading) return <Spinner />
   if (!detail) return <p className="text-xs text-subtle">No execution data.</p>
 
@@ -137,9 +225,10 @@ function OutputContent({ content }: { content: Record<string, unknown> | undefin
 // Cost Breakdown
 // ---------------------------------------------------------------------------
 
-function CostContent({ executionId }: { executionId: string }) {
-  const { data: breakdown, isLoading } = useExecutionCost(executionId)
+function CostContent({ executionId }: { executionId: string | null }) {
+  const { data: breakdown, isLoading } = useExecutionCost(executionId ?? undefined)
 
+  if (!executionId) return <NoExecutionRecord />
   if (isLoading) return <Spinner />
   if (!breakdown) return <p className="text-xs text-subtle">No cost data available.</p>
 

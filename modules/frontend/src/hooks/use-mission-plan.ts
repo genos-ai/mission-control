@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { GateMode } from '@/types/mission'
+import type { MissionRunResponse } from '@/types/mission-run'
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -74,14 +75,6 @@ export interface TaskTransitionResult {
   target_task_id: string
   transitioned_task_ids: string[]
   new_status: PlanTaskStatus
-}
-
-export interface DispatchApprovedResult {
-  outcome_status: 'dispatching'
-  dispatched_task_ids: string[]
-  total_cost_usd: number
-  new_total_spent_usd: number
-  workflow_id: string | null
 }
 
 // ── Query keys ───────────────────────────────────────────────────────────
@@ -228,11 +221,12 @@ export function useDispatchApproved(missionId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () =>
-      api.post<DispatchApprovedResult>(
+      api.post<MissionRunResponse>(
         `/missions/${missionId}/plan/dispatch`,
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: planKeys.plan(missionId) })
+      qc.invalidateQueries({ queryKey: ['mission-runs', missionId] })
     },
   })
 }

@@ -1,5 +1,5 @@
 /**
- * Workflow, schedule, and architect types.
+ * Workflow and architect types.
  */
 
 // Workflow types
@@ -136,46 +136,6 @@ export interface MissionWorkflow {
   designed_by: string
   locked_at: string | null
   edges_json: WorkflowEdge[]
-}
-
-// Workflow Schedule types
-export interface WorkflowSchedule {
-  id: string
-  workflow_definition_id: string
-  mission_id: string
-  cron_expression: string
-  timezone: string
-  enabled: boolean
-  description: string
-  budget_per_run_usd: number | null
-  max_iterations: number | null
-  iteration_count: number
-  cooldown_seconds: number
-  last_fired_at: string | null
-  next_fire_at: string | null
-  created_by: string
-  created_at: string
-  updated_at: string
-}
-
-export interface WorkflowScheduleCreateRequest {
-  workflow_definition_id: string
-  cron_expression: string
-  timezone?: string
-  description?: string
-  budget_per_run_usd?: number
-  max_iterations?: number
-  cooldown_seconds?: number
-}
-
-export interface WorkflowScheduleUpdateRequest {
-  cron_expression?: string
-  timezone?: string
-  enabled?: boolean
-  description?: string
-  budget_per_run_usd?: number | null
-  max_iterations?: number | null
-  cooldown_seconds?: number
 }
 
 // Workflow run record (from /workflow-runs API)

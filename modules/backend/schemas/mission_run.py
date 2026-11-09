@@ -114,6 +114,7 @@ class MissionRunDetailResponse(BaseModel):
     """GET /missions/{id}/runs/{run_id_or_seq} body. 88.4.8 adds gates."""
 
     run: MissionRunResponse
+    execution_record_id: str | None
     digest: MissionRunDigestResponse | None
     tasks: list[TaskSummary]
 

@@ -183,12 +183,14 @@ class MissionRunService(BaseService):
     async def get_run_detail(
         self, mission_id: str, run_id_or_sequence: str
     ) -> MissionRunDetailResponse:
-        """The run with its digest and owned tasks, within the mission (88.4.8 adds gates)."""
+        """The run with its ExecutionRecord id, digest and owned tasks (88.4.8 adds gates)."""
         run = await self.get_run(mission_id, run_id_or_sequence)
+        record = await self._records.get_by_mission_run(run.id)
         digest = await self._digests.get_by_run(run.id)
         tasks = await self._tasks.list_by_run(run.id)
         return MissionRunDetailResponse(
             run=MissionRunResponse.model_validate(run),
+            execution_record_id=record.id if record else None,
             digest=MissionRunDigestResponse.model_validate(digest) if digest else None,
             tasks=[TaskSummary.model_validate(task) for task in tasks],
         )

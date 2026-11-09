@@ -1,28 +1,18 @@
 import { useState } from 'react'
 import { X, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useRunObjective } from '@/hooks/use-executions'
+import { useStartMissionRun } from '@/hooks/use-mission-runs'
 import { Button } from '@/components/ui/button'
 import { DialogFrame } from '@/components/ui/dialog-frame'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Select } from '@/components/ui/select'
 
 interface RunModalProps {
   missionId: string
   workflowName?: string
   missionBrief?: string
   onClose: () => void
-  onStarted: (planId: string) => void
+  onStarted: (runId: string) => void
 }
-
-const GATE_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'interactive', label: 'Interactive (step-through)' },
-  { value: 'manual', label: 'Manual (HTTP approval)' },
-  { value: 'ai_assisted', label: 'AI Assisted' },
-  { value: 'autonomous', label: 'Autonomous' },
-]
 
 export function RunModal({
   missionId,
@@ -31,13 +21,11 @@ export function RunModal({
   onClose,
   onStarted,
 }: RunModalProps) {
-  const runObjective = useRunObjective(missionId)
+  const startRun = useStartMissionRun(missionId)
 
   const [objective, setObjective] = useState(
     workflowName ? `Execute workflow: ${workflowName}` : '',
   )
-  const [budget, setBudget] = useState('')
-  const [gateMode, setGateMode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,21 +35,11 @@ export function RunModal({
     }
 
     try {
-      const result = await runObjective.mutateAsync({
-        objective: objective.trim(),
-        gate_mode: gateMode || undefined,
-        budget_ceiling_usd: budget ? parseFloat(budget) : undefined,
-      })
-
-      toast.success('Objective dispatched — streaming progress via console')
-      onStarted(result.plan_id)
+      const run = await startRun.mutateAsync({ objective: objective.trim() })
+      toast.success(`Run #${run.sequence} started — streaming progress via console`)
+      onStarted(run.id)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start run'
-      if (msg.includes('in-progress')) {
-        toast.error('Plan has tasks in progress — wait for completion first')
-      } else {
-        toast.error(msg)
-      }
+      toast.error(err instanceof Error ? err.message : 'Failed to start run')
     }
   }
 
@@ -108,42 +86,13 @@ export function RunModal({
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            Budget (USD)
-          </label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            value={budget}
-            onChange={(e) => setBudget(e.target.value)}
-            placeholder="Default from mission"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium">Gate Mode</label>
-          <Select
-            value={gateMode}
-            onChange={(e) => setGateMode(e.target.value)}
-          >
-            {GATE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={runObjective.isPending}>
+          <Button type="submit" disabled={startRun.isPending}>
             <Play className="mr-2 h-4 w-4" />
-            {runObjective.isPending ? 'Planning...' : 'Start Run'}
+            {startRun.isPending ? 'Starting...' : 'Start Run'}
           </Button>
         </div>
       </form>

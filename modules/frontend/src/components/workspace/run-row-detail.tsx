@@ -1,11 +1,15 @@
 /**
- * RunRowDetail — what a run row expands to: summary, objective, tasks,
- * decisions and artifacts, plus the buttons that open the Events, Output and
- * Cost views in the run detail panel.
+ * RunRowDetail — what a mission run row expands to: summary, objective,
+ * tasks, digest, decisions and artifacts, plus the buttons that open the
+ * Tasks, Events, Output and Cost views in the run detail panel. Events,
+ * Output and Cost read the run's execution record, whose id comes from the
+ * run detail response.
  */
 
-import { DollarSign, FileText, List, Package } from 'lucide-react'
+import { ClipboardList, DollarSign, FileText, List, Package } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useExecution, useExecutionDecisions } from '@/hooks/use-executions'
+import { ACTIVE_RUN_STATUSES, useMissionRun } from '@/hooks/use-mission-runs'
 import type { MissionArtifact } from '@/hooks/use-mission-artifacts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,32 +18,40 @@ import { Spinner } from '@/components/ui/spinner'
 import { StatusIcon } from '@/components/ui/status-icon'
 import type { RunDetailView } from '@/components/workspace/run-detail-panel'
 import { cn } from '@/lib/cn'
-import { fmtCost } from '@/lib/format'
+import { ROUTES } from '@/lib/constants'
+import { fmtCost, statusLabel } from '@/lib/format'
 import { formatDuration } from '@/lib/format-date'
 import { styleFor, taskTone } from '@/lib/status-tone'
 import { TONE_BOX } from '@/lib/tone-class'
 
 type ViewType = RunDetailView['type']
 
-const VIEW_BUTTONS: { type: ViewType; label: string; icon: typeof List }[] = [
-  { type: 'events', label: 'Events', icon: List },
-  { type: 'output', label: 'Output', icon: FileText },
-  { type: 'cost', label: 'Cost', icon: DollarSign },
+const VIEW_BUTTONS: { type: ViewType; label: string; icon: typeof List; needsRecord: boolean }[] = [
+  { type: 'run', label: 'Tasks', icon: ClipboardList, needsRecord: false },
+  { type: 'events', label: 'Events', icon: List, needsRecord: true },
+  { type: 'output', label: 'Output', icon: FileText, needsRecord: true },
+  { type: 'cost', label: 'Cost', icon: DollarSign, needsRecord: true },
 ]
 
+const NO_ARTIFACTS: MissionArtifact[] = []
+
 export function RunRowDetail({
-  executionId,
-  artifacts,
+  missionId,
+  runId,
+  artifactsByExecution,
   activeDetail,
   onOpenDetail,
 }: {
-  executionId: string
-  artifacts: MissionArtifact[]
+  missionId: string
+  runId: string
+  artifactsByExecution: Map<string, MissionArtifact[]>
   activeDetail?: RunDetailView | null
   onOpenDetail?: (view: RunDetailView) => void
 }) {
-  const { data: detail, isLoading } = useExecution(executionId)
-  const { data: decisions } = useExecutionDecisions(executionId)
+  const { data: detail, isLoading } = useMissionRun(missionId, runId)
+  const executionId = detail?.execution_record_id ?? null
+  const { data: record } = useExecution(executionId ?? undefined)
+  const { data: decisions } = useExecutionDecisions(executionId ?? undefined)
 
   if (isLoading) {
     return (
@@ -50,54 +62,65 @@ export function RunRowDetail({
   }
   if (!detail) return null
 
+  const { run, tasks, digest } = detail
+  const artifacts = executionId ? (artifactsByExecution.get(executionId) ?? NO_ARTIFACTS) : NO_ARTIFACTS
+  const base = { missionId, runId, executionId }
   const views: Record<ViewType, RunDetailView> = {
-    events: { type: 'events', executionId },
-    output: {
-      type: 'output',
-      executionId,
-      content: detail.execution_outcome_json ?? undefined,
-    },
-    cost: { type: 'cost', executionId },
+    run: { type: 'run', ...base },
+    events: { type: 'events', ...base },
+    output: { type: 'output', ...base, content: record?.execution_outcome_json ?? undefined },
+    cost: { type: 'cost', ...base },
   }
 
   return (
     <div className="flex flex-col gap-3 border-t border-line bg-raised/40 px-4 py-3">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
-        <MetricTile label="Cost" value={fmtCost(detail.total_cost_usd)} />
-        <MetricTile label="Duration" value={formatDuration(detail.started_at, detail.completed_at)} />
-        <MetricTile label="Tasks" value={String(detail.task_executions.length)} />
-        <MetricTile label="Decisions" value={String(detail.decisions.length)} />
+        <MetricTile label="Cost" value={fmtCost(run.cost_usd)} />
+        <MetricTile label="Duration" value={formatDuration(run.started_at, run.ended_at)} />
+        <MetricTile label="Tasks" value={String(tasks.length)} />
+        <MetricTile label="Iterations" value={String(run.iteration_count)} />
+        {decisions && <MetricTile label="Decisions" value={String(decisions.length)} />}
         {artifacts.length > 0 && <MetricTile label="Artifacts" value={String(artifacts.length)} />}
       </div>
 
-      {detail.objective_statement && (
+      {run.objective && (
         <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
-          {detail.objective_statement}
+          {run.objective}
         </p>
       )}
 
-      {detail.task_executions.length > 0 && (
+      {(run.status_reason || run.status_detail) && (
+        <p className="text-xs text-subtle [overflow-wrap:anywhere]">
+          {run.status_reason && statusLabel(run.status_reason)}
+          {run.status_reason && run.status_detail && ' · '}
+          {run.status_detail}
+        </p>
+      )}
+
+      {tasks.length > 0 && (
         <div className="flex flex-col gap-1">
-          {detail.task_executions.map((task) => {
-            // Task executions end as completed / failed / skipped (TaskExecutionStatus), a
-            // different set from the run's own status, so they use taskTone, not runTone.
-            const style = styleFor(taskTone, task.status, 'task execution')
-            return (
-              <div
-                key={task.id}
-                className="flex items-center justify-between gap-3 rounded-card bg-raised px-3 py-2 text-xs"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <StatusIcon {...style} />
-                  <span className="truncate font-medium">{task.agent_name}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3 font-mono text-subtle">
-                  {task.duration_seconds ? <span>{task.duration_seconds.toFixed(1)}s</span> : null}
-                  <span>{fmtCost(task.cost_usd)}</span>
-                </div>
+          {tasks.map((task) => (
+            <div
+              key={task.id}
+              className="flex items-center justify-between gap-3 rounded-card bg-raised px-3 py-2 text-xs"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <StatusIcon {...styleFor(taskTone, task.status, 'task')} />
+                <span className="shrink-0 font-medium">{task.agent}</span>
+                <span className="truncate text-subtle" title={task.description}>
+                  {task.description}
+                </span>
               </div>
-            )
-          })}
+              <span className="shrink-0 font-mono text-subtle">{fmtCost(task.cost_usd)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {digest && (
+        <div className="rounded-card bg-raised px-3 py-2 text-xs">
+          <p className="text-2xs font-medium text-muted-foreground">Digest</p>
+          <p className="mt-0.5 line-clamp-4 leading-relaxed [overflow-wrap:anywhere]">{digest.summary}</p>
         </div>
       )}
 
@@ -136,19 +159,28 @@ export function RunRowDetail({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
-        {VIEW_BUTTONS.map(({ type, label, icon: Icon }) => (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {VIEW_BUTTONS.map(({ type, label, icon: Icon, needsRecord }) => (
           <Button
             key={type}
             variant={activeDetail?.type === type ? 'default' : 'secondary'}
             size="sm"
             aria-pressed={activeDetail?.type === type}
+            disabled={needsRecord && !executionId}
             onClick={() => onOpenDetail?.(views[type])}
           >
             <Icon className="h-3 w-3" />
             {label}
           </Button>
         ))}
+        {executionId && ACTIVE_RUN_STATUSES.has(run.status) && (
+          <Link
+            to={ROUTES.MISSION_RUN_LIVE(missionId, executionId)}
+            className="ml-1 rounded-chip px-1.5 text-xs text-warning transition-colors duration-150 hover:bg-warning/10"
+          >
+            Live
+          </Link>
+        )}
       </div>
     </div>
   )
