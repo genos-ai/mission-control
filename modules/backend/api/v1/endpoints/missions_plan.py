@@ -31,7 +31,6 @@ from modules.backend.events.bus import SessionEventBus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.mission_plan import (
     AddPlanTaskRequest,
-    DispatchApprovedResponse,
     MissionPlanRefineRequest,
     MissionPlanResponse,
     MissionPlanStatus,
@@ -40,7 +39,9 @@ from modules.backend.schemas.mission_plan import (
     TaskStatus,
     TaskTransitionResponse,
 )
+from modules.backend.schemas.mission_run import MissionRunResponse, MissionRunTrigger
 from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
+from modules.backend.services.mission_run import MissionRunService
 
 # Plan 42 §3.5: every mutating endpoint gets an event bus so
 # MissionPlanService can publish mission_plan.* events.
@@ -270,7 +271,7 @@ async def run_objective(
 @router.post(
     "/{mission_id}/plan/dispatch",
     response_model=ApiResponse,
-    summary="Dispatch all approved tasks as a single run",
+    summary="Start a mission run for the approved backlog",
 )
 async def dispatch_approved(
     mission_id: str,
@@ -279,28 +280,23 @@ async def dispatch_approved(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Start a Temporal MissionRunWorkflow for all approved tasks.
+    """Start a mission run that dispatches the approved backlog.
 
-    Returns immediately with the workflow ID. The workflow handles
-    the full supervisor loop — execute, evaluate, advance/refine/
-    escalate — repeating until done or a circuit breaker trips.
+    Returns the PENDING run; its MissionRunWorkflow adopts the approved
+    tasks when it begins. 409 when another run of the mission is active.
     """
-    await require_existing_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
 
-    from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-
-    plan_svc = MissionPlanService(db, event_bus=event_bus)
-    plan = await plan_svc.get_or_create_plan(mission_id)
-
-    orchestrator = MissionPlanOrchestrator(db, event_bus=event_bus)
-    result = await orchestrator.dispatch_autonomous(
-        plan.id,
-        session_id=str(request_id),
+    run = await MissionRunService(db, event_bus).start_run(
+        mission_id,
+        trigger=MissionRunTrigger.MANUAL,
+        objective=None,
+        user_id=current_user.id,
+        session_id=None,
     )
-    response = DispatchApprovedResponse(**result)
     return ApiResponse(
         success=True,
-        data=response.model_dump(),
+        data=MissionRunResponse.model_validate(run).model_dump(mode="json"),
         metadata={"request_id": request_id},
     )
 

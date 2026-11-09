@@ -358,22 +358,24 @@ class FollowupVerifier:
     async def check_fire_matching_success(self) -> None:
         """[C] fire_matching finds + fires the matching followup."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.events.types import MissionPlanDispatchedEvent
+        from modules.backend.events.mission_run_types import MissionRunStatusChangedEvent
         from modules.backend.services.session_followup import SessionFollowupService
 
         runner = _RecordingRunner()
         bus = _RecordingBus()
 
-        # Use MissionPlanDispatchedEvent as a stand-in for the Phase C
+        # Use MissionRunStatusChangedEvent as a stand-in for the Phase C
         # MissionPlanRunCompletedEvent — the primitive is event-agnostic.
         # It only cares about event_type + payload.model_dump().
-        event = MissionPlanDispatchedEvent(
+        event = MissionRunStatusChangedEvent(
             session_id=uuid.UUID(self._session_id),
             source="verify",
             mission_id=self._mission_id,
-            plan_id="plan-test",
-            execution_record_id=f"exec-{self._run_tag}",
-            dispatched_task_ids=["t1", "t2"],
+            mission_run_id=f"exec-{self._run_tag}",
+            from_status="running",
+            to_status="succeeded",
+            reason=None,
+            detail="plan-test",
         )
 
         # First, schedule a followup that subscribes to this event type.
@@ -382,8 +384,8 @@ class FollowupVerifier:
             row = await svc.schedule_followup(
                 session_id=self._session_id,
                 mission_id=self._mission_id,
-                trigger_event_types=["mission_plan.dispatched"],
-                prompt_template=("Dispatched run {execution_record_id} on plan {plan_id}."),
+                trigger_event_types=["mission_run.status_changed"],
+                prompt_template=("Run {mission_run_id} changed status: {detail}."),
                 created_by_agent=f"test.fire.{self._run_tag}",
             )
             self._created_followup_ids.append(row.id)
@@ -417,7 +419,7 @@ class FollowupVerifier:
             return
         if "plan-test" not in called_prompt:
             self._fail(
-                "Prompt template rendered plan_id",
+                "Prompt template rendered detail",
                 called_prompt,
             )
             return
@@ -459,7 +461,7 @@ class FollowupVerifier:
     async def check_fire_matching_filter_mismatch(self) -> None:
         """[D] trigger_filter literal-match excludes non-matching events."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.events.types import MissionPlanDispatchedEvent
+        from modules.backend.events.mission_run_types import MissionRunStatusChangedEvent
         from modules.backend.services.session_followup import SessionFollowupService
 
         runner = _RecordingRunner()
@@ -469,22 +471,24 @@ class FollowupVerifier:
             row = await svc.schedule_followup(
                 session_id=self._session_id,
                 mission_id=self._mission_id,
-                trigger_event_types=["mission_plan.dispatched"],
-                trigger_filter={"plan_id": "not-our-plan"},
+                trigger_event_types=["mission_run.status_changed"],
+                trigger_filter={"detail": "not-our-plan"},
                 prompt_template="should not fire",
                 created_by_agent=f"test.filter.{self._run_tag}",
             )
             self._created_followup_ids.append(row.id)
             await db.commit()
 
-        # Fire an event whose plan_id does NOT match the filter.
-        event = MissionPlanDispatchedEvent(
+        # Fire an event whose detail does NOT match the filter.
+        event = MissionRunStatusChangedEvent(
             session_id=uuid.UUID(self._session_id),
             source="verify",
             mission_id=self._mission_id,
-            plan_id="different-plan",
-            execution_record_id=f"exec-{self._run_tag}",
-            dispatched_task_ids=[],
+            mission_run_id=f"exec-{self._run_tag}",
+            from_status="running",
+            to_status="succeeded",
+            reason=None,
+            detail="different-plan",
         )
         async with get_async_session() as db:
             svc = SessionFollowupService(db)
@@ -514,20 +518,22 @@ class FollowupVerifier:
     async def check_consumed_rows_not_re_fired(self) -> None:
         """[E] A consumed row does not re-fire on a new event."""
         from modules.backend.core.database import get_async_session
-        from modules.backend.events.types import MissionPlanDispatchedEvent
+        from modules.backend.events.mission_run_types import MissionRunStatusChangedEvent
         from modules.backend.services.session_followup import SessionFollowupService
 
         # Re-fire the same event type that check [C] already consumed
         # a row for. The check-[C] row should NOT be in the new fired
         # list since consumed_at is non-NULL.
         runner = _RecordingRunner()
-        event = MissionPlanDispatchedEvent(
+        event = MissionRunStatusChangedEvent(
             session_id=uuid.UUID(self._session_id),
             source="verify",
             mission_id=self._mission_id,
-            plan_id="re-fire-test",
-            execution_record_id=f"exec-refire-{self._run_tag}",
-            dispatched_task_ids=[],
+            mission_run_id=f"exec-refire-{self._run_tag}",
+            from_status="running",
+            to_status="succeeded",
+            reason=None,
+            detail="re-fire-test",
         )
         async with get_async_session() as db:
             svc = SessionFollowupService(db)

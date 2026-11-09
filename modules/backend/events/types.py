@@ -502,22 +502,6 @@ class MissionPlanGateModeChangedEvent(SessionEvent):
     to_mode: str | None = None
 
 
-class MissionPlanDispatchedEvent(SessionEvent):
-    """The plan dispatched a run of approved tasks.
-
-    Emitted by `MissionPlanService.dispatch_approved` when it starts
-    handing the derived TaskPlan to `handle_mission`. A matching
-    `system.execution.completed` arrives when the run finishes; the
-    plan tab joins the two via `execution_record_id`.
-    """
-
-    event_type: str = "mission_plan.dispatched"
-    mission_id: str
-    plan_id: str
-    execution_record_id: str | None = None
-    dispatched_task_ids: list[str] = Field(default_factory=list)
-
-
 # =============================================================================
 # System / Mission-level Events
 # =============================================================================
@@ -814,7 +798,6 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "mission_plan.refined": MissionPlanRefinedEvent,
     "mission_plan.task.status_changed": MissionPlanTaskStatusChangedEvent,
     "mission_plan.gate_mode_changed": MissionPlanGateModeChangedEvent,
-    "mission_plan.dispatched": MissionPlanDispatchedEvent,
     "user.message.sent": UserMessageEvent,
     "user.approval.granted": UserApprovalEvent,
     "agent.thinking.started": AgentThinkingEvent,

@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 
 
 async def handle_mission(
-    mission_run_id: str,
+    execution_label: str,
     mission_brief: str,
     *,
     session_service: SessionServiceProtocol,
@@ -105,7 +105,7 @@ async def handle_mission(
     logger.info(
         "TRACE >>> handle_mission entered",
         extra={
-            "mission_run_id": mission_run_id,
+            "execution_label": execution_label,
             "mission_id": mission_id,
             "has_precomputed_plan": precomputed_plan is not None,
             "task_count": len(precomputed_plan.tasks) if precomputed_plan else 0,
@@ -150,7 +150,7 @@ async def handle_mission(
             await _emit(
                 event_bus,
                 SystemEvent,
-                session_id=session_id or mission_run_id,
+                session_id=session_id or execution_label,
                 source="mission_dispatch",
                 level="warning",
                 message=f"Context loading failed (non-fatal): {exc}",
@@ -172,7 +172,7 @@ async def handle_mission(
             await _emit(
                 event_bus,
                 SystemEvent,
-                session_id=session_id or mission_run_id,
+                session_id=session_id or execution_label,
                 source="mission_dispatch",
                 level="warning",
                 message=f"Failure history loading failed (non-fatal): {exc}",
@@ -204,14 +204,14 @@ async def handle_mission(
                 "Precomputed plan failed validation: %s",
                 last_error,
                 extra={
-                    "mission_id": mission_id or mission_run_id,
+                    "mission_id": mission_id or execution_label,
                     "errors": validation.errors,
                 },
             )
             await _emit(
                 event_bus,
                 SystemEvent,
-                session_id=session_id or mission_run_id,
+                session_id=session_id or execution_label,
                 source="mission_dispatch",
                 level="error",
                 message=f"Plan validation failed: {last_error}",
@@ -241,7 +241,7 @@ async def handle_mission(
                     upstream_context,
                     event_bus=event_bus,
                     session_id=session_id,
-                    mission_id=mission_id or mission_run_id,
+                    mission_id=mission_id or execution_label,
                     project_context=project_context,
                     recent_failures=recent_failures,
                 )
@@ -262,7 +262,7 @@ async def handle_mission(
                     extra={
                         "attempt": attempt + 1,
                         "errors": validation.errors,
-                        "mission_id": mission_run_id,
+                        "mission_id": execution_label,
                     },
                 )
                 planning_brief = _append_validation_feedback(
@@ -288,7 +288,7 @@ async def handle_mission(
                     extra={
                         "attempt": attempt + 1,
                         "error": last_error,
-                        "mission_id": mission_run_id,
+                        "mission_id": execution_label,
                         "raw_plan_preview": str(raw_plan)[:500] if raw_plan else None,
                     },
                 )
@@ -321,7 +321,7 @@ async def handle_mission(
             ),
         )
         return ExecutionOutcome(
-            mission_id=mission_run_id,
+            mission_id=execution_label,
             status=ExecutionStatus.FAILED,
             summary=last_error or "Planning failed",
             abort_reason=last_error or "Planning failed after retries",
@@ -347,7 +347,9 @@ async def handle_mission(
                 mission_plan.status = "ACTIVE"
 
             orchestrator = MissionPlanOrchestrator(db_session, event_bus=event_bus)
-            await orchestrator._persist_plan(mission_plan, plan, source="handle_mission")
+            await orchestrator._persist_plan(
+                mission_plan, plan, source="handle_mission", mission_run_id=None
+            )
             await db_session.flush()
 
             logger.info(
@@ -377,12 +379,12 @@ async def handle_mission(
                 "image": container_image or "code-workspace:latest",
                 "git_aware": True,
                 "repo_root": repo_root,
-                "branch_name": f"agent/{(mission_id or mission_run_id)[:8]}/dispatch",
+                "branch_name": f"agent/{(mission_id or execution_label)[:8]}/dispatch",
             }
             if extra_volumes:
                 container_config["extra_volumes"] = extra_volumes
             env_handle = await env_service.get_or_create_for_mission(
-                mission_id=mission_id or mission_run_id,
+                mission_id=mission_id or execution_label,
                 mode=execution_mode,
                 config=container_config,
             )
@@ -403,7 +405,7 @@ async def handle_mission(
             await _emit(
                 event_bus,
                 SystemEvent,
-                session_id=session_id or mission_run_id,
+                session_id=session_id or execution_label,
                 source="mission_dispatch",
                 level="warning",
                 message=f"Environment provisioning failed, falling back to local: {exc}",
@@ -417,8 +419,8 @@ async def handle_mission(
         roster=roster,
         execute_agent_fn=_make_agent_executor(
             event_bus,
-            session_id=session_id or mission_run_id,
-            mission_id=mission_id or mission_run_id,
+            session_id=session_id or execution_label,
+            mission_id=mission_id or execution_label,
             environment_handle=env_handle,
             current_user_id=None,  # Plan 55: resolved in Phase B
         ),
@@ -428,7 +430,7 @@ async def handle_mission(
         context_curator=context_curator,
         context_assembler=context_assembler,
         event_bus=event_bus,
-        session_id=session_id or mission_run_id,
+        session_id=session_id or execution_label,
         execution_mode=execution_mode,
         prior_outputs=prior_outputs,
     )
@@ -445,7 +447,7 @@ async def handle_mission(
     if db_session is not None:
         record_id = await persist_mission_results(
             outcome,
-            session_id=session_id or mission_run_id,
+            session_id=session_id or execution_label,
             roster_name=roster_name,
             thinking_trace=thinking_trace,
             mission_id=mission_id,

@@ -79,6 +79,11 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         result = await self.session.execute(query.order_by(ExecutionRecord.created_at))
         return list(result.scalars().all())
 
+    async def get_by_mission_run(self, mission_run_id: str) -> ExecutionRecord | None:
+        """The mission run's single ExecutionRecord (uq_execution_records_run)."""
+        stmt = select(ExecutionRecord).where(ExecutionRecord.mission_run_id == mission_run_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def get_by_session(self, session_id: str) -> list[ExecutionRecord]:
         """Get all execution records for a session, newest first."""
         stmt = (

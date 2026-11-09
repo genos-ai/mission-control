@@ -150,7 +150,7 @@ async def _action_execute(
 
         session_svc = SessionService(db)
         outcome = await handle_mission(
-            mission_run_id=f"mission-{record.session_id}",
+            execution_label=f"mission-{record.session_id}",
             mission_brief=record.objective_statement or "",
             session_service=session_svc,
             event_bus=NoOpEventBus(),
@@ -213,7 +213,7 @@ async def _action_run(
 
         session_svc = SessionService(db)
         outcome = await handle_mission(
-            mission_run_id=f"mission-{session_id}",
+            execution_label=f"mission-{session_id}",
             mission_brief=objective,
             session_service=session_svc,
             event_bus=NoOpEventBus(),

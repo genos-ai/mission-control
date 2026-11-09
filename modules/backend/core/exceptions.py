@@ -94,6 +94,13 @@ class MissionRunStateError(ApplicationError):
         super().__init__(message, code="BIZ_INVALID_STATE")
 
 
+class RunStartRejectedError(ValidationError):
+    """Raised when begin refuses a run: invalid gate mode, or an owner who is not a user.
+
+    Non-retryable: the class name is listed in temporal NON_RETRYABLE (Plan 88 3.3.4).
+    """
+
+
 class DatabaseError(ApplicationError):
     """Raised when a database operation fails."""
 

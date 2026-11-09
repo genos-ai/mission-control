@@ -43,6 +43,8 @@ async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
         _session=SimpleNamespace(),
         _event_bus=MagicMock(),
     )
+    run_repo = MagicMock()
+    run_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(plan_id=plan.id))
 
     with (
         patch(
@@ -54,10 +56,17 @@ async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
             "materialize_task_plan",
             MagicMock(),
         ),
+        patch.object(
+            mission_plan_dispatch, "MissionRunRepository", MagicMock(return_value=run_repo)
+        ),
         pytest.raises(ValidationError, match="budget exhausted"),
     ):
         await mission_plan_dispatch.dispatch_approved(
-            orchestrator, plan.id, str(uuid.uuid4()), temporal_workflow_id="mission-run-test"
+            orchestrator,
+            str(uuid.uuid4()),
+            str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()),
+            execution_record_id=str(uuid.uuid4()),
         )
 
 

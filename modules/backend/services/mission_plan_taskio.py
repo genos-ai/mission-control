@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.models.task import TaskStatus
+from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
 from modules.backend.schemas.task_plan import TaskPlan
 
@@ -22,16 +23,19 @@ if TYPE_CHECKING:
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
 
-def materialize_plan_dict(plan: MissionPlan) -> dict | None:
-    """Build a TaskPlan-shaped dict from the plan's Task rows.
+def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> dict | None:
+    """Build a TaskPlan-shaped dict from the plan's Task rows in scope.
 
-    Used to feed the planning agent's current_plan parameter during
-    refinement. Returns None if the plan has no tasks.
+    In scope are the run's tasks and the backlog (mission_run_id IS NULL);
+    a None mission_run_id means the backlog only. Used to feed the planning
+    agent's current_plan parameter during refinement. Returns None if no
+    task is in scope.
     """
-    if not plan.tasks:
+    scoped = [t for t in plan.tasks if t.mission_run_id in (mission_run_id, None)]
+    if not scoped:
         return None
     tasks = []
-    for t in plan.tasks:
+    for t in scoped:
         dep_ids = [d.depends_on_id for d in t.dependencies]
         tasks.append(
             {
@@ -57,12 +61,12 @@ def materialize_plan_dict(plan: MissionPlan) -> dict | None:
     }
 
 
-def materialize_task_plan(plan: MissionPlan) -> TaskPlan:
-    """Materialize Task rows into a validated TaskPlan model.
+def materialize_task_plan(plan: MissionPlan, *, mission_run_id: str | None) -> TaskPlan:
+    """Materialize the Task rows in scope (see materialize_plan_dict) into a TaskPlan.
 
-    Raises ValidationError if the plan has no tasks.
+    Raises ValidationError if no task is in scope.
     """
-    plan_dict = materialize_plan_dict(plan)
+    plan_dict = materialize_plan_dict(plan, mission_run_id=mission_run_id)
     if plan_dict is None:
         raise ValidationError(
             f"MissionPlan {plan.id} has no tasks yet. " f"Refine the plan before dispatching."
@@ -70,16 +74,37 @@ def materialize_task_plan(plan: MissionPlan) -> TaskPlan:
     return TaskPlan.model_validate(plan_dict)
 
 
+async def resolve_run_scope(
+    orchestrator: MissionPlanOrchestrator,
+    mission_id: str,
+    mission_run_id: str | None,
+) -> str | None:
+    """The run a plan change is scoped to: the given run, else the mission's active run.
+
+    So tasks created by a Director refine during an active run join that run.
+    None means no run is active and the change touches the backlog only.
+    """
+    if mission_run_id is not None:
+        return mission_run_id
+    active = await MissionRunRepository(orchestrator._session).get_active_for_mission(mission_id)
+    return active.id if active is not None else None
+
+
 async def reconcile_tasks(
     orchestrator: MissionPlanOrchestrator,
     plan: MissionPlan,
     new_plan: TaskPlan,
+    *,
+    mission_run_id: str | None,
 ) -> dict[str, int]:
-    """Reconcile Task rows against a new TaskPlan (Plan 72).
+    """Reconcile the run's and the backlog's Task rows against a new TaskPlan.
 
-    Delegates to TaskRepository.reconcile_tasks for the core logic.
+    Delegates to TaskRepository.reconcile_tasks for the core logic; tasks of
+    other runs are never touched, and new tasks join the run. When
+    mission_run_id is None the mission's active run, if any, is the scope.
     Also rebuilds task_dependencies from the new plan's dependency edges.
     """
+    mission_run_id = await resolve_run_scope(orchestrator, plan.mission_id, mission_run_id)
     # Convert TaskDefinition schemas to task dicts for the repository
     new_task_defs: list[dict] = []
     for task_def in new_plan.tasks:
@@ -104,6 +129,8 @@ async def reconcile_tasks(
         plan.id,
         plan.mission_id,
         new_task_defs,
+        scope_run_id=mission_run_id,
+        assign_run_id=mission_run_id,
     )
 
     # Rebuild dependency graph using task IDs we already know

@@ -167,18 +167,6 @@ class RunObjectiveResponse(BaseModel):
     workflow_id: str | None = None
 
 
-class DispatchApprovedResponse(BaseModel):
-    """Result of POST /missions/:id/plan/dispatch."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    outcome_status: str
-    dispatched_task_ids: list[str] = Field(default_factory=list)
-    total_cost_usd: float = 0.0
-    new_total_spent_usd: float = 0.0
-    workflow_id: str | None = None
-
-
 class TaskTransitionResponse(BaseModel):
     """Result of an approve / reject / retry call."""
 

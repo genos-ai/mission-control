@@ -9,11 +9,16 @@ never create another gateway.
 import enum
 
 from temporalio.client import Client, WorkflowExecutionStatus, WorkflowHandle
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
 from modules.backend.core.exceptions import ExternalServiceError
 from modules.backend.core.logging import get_logger
 from modules.backend.temporal.client import get_temporal_client
+from modules.backend.temporal.mission_run_models import MissionRunWorkflowInput
+from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 logger = get_logger(__name__)
 
@@ -72,3 +77,23 @@ class TemporalWorkflowGateway:
                 extra={"workflow_id": workflow_id, "reason": reason},
             )
         return current
+
+    async def start_mission_run(self, inp: MissionRunWorkflowInput) -> None:
+        """Start the run's MissionRunWorkflow; a second start for the same run is rejected."""
+        workflow_id = mission_run_workflow_id(inp.mission_run_id)
+        try:
+            await self._client.start_workflow(
+                MissionRunWorkflow.run,
+                inp,
+                id=workflow_id,
+                task_queue=inp.config.task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            )
+        except (RPCError, WorkflowAlreadyStartedError) as exc:
+            raise ExternalServiceError(
+                f"Temporal start failed for workflow {workflow_id}: {exc}"
+            ) from exc
+        logger.info(
+            "Mission run workflow started",
+            extra={"workflow_id": workflow_id, "mission_run_id": inp.mission_run_id},
+        )

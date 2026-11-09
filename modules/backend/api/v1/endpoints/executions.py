@@ -301,7 +301,7 @@ async def execute_execution(
 
                 session_svc = SessionService(bg_db)
                 await handle_mission(
-                    mission_run_id=f"mission-{rec.session_id}",
+                    execution_label=f"mission-{rec.session_id}",
                     mission_brief=rec.objective_statement or "",
                     session_service=session_svc,
                     event_bus=event_bus,

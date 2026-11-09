@@ -123,7 +123,9 @@ class TestReconcileTasks:
             ],
         )
 
-        stats = await mission_plan_taskio.reconcile_tasks(orchestrator, plan, new_plan)
+        stats = await mission_plan_taskio.reconcile_tasks(
+            orchestrator, plan, new_plan, mission_run_id=None
+        )
 
         assert stats == {"cancelled": 1, "new": 1, "updated": 1}
 
@@ -172,7 +174,7 @@ class TestPersistPlan:
             ],
         )
 
-        stats = await orchestrator._persist_plan(plan, candidate)
+        stats = await orchestrator._persist_plan(plan, candidate, mission_run_id=None)
 
         assert stats["new"] == 1
         assert plan.version == original_version + 1

@@ -1,8 +1,9 @@
-"""Tests for MissionPlanOrchestrator.run_objective() — Plan 62 unified execution path.
+"""Tests for the MissionPlanService helpers the Plan 62 execution path used.
 
-Tests concurrency guard, gate mode handling, async dispatch, budget
-propagation, and approve_all_proposed. Uses real db_session per project
-testing principles.
+run_objective itself was deleted in Plan 88 step 88.1.7 (runs start through
+MissionRunService). Covers the concurrency guard, approve_all_proposed and
+the plan budget inherited from the mission. Uses real db_session per
+project testing principles.
 
 Plan 72 contract: tasks are first-class rows in the `tasks` table with
 native UUID ids, created via TaskRepository. plan_task_states and
@@ -10,19 +11,15 @@ MissionPlan.task_plan_json no longer exist.
 """
 
 import uuid
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError
-from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.repositories.task import TaskRepository
-from modules.backend.services import mission_plan_dispatch
 from modules.backend.services.mission_plan import MissionPlanService
-from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -65,11 +62,6 @@ def service(db_session: AsyncSession) -> MissionPlanService:
     return MissionPlanService(db_session)
 
 
-@pytest.fixture
-def orchestrator(db_session: AsyncSession) -> MissionPlanOrchestrator:
-    return MissionPlanOrchestrator(db_session, event_bus=NoOpEventBus())
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -102,29 +94,6 @@ async def _create_tasks(
             await repo.set_dependencies(task.id, [tasks[-1].id])
         tasks.append(task)
     return tasks
-
-
-def _mock_refine(orchestrator, db_session, task_count, created_tasks=None):
-    """Build a refine() replacement that creates real Task rows.
-
-    Mirrors the documented refine() contract: persist PROPOSED tasks,
-    bump the plan version, and return the plan with its tasks
-    relationship freshly loaded. The explicit relationship refresh is
-    needed because the identity-mapped plan was loaded (with an empty
-    tasks collection) by get_or_create_plan earlier in the same session.
-    """
-
-    async def mock_refine(plan_id, instructions, uid, **kwargs):
-        plan = await orchestrator._repo.get_by_id(plan_id)
-        tasks = await _create_tasks(db_session, plan, task_count)
-        if created_tasks is not None:
-            created_tasks.extend(tasks)
-        plan.version += 1
-        await db_session.flush()
-        await db_session.refresh(plan, ["tasks"])
-        return plan
-
-    return mock_refine
 
 
 # ---------------------------------------------------------------------------
@@ -223,87 +192,11 @@ class TestApproveAllProposed:
 
 
 # ---------------------------------------------------------------------------
-# run_objective — interactive gate mode
+# Plan budget
 # ---------------------------------------------------------------------------
 
 
-class TestRunObjectiveInteractive:
-    @pytest.mark.asyncio
-    async def test_interactive_stops_after_refine(
-        self,
-        orchestrator: MissionPlanOrchestrator,
-        mission_id: str,
-        user_id: str,
-        db_session: AsyncSession,
-    ):
-        """Interactive gate mode creates plan but does not dispatch."""
-        mock_refine = _mock_refine(orchestrator, db_session, task_count=2)
-
-        with patch.object(orchestrator, "refine", side_effect=mock_refine):
-            result = await orchestrator.run_objective(
-                mission_id=mission_id,
-                objective="Test objective",
-                user_id=user_id,
-                gate_mode=GateMode.INTERACTIVE,
-            )
-
-        assert result["outcome_status"] == "awaiting_approval"
-        assert result["task_count"] == 2
-        assert result["dispatched_task_ids"] == []
-        assert result["total_cost_usd"] == 0.0
-
-        # Tasks stay PROPOSED — nothing was approved or dispatched
-        tasks = await TaskRepository(db_session).get_by_plan_id(result["plan_id"])
-        assert len(tasks) == 2
-        assert all(t.status == TaskStatus.PROPOSED for t in tasks)
-
-
-# ---------------------------------------------------------------------------
-# run_objective — async dispatch
-# ---------------------------------------------------------------------------
-
-
-class TestRunObjectiveDispatch:
-    @pytest.mark.asyncio
-    async def test_dispatch_returns_dispatching(
-        self,
-        orchestrator: MissionPlanOrchestrator,
-        mission_id: str,
-        user_id: str,
-        db_session: AsyncSession,
-    ):
-        """run_objective approves tasks and dispatches via Temporal."""
-        created: list[Task] = []
-        mock_refine = _mock_refine(orchestrator, db_session, task_count=1, created_tasks=created)
-
-        async def mock_temporal(*args, **kwargs):
-            return "mock-workflow-id"
-
-        with (
-            patch.object(orchestrator, "refine", side_effect=mock_refine),
-            patch.object(
-                mission_plan_dispatch, "start_temporal_run_workflow", side_effect=mock_temporal
-            ),
-        ):
-            result = await orchestrator.run_objective(
-                mission_id=mission_id,
-                objective="Quick task",
-                user_id=user_id,
-            )
-
-        assert result["outcome_status"] == "dispatching"
-        assert result["workflow_id"] == "mock-workflow-id"
-        assert result["plan_id"] is not None
-        assert result["dispatched_task_ids"] == [created[0].id]
-        assert created[0].status == TaskStatus.APPROVED
-
-
-# ---------------------------------------------------------------------------
-# run_objective — budget propagation
-# ---------------------------------------------------------------------------
-
-
-class TestRunObjectiveBudget:
+class TestPlanBudget:
     @pytest.mark.asyncio
     async def test_budget_inherited_from_mission(
         self,
@@ -314,35 +207,3 @@ class TestRunObjectiveBudget:
         """Budget ceiling propagates from mission to plan."""
         plan = await service.get_or_create_plan(mission_id)
         assert plan.budget_usd_ceiling == 10.0  # inherited from fixture
-
-    @pytest.mark.asyncio
-    async def test_budget_override(
-        self,
-        orchestrator: MissionPlanOrchestrator,
-        service: MissionPlanService,
-        mission_id: str,
-        user_id: str,
-        db_session: AsyncSession,
-    ):
-        """Explicit budget_ceiling_usd overrides mission default."""
-        mock_refine = _mock_refine(orchestrator, db_session, task_count=1)
-
-        async def mock_temporal(*args, **kwargs):
-            return "mock-workflow-id"
-
-        with (
-            patch.object(orchestrator, "refine", side_effect=mock_refine),
-            patch.object(
-                mission_plan_dispatch, "start_temporal_run_workflow", side_effect=mock_temporal
-            ),
-        ):
-            await orchestrator.run_objective(
-                mission_id=mission_id,
-                objective="Budget test",
-                user_id=user_id,
-                budget_ceiling_usd=25.0,
-            )
-
-        # Verify plan has the overridden budget
-        plan = await service.get_or_create_plan(mission_id)
-        assert plan.budget_usd_ceiling == 25.0

@@ -656,7 +656,7 @@ class WorkflowRunWavesMixin:
             from modules.backend.agents.mission_control.mission_dispatch import handle_mission
 
             outcome = await handle_mission(
-                mission_run_id=f"mission-{session_id}",
+                execution_label=f"mission-{session_id}",
                 mission_brief=objective,
                 session_service=session_svc,
                 event_bus=event_bus,

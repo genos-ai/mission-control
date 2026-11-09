@@ -163,7 +163,7 @@ async def handle(
     if mission_brief is not None:
         try:
             outcome = await handle_mission(
-                mission_run_id=f"mission-{session_id}",
+                execution_label=f"mission-{session_id}",
                 mission_brief=mission_brief,
                 session_service=session_service,
                 event_bus=event_bus,

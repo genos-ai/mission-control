@@ -266,12 +266,13 @@ class TestPersistMissionOutcome:
                 "modules.backend.agents.mission_control.persistence_bridge.persist_mission_results",
                 AsyncMock(side_effect=RuntimeError("db down")),
             ),
+            patch("redis.asyncio.Redis.from_url", MagicMock(return_value=AsyncMock())),
         ):
             with pytest.raises(RuntimeError, match="db down"):
                 await persist_mission_outcome(
                     "run-1",
                     "80d00060-470d-5db0-aa70-5adc526200ea",
-                    "default",
                     {"mission_id": "m-1", "status": "success"},
-                    None,
+                    "00000000-0000-0000-0000-000000000001",
+                    "00000000-0000-0000-0000-000000000002",
                 )

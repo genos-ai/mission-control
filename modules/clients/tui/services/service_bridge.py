@@ -150,10 +150,10 @@ class ServiceBridge:
         from modules.backend.services.session import SessionService
 
         async with SessionService.factory() as session_service:
-            mission_run_id = f"tui-{session_id}"
+            execution_label = f"tui-{session_id}"
 
             outcome = await handle_mission(
-                mission_run_id=mission_run_id,
+                execution_label=execution_label,
                 mission_brief=brief,
                 session_service=session_service,
                 event_bus=self._event_bus,

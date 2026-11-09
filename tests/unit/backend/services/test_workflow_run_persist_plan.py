@@ -50,7 +50,7 @@ async def _persist(db_session: AsyncSession, owner_id: str, gate_mode: GateMode)
     await db_session.flush()
 
     step_map = await WorkflowRunService(db_session)._persist_workflow_as_plan(
-        mission.id, _workflow()
+        mission.id, _workflow(), {}
     )
     assert len(step_map) == 2
 

@@ -284,7 +284,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         await self._session.commit()
 
         # Persist workflow steps as a TaskPlan for Kanban board visibility
-        step_task_map = await self._persist_workflow_as_plan(mission_id, workflow)
+        step_task_map = await self._persist_workflow_as_plan(
+            mission_id, workflow, context_overrides or {}
+        )
 
         logger.info(
             "DB workflow run started",
@@ -452,6 +454,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         self,
         mission_id: str,
         workflow: WorkflowSchema,
+        parameters: dict,
     ) -> dict[str, str]:
         """Convert workflow steps to a TaskPlan and persist for Kanban visibility.
 
@@ -463,38 +466,16 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         Empty dict on failure.
         """
         try:
-            import uuid as _uuid
-
             from modules.backend.models.mission_plan import GateMode
-            from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
+            from modules.backend.schemas.task_plan import TaskPlan
             from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+            from modules.backend.services.workflow_task_mapping import steps_to_task_definitions
 
-            # Map step IDs to UUIDs so Task rows get valid PKs
-            step_uuid_map = {step.id: str(_uuid.uuid4()) for step in workflow.steps}
-
-            tasks = []
-            for step in workflow.steps:
-                task_id = step_uuid_map[step.id]
-                # capability is the short form (e.g. "research.synthesizer");
-                # the roster keys agents by full name "<capability>.agent".
-                # Must match the dispatch path in workflow_run_waves.py
-                # so retry/redispatch validates against the same name.
-                agent = (
-                    f"{step.capability}.agent" if step.capability else f"workflow:{step.node_type}"
-                )
-                tasks.append(
-                    TaskDefinition(
-                        task_id=task_id,
-                        agent=agent,
-                        description=step.description or step.label or step.id,
-                        instructions=step.description or f"Workflow step: {step.id}",
-                        dependencies=[
-                            step_uuid_map[d] for d in step.depends_on if d in step_uuid_map
-                        ],
-                        inputs=TaskInputs(static=step.input or {}),
-                    )
-                )
+            tasks = steps_to_task_definitions(workflow, parameters)
+            step_uuid_map = {
+                step.id: task.task_id for step, task in zip(workflow.steps, tasks, strict=True)
+            }
 
             task_plan = TaskPlan(
                 version="1.0.0",
@@ -509,7 +490,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             plan = await plan_svc.get_or_create_plan(mission_id)
 
             orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
-            await orchestrator._persist_plan(plan, task_plan, source="workflow_run_service")
+            await orchestrator._persist_plan(
+                plan, task_plan, source="workflow_run_service", mission_run_id=None
+            )
 
             # Plan 80h: tasks always start PROPOSED. Mode determines who
             # triggers the PROPOSED → APPROVED transition:

@@ -255,7 +255,7 @@ class FinaliseRunInput:
 @dataclass
 class FinaliseRunResult:
     cost_usd: float
-    notification: NotificationRequest
+    notification: NotificationRequest | None  # None when the user cancelled (3.6.2)
 
 
 @dataclass

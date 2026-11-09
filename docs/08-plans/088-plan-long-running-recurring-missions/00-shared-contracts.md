@@ -1064,7 +1064,7 @@ def activity_kwargs(p: ActivityPolicySnapshot) -> dict:
 | `resume_mission_for_run` | `temporal/mission_run_activities.py` | `mission_run_id: str` → `bool`. When the mission is `PAUSED/GATE_TIMEOUT` with no undecided gate, calls `MissionLifecycleService.resume_mission(mission_id, user_id=None)` and returns `True`; otherwise returns `False` | `persistence` | 88.4.8 |
 | `compact_mission_context` | `temporal/run_memory_activities.py` | `CompactContextInput{mission_id, mission_run_id}` → `CompactContextResult{compacted: bool, from_bytes, to_bytes}`. Called in `_end_run` before `write_run_digest`; a failure is logged and does not block the digest | `persistence` | 88.3.8 |
 | `write_run_digest` | `temporal/run_memory_activities.py` | `WriteDigestInput{mission_run_id, status, reason or None, force_deterministic: bool}` → `DigestResult{digest_id, generator}`. The activity chooses the narrator; 88.4.6 adds the budget-aware choice here (`narrator=None` when the run is `BUDGET_STOPPED`) | `write_digest` | 88.3.7; 88.4.6 |
-| `finalise_mission_run` | `temporal/mission_run_activities.py` | `FinaliseRunInput{mission_run_id, status, reason or None, detail or None}` → `FinaliseRunResult{cost_usd, notification: NotificationRequest}` | `persistence` | 88.1.8 |
+| `finalise_mission_run` | `temporal/mission_run_activities.py` | `FinaliseRunInput{mission_run_id, status, reason or None, detail or None}` → `FinaliseRunResult{cost_usd: float, notification: NotificationRequest or None}` (`None` only for CANCELLED with reason CANCELLED_BY_USER, which 3.6.2 gives no kind; 88.1.8 logs and 88.4.5 sends only a non-None notification) | `persistence` | 88.1.8 |
 | `send_mission_notification` | `temporal/notification_activities.py` | `NotificationRequest` → `list[str]` (delivery ids) | `notify` | 88.4.4 |
 | `reconcile_mission_runs` | `temporal/reconciler_activities.py` | `ReconcileInput` → `ReconcileStats` | `reconciler.activity` | 88.0.10 |
 | `sync_mission_schedules` | `temporal/mission_schedule_activities.py` in 88.1.8; moved to `temporal/reconciler_activities.py` in 88.1.10 | `mission_id: str or None` → `ScheduleSyncStats` | `reconciler.activity` | 88.1.8; moved and registered in the reconciler by 88.1.10 |
@@ -1628,6 +1628,17 @@ class MissionRunService(BaseService):
         # PROPOSED and APPROVED tasks. After commit: if APPROVED backlog exists, plan.gate_mode == AUTONOMOUS
         # and mission ACTIVE -> start_run(MANUAL, objective=None) (test test_approval_racing_finalise_starts_next_run)
     async def record_iteration(self, run_id: str, iteration: int) -> None   # 88.2.6
+# 88.1.7 details not named above:
+#   MissionRunService(session, event_bus: EventBusProtocol); it connects TemporalWorkflowGateway itself.
+#   start_run emits MissionRunCreatedEvent after its commit (session_id = the given session or mission_id).
+#   finalise returns notification=None for CANCELLED/CANCELLED_BY_USER (3.6.2 has no kind for it).
+#   ExecutionRecordRepository.get_by_mission_run(mission_run_id) -> ExecutionRecord | None finds the run's record.
+#   mission_plan_taskio.resolve_run_scope(orchestrator, mission_id, mission_run_id) -> str | None: the given run,
+#     else the mission's active run, else None. reconcile_tasks and MissionPlanOrchestrator.refine both use it,
+#     so a Director refine during an active run shows the planner that run's tasks as well as the backlog.
+#   MissionPlanOrchestrator.refine and _persist_plan take mission_run_id as a required keyword (no default).
+# schemas/mission_run.py (88.1.7): TaskSummary{id, agent, description, status: TaskStatus, failure_reason,
+#   cost_usd, created_at}; MissionRunDigestResponse carries every mission_run_digests column except updated_at.
 
 # temporal/config_snapshots.py  (the ONLY place snapshots are built; 88.0.2, 88.1.5, 88.2.2)
 def policy_snapshot(schema: ActivityPolicySchema) -> ActivityPolicySnapshot      # 88.0.2

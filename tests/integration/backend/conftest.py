@@ -8,12 +8,16 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from modules.backend.core import security
+from modules.backend.models.execution_record import ExecutionRecord
+from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_run import MissionRun
 from modules.backend.models.mission_schedule import MissionSchedule
+from modules.backend.models.session import Session
 from modules.backend.models.user import User
 from modules.backend.models.workflow_definition import WorkflowDefinition
+from modules.backend.models.workflow_run import WorkflowRun
 
 
 @pytest.fixture
@@ -60,8 +64,17 @@ async def committed_owner(
 
     async with db_session_factory() as session:
         if missions:
-            # Runs and schedules hold RESTRICT FKs to workflow definitions; remove them first.
-            for model in (MissionRun, MissionSchedule, WorkflowDefinition):
+            # Rows without a CASCADE FK to missions would outlive them; remove them first.
+            # Runs and schedules hold RESTRICT FKs to workflow definitions.
+            for model in (
+                ExecutionRecord,
+                LlmCall,
+                WorkflowRun,
+                Session,
+                MissionRun,
+                MissionSchedule,
+                WorkflowDefinition,
+            ):
                 await session.execute(delete(model).where(model.mission_id.in_(missions)))
             await session.execute(delete(Mission).where(Mission.id.in_(missions)))
         if users:

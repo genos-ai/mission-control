@@ -118,12 +118,13 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 "execute_mission dispatching",
                 extra={"plan_id": input.mission_run_id, "owner": str(mission.owner_id)},
             )
+            # Plan 88: no workflow reaches this between 88.1.7 and 88.1.8.
+            # 88.1.8 gives the activity ExecuteWaveInput, which carries the
+            # run's execution_record_id from begin_mission_run.
             result = await svc.dispatch_approved(
                 input.mission_run_id,
-                user_id=mission.owner_id,
-                temporal_workflow_id=activity.info().workflow_id,
+                mission.owner_id,
                 session_id=session_id,
-                skip_post_run_supervisor=True,
             )
             await db.commit()
 
@@ -217,11 +218,15 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
 async def persist_mission_outcome(
     mission_run_id: str,
     session_id: str,
-    roster_name: str,
     outcome_json: dict,
-    mission_id: str | None = None,
+    mission_id: str,
+    execution_record_id: str,
 ) -> bool:
-    """Persist mission results to PostgreSQL. Raises on failure; the retry policy decides."""
+    """Persist mission results to PostgreSQL. Raises on failure; the retry policy decides.
+
+    The fallback path updates the run's ExecutionRecord (execution_record_id);
+    it never inserts a second record.
+    """
     from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
     from modules.backend.core.database import get_async_session
 
@@ -242,7 +247,8 @@ async def persist_mission_outcome(
             return True
 
         # Inline persistence didn't happen (execution_record_id is None) —
-        # this is the crash recovery path. Persist everything.
+        # this is the crash recovery path. Persist everything into the
+        # run's record.
         task_plan_ref = outcome_json.get("task_plan_reference")
         if isinstance(task_plan_ref, str):
             import json
@@ -256,10 +262,11 @@ async def persist_mission_outcome(
             await persist_mission_results(
                 outcome,
                 session_id=session_id,
-                roster_name=roster_name,
+                roster_name=None,
                 thinking_trace=outcome_json.get("planning_trace_reference"),
                 mission_id=mission_id,
                 db_session=db,
+                execution_record_id=execution_record_id,
             )
             await db.commit()
         return True

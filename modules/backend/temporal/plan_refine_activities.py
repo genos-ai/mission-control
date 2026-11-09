@@ -47,6 +47,7 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
                 input.plan_id,
                 input.instructions,
                 user_id=input.user_id,
+                mission_run_id=None,
                 mission_budget_usd=input.mission_budget_usd,
             )
 
