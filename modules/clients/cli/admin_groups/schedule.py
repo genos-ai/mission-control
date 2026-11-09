@@ -21,9 +21,9 @@ def schedule(ctx):
     Examples:
         python admin.py schedule list --mission <id>
         python admin.py schedule create --mission <id> --workflow <id> --cron "0 5 * * *"
-        python admin.py schedule enable <id>
-        python admin.py schedule disable <id>
-        python admin.py schedule delete <id>
+        python admin.py schedule enable <id> --mission <id>
+        python admin.py schedule disable <id> --mission <id>
+        python admin.py schedule delete <id> --mission <id>
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -70,29 +70,50 @@ def schedule_create(
 
 @schedule.command("enable")
 @click.argument("schedule_id")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
 @click.pass_obj
-def schedule_enable(ctx, schedule_id):
+def schedule_enable(ctx, schedule_id, mission_id):
     """Enable a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
 
-    run_schedule(ctx.logger, "enable", schedule_id=schedule_id, output_format=ctx.output_format)
+    run_schedule(
+        ctx.logger,
+        "enable",
+        mission_id=mission_id,
+        schedule_id=schedule_id,
+        output_format=ctx.output_format,
+    )
 
 
 @schedule.command("disable")
 @click.argument("schedule_id")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
 @click.pass_obj
-def schedule_disable(ctx, schedule_id):
+def schedule_disable(ctx, schedule_id, mission_id):
     """Disable a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
 
-    run_schedule(ctx.logger, "disable", schedule_id=schedule_id, output_format=ctx.output_format)
+    run_schedule(
+        ctx.logger,
+        "disable",
+        mission_id=mission_id,
+        schedule_id=schedule_id,
+        output_format=ctx.output_format,
+    )
 
 
 @schedule.command("delete")
 @click.argument("schedule_id")
+@click.option("--mission", "mission_id", required=True, help="Mission ID.")
 @click.pass_obj
-def schedule_delete(ctx, schedule_id):
+def schedule_delete(ctx, schedule_id, mission_id):
     """Delete a schedule."""
     from modules.clients.cli.schedule_cmds import run_schedule
 
-    run_schedule(ctx.logger, "delete", schedule_id=schedule_id, output_format=ctx.output_format)
+    run_schedule(
+        ctx.logger,
+        "delete",
+        mission_id=mission_id,
+        schedule_id=schedule_id,
+        output_format=ctx.output_format,
+    )

@@ -144,32 +144,38 @@ async def _action_create(
     console.print(f"  Next fire: {schedule.next_fire_at}")
 
 
-async def _action_toggle(cli_logger, *, schedule_id, enabled, **_):
+async def _action_toggle(cli_logger, *, mission_id, schedule_id, enabled, **_):
     """Enable or disable a schedule."""
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     console = get_console()
+    if not mission_id:
+        console.print("[red]--mission is required[/red]")
+        sys.exit(1)
     if not schedule_id:
         console.print("[red]SCHEDULE_ID is required[/red]")
         sys.exit(1)
 
     async with WorkflowScheduleService.factory() as svc:
-        schedule = await svc.toggle_enabled(schedule_id, enabled)
+        schedule = await svc.toggle_enabled(mission_id, schedule_id, enabled)
 
     state = "enabled" if schedule.enabled else "disabled"
     console.print(f"[green]Schedule {state}:[/green] {schedule.id}")
 
 
-async def _action_delete(cli_logger, *, schedule_id, **_):
+async def _action_delete(cli_logger, *, mission_id, schedule_id, **_):
     """Delete a schedule."""
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     console = get_console()
+    if not mission_id:
+        console.print("[red]--mission is required[/red]")
+        sys.exit(1)
     if not schedule_id:
         console.print("[red]SCHEDULE_ID is required[/red]")
         sys.exit(1)
 
     async with WorkflowScheduleService.factory() as svc:
-        await svc.delete_schedule(schedule_id)
+        await svc.delete_schedule(mission_id, schedule_id)
 
     console.print(f"[green]Schedule deleted:[/green] {schedule_id}")

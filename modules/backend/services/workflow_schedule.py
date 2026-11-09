@@ -11,7 +11,7 @@ periodically to find and fire ready schedules.
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,7 +122,7 @@ class WorkflowScheduleService(BaseService):
         _validate_cron(cron_expression)
 
         workflow = await self._wf_repo.get_by_id_or_none(workflow_definition_id)
-        if not workflow:
+        if not workflow or workflow.mission_id not in (None, mission_id):
             raise NotFoundError(f"Workflow definition '{workflow_definition_id}' not found")
 
         if budget_per_run_usd is not None:
@@ -157,9 +157,9 @@ class WorkflowScheduleService(BaseService):
         )
         return schedule
 
-    async def get_schedule(self, schedule_id: str) -> WorkflowSchedule:
-        """Get a schedule by ID. Raises NotFoundError."""
-        schedule = await self._repo.get_by_id_or_none(schedule_id)
+    async def get_schedule(self, mission_id: str, schedule_id: str) -> WorkflowSchedule:
+        """Get a schedule within a mission. Raises NotFoundError if it is not in the mission."""
+        schedule = await self._repo.get_for_mission(mission_id, schedule_id)
         if not schedule:
             raise NotFoundError(f"Schedule '{schedule_id}' not found")
         return schedule
@@ -180,42 +180,43 @@ class WorkflowScheduleService(BaseService):
         return await self._repo.list_by_workflow(workflow_definition_id)
 
     async def update_schedule(
-        self,
-        schedule_id: str,
-        **updates,
+        self, mission_id: str, schedule_id: str, **updates: Any
     ) -> WorkflowSchedule:
-        """Update a schedule's configuration."""
+        """Update a schedule's configuration.
+
+        Recomputes next_fire_at when the cron changes or the schedule is re-enabled,
+        so a re-enabled schedule never fires on a stale next_fire_at.
+        """
+        schedule = await self.get_schedule(mission_id, schedule_id)
         if "cron_expression" in updates and updates["cron_expression"] is not None:
             _validate_cron(updates["cron_expression"])
-            now = utc_now()
+        if "cron_expression" in updates or updates.get("enabled") is True:
             updates["next_fire_at"] = _compute_next_fire(
-                updates["cron_expression"],
-                now,
+                updates.get("cron_expression") or schedule.cron_expression,
+                utc_now(),
             )
 
-        return await self._repo.update(schedule_id, **updates)
+        return await self._repo.update(schedule.id, **updates)
 
     async def toggle_enabled(
-        self,
-        schedule_id: str,
-        enabled: bool,
+        self, mission_id: str, schedule_id: str, enabled: bool
     ) -> WorkflowSchedule:
         """Enable or disable a schedule."""
-        updates = {"enabled": enabled}
+        schedule = await self.get_schedule(mission_id, schedule_id)
+        updates: dict[str, Any] = {"enabled": enabled}
 
         if enabled:
-            schedule = await self.get_schedule(schedule_id)
-            now = utc_now()
             updates["next_fire_at"] = _compute_next_fire(
                 schedule.cron_expression,
-                now,
+                utc_now(),
             )
 
-        return await self._repo.update(schedule_id, **updates)
+        return await self._repo.update(schedule.id, **updates)
 
-    async def delete_schedule(self, schedule_id: str) -> None:
+    async def delete_schedule(self, mission_id: str, schedule_id: str) -> None:
         """Delete a schedule."""
-        await self._repo.delete(schedule_id)
+        schedule = await self.get_schedule(mission_id, schedule_id)
+        await self._repo.delete(schedule.id)
         self._log_operation("Workflow schedule deleted", schedule_id=schedule_id)
 
     async def get_next_run(self, mission_id: str) -> dict | None:

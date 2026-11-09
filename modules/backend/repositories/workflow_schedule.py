@@ -23,6 +23,20 @@ class WorkflowScheduleRepository(BaseRepository[WorkflowSchedule]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
 
+    async def get_for_mission(
+        self,
+        mission_id: str,
+        schedule_id: str,
+    ) -> WorkflowSchedule | None:
+        """Get a schedule only if it belongs to the mission; None otherwise."""
+        result = await self.session.execute(
+            select(WorkflowSchedule).where(
+                WorkflowSchedule.id == schedule_id,
+                WorkflowSchedule.mission_id == mission_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list_by_mission(
         self,
         mission_id: str,

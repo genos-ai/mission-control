@@ -644,7 +644,7 @@ async def create_mission_schedule(
     request_id: RequestId,
 ) -> ApiResponse:
     """Create a cron-based schedule for a workflow."""
-    await require_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
@@ -681,12 +681,12 @@ async def update_mission_schedule(
     request_id: RequestId,
 ) -> ApiResponse:
     """Update a workflow schedule's configuration."""
-    await require_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
     updates = data.model_dump(exclude_none=True)
-    schedule = await service.update_schedule(schedule_id, **updates)
+    schedule = await service.update_schedule(mission_id, schedule_id, **updates)
     response = WorkflowScheduleResponse.model_validate(schedule)
     return ApiResponse(
         success=True,
@@ -708,11 +708,11 @@ async def delete_mission_schedule(
     request_id: RequestId,
 ) -> ApiResponse:
     """Delete a workflow schedule."""
-    await require_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
     from modules.backend.services.workflow_schedule import WorkflowScheduleService
 
     service = WorkflowScheduleService(db)
-    await service.delete_schedule(schedule_id)
+    await service.delete_schedule(mission_id, schedule_id)
     return ApiResponse(
         success=True,
         data={"deleted": schedule_id},
