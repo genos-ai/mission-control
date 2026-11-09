@@ -414,8 +414,6 @@ class TemporalSchema(_StrictBase):
     execution_retry_max_attempts: int = 2
     execution_retry_initial_interval_seconds: int = 5
     execution_retry_max_interval_seconds: int = 60
-    # Polling intervals (seconds)
-    dispatch_check_interval_seconds: int = 1
     mission_run: MissionRunSchema = Field(...)
     reconciler: ReconcilerSchema = Field(...)
     system_schedules: dict[str, SystemScheduleSchema] = Field(...)
@@ -431,11 +429,12 @@ class TemporalSchema(_StrictBase):
     @model_validator(mode="after")
     def _system_schedule_keys(self) -> "TemporalSchema":
         keys = set(self.system_schedules)
-        unknown = keys - ALLOWED_SYSTEM_SCHEDULE_KEYS
-        if unknown:
-            raise ValueError(f"unknown temporal.system_schedules keys: {sorted(unknown)}")
-        if "reconciler" not in keys:
-            raise ValueError("temporal.system_schedules.reconciler is required")
+        if keys != ALLOWED_SYSTEM_SCHEDULE_KEYS:
+            raise ValueError(
+                "temporal.system_schedules keys must match the registry exactly: "
+                f"missing {sorted(ALLOWED_SYSTEM_SCHEDULE_KEYS - keys)}, "
+                f"unknown {sorted(keys - ALLOWED_SYSTEM_SCHEDULE_KEYS)}"
+            )
         return self
 
 

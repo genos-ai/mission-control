@@ -1,9 +1,14 @@
-"""Reconciler activities (Plan 88 step 88.0.10, contract 3.3.5)."""
+"""Reconciler activities (Plan 88 steps 88.0.10 and 88.1.10, contract 3.3.5)."""
 
 from temporalio import activity
 
 from modules.backend.core.logging import get_logger
-from modules.backend.temporal.mission_run_models import ReconcileInput, ReconcileStats
+from modules.backend.temporal.mission_run_models import (
+    ReconcileInput,
+    ReconcileStats,
+    ScheduleSyncStats,
+)
+from modules.backend.temporal.mission_schedule_activities import schedule_service
 
 logger = get_logger(__name__)
 
@@ -35,3 +40,12 @@ async def reconcile_mission_runs(input: ReconcileInput) -> ReconcileStats:
         return stats
     finally:
         await redis.aclose()
+
+
+@activity.defn
+async def sync_mission_schedules(mission_id: str | None) -> ScheduleSyncStats:
+    """Sync one mission's schedules to Temporal, or every schedule when mission_id is None."""
+    async with schedule_service() as (svc, _db):
+        if mission_id is None:
+            return await svc.sync_all()
+        return await svc.sync_mission(mission_id)

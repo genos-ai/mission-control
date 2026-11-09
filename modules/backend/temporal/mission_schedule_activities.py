@@ -1,7 +1,8 @@
 """MissionScheduleTickWorkflow activities (Plan 88 step 88.1.8, contract 3.3.5).
 
-claim_occurrence records one scheduled occurrence in Postgres. sync_mission_schedules
-mirrors schedules to Temporal; 88.1.10 moves it into reconciler_activities.py.
+claim_occurrence records one scheduled occurrence in Postgres. schedule_service is
+shared with sync_mission_schedules in reconciler_activities.py (moved there by 88.1.10)
+and with the worker's startup sync.
 """
 
 from collections.abc import AsyncIterator
@@ -14,7 +15,6 @@ from modules.backend.core.logging import get_logger
 from modules.backend.temporal.mission_run_models import (
     ClaimOccurrenceInput,
     ClaimOccurrenceResult,
-    ScheduleSyncStats,
 )
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def _schedule_service() -> AsyncIterator[tuple["MissionScheduleService", "AsyncSession"]]:
+async def schedule_service() -> AsyncIterator[tuple["MissionScheduleService", "AsyncSession"]]:
     """A MissionScheduleService on a fresh session, schedule gateway and event bus."""
     from redis.asyncio import Redis as AsyncRedis
 
@@ -50,7 +50,7 @@ async def claim_occurrence(input: ClaimOccurrenceInput) -> ClaimOccurrenceResult
     """Claim the occurrence, commit, then delete the Temporal schedule if it completed."""
     from modules.backend.models.mission_schedule import MissionScheduleStatus
 
-    async with _schedule_service() as (svc, db):
+    async with schedule_service() as (svc, db):
         claim = await svc.claim_occurrence(input.mission_schedule_id, input.scheduled_for)
         await db.commit()
         run = claim.run
@@ -64,12 +64,3 @@ async def claim_occurrence(input: ClaimOccurrenceInput) -> ClaimOccurrenceResult
             run_input=claim.run_input,
             notifications=claim.notifications,
         )
-
-
-@activity.defn
-async def sync_mission_schedules(mission_id: str | None) -> ScheduleSyncStats:
-    """Sync one mission's schedules to Temporal, or every schedule when mission_id is None."""
-    async with _schedule_service() as (svc, _db):
-        if mission_id is None:
-            return await svc.sync_all()
-        return await svc.sync_mission(mission_id)

@@ -1,10 +1,11 @@
-"""ReconcilerWorkflow (Plan 88 step 88.0.10).
+"""ReconcilerWorkflow (Plan 88 steps 88.0.10 and 88.1.10).
 
-Runs the real workflow in a time-skipping Temporal environment with a stub
-registered under the real activity name. The stub records the ReconcileInput
-it received and returns fixed stats.
+Runs the real workflow in a time-skipping Temporal environment with stubs
+registered under the real activity names. The stubs record their calls in
+order and return fixed stats.
 """
 
+import dataclasses
 import uuid
 
 from temporalio import activity, workflow
@@ -20,10 +21,12 @@ with workflow.unsafe.imports_passed_through():
         ReconcileInput,
         ReconcilerInput,
         ReconcileStats,
+        ScheduleSyncStats,
     )
     from modules.backend.temporal.reconciler_workflow import ReconcilerWorkflow
 
 _received: list[ReconcileInput] = []
+_order: list[str] = []
 
 _STATS = ReconcileStats(
     examined_tasks=3,
@@ -38,14 +41,26 @@ _STATS = ReconcileStats(
 )
 
 
+_SYNC = ScheduleSyncStats(synced=4, failed=1, deleted_orphans=2, completed=1)
+
+
 @activity.defn(name="reconcile_mission_runs")
 async def reconcile_mission_runs_stub(input: ReconcileInput) -> ReconcileStats:
+    _order.append("reconcile_mission_runs")
     _received.append(input)
     return _STATS
 
 
-async def test_workflow_runs_activity_with_grace():
+@activity.defn(name="sync_mission_schedules")
+async def sync_mission_schedules_stub(mission_id: str | None) -> ScheduleSyncStats:
+    _order.append("sync_mission_schedules")
+    assert mission_id is None
+    return _SYNC
+
+
+async def _run_workflow() -> ReconcileStats:
     _received.clear()
+    _order.clear()
     temporal = get_app_config().temporal
     inp = ReconcilerInput(
         config_hash="",
@@ -64,7 +79,7 @@ async def test_workflow_runs_activity_with_grace():
             env.client,
             task_queue=temporal.task_queue,
             workflows=[ReconcilerWorkflow],
-            activities=[reconcile_mission_runs_stub],
+            activities=[reconcile_mission_runs_stub, sync_mission_schedules_stub],
         ):
             result = await env.client.execute_workflow(
                 ReconcilerWorkflow.run,
@@ -74,6 +89,18 @@ async def test_workflow_runs_activity_with_grace():
             )
     finally:
         await env.shutdown()
+    return result
+
+
+async def test_workflow_runs_activity_with_grace():
+    result = await _run_workflow()
 
     assert _received == [ReconcileInput(orphan_grace_seconds=600)]
-    assert result == _STATS
+    assert result == dataclasses.replace(_STATS, schedule_sync=_SYNC)
+
+
+async def test_runs_reconcile_then_sync():
+    result = await _run_workflow()
+
+    assert _order == ["reconcile_mission_runs", "sync_mission_schedules"]
+    assert result.schedule_sync == _SYNC

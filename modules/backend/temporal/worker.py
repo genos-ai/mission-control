@@ -59,13 +59,17 @@ from modules.backend.temporal.mission_run_activities import (
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
 from modules.backend.temporal.mission_schedule_activities import (
     claim_occurrence,
-    sync_mission_schedules,
+    schedule_service,
 )
 from modules.backend.temporal.mission_schedule_tick_workflow import MissionScheduleTickWorkflow
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
-from modules.backend.temporal.reconciler_activities import reconcile_mission_runs
+from modules.backend.temporal.reconciler_activities import (
+    reconcile_mission_runs,
+    sync_mission_schedules,
+)
 from modules.backend.temporal.reconciler_workflow import ReconcilerWorkflow
+from modules.backend.temporal.schedule_gateway import TemporalScheduleGateway
 from modules.backend.temporal.supervisor_activities import (
     approve_run_proposed_tasks,
     check_plan_active,
@@ -134,7 +138,6 @@ async def start_worker() -> None:
             finalise_mission_run,
             # Mission schedules (Plan 88 step 88.1.8)
             claim_occurrence,
-            sync_mission_schedules,
             # Supervisor loop (Plan 52 Phase C)
             evaluate_post_run,
             approve_run_proposed_tasks,
@@ -163,8 +166,9 @@ async def start_worker() -> None:
             run_weekly_report_generation,
             run_metrics_aggregation,
             run_cleanup_stale_environments,
-            # Run reconciliation (Plan 88 step 88.0.10)
+            # Run reconciliation and schedule sync (Plan 88 steps 88.0.10, 88.1.10)
             reconcile_mission_runs,
+            sync_mission_schedules,
         ],
     )
 
@@ -177,8 +181,11 @@ async def start_worker() -> None:
         extra={"task_queue": config.task_queue},
     )
 
-    # Fail closed: a registration failure stops the worker from starting.
-    await register_system_schedules(client)
+    # Fail closed (P8): a registration or sync failure stops the worker from starting.
+    gateway = await TemporalScheduleGateway.create()
+    await register_system_schedules(gateway)
+    async with schedule_service() as (svc, _db):
+        await svc.sync_all()
 
     await worker.run()
 

@@ -39,14 +39,14 @@ def test_heartbeat_validator_rejects_null_execute_task_heartbeat() -> None:
 def test_system_schedules_rejects_unknown_key() -> None:
     data = _temporal_data()
     data["system_schedules"]["nightly_surprise"] = {"cron": "0 1 * * *"}
-    with pytest.raises(ValidationError, match="unknown temporal.system_schedules keys"):
+    with pytest.raises(ValidationError, match="must match the registry exactly"):
         TemporalSchema(**data)
 
 
 def test_system_schedules_requires_reconciler() -> None:
     data = _temporal_data()
     data["system_schedules"] = {"retention": {"cron": "30 2 * * *"}}
-    with pytest.raises(ValidationError, match="system_schedules.reconciler is required"):
+    with pytest.raises(ValidationError, match=r"missing \[.*'reconciler'"):
         TemporalSchema(**data)
 
 

@@ -16,8 +16,6 @@ persistence_retry_max_attempts: 3         # retries for persist activities
 execution_retry_max_attempts: 2           # retries for execute_mission activity
 execution_retry_initial_interval_seconds: 5
 execution_retry_max_interval_seconds: 60
-# Polling intervals (seconds)
-dispatch_check_interval_seconds: 1           # ScheduledMissionCheckWorkflow trigger frequency
 
 mission_run:
   continue_as_new_after_iterations: 10
@@ -41,4 +39,12 @@ reconciler:
   activity: {start_to_close_seconds: 300, heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 10, backoff_coefficient: 2.0, maximum_interval_seconds: 60, maximum_attempts: 3}}
 
 system_schedules:            # sole source of system crons; registered by the worker, create-or-update
-  reconciler: {cron: "*/5 * * * *"}
+  reconciler:           {cron: "*/5 * * * *"}
+  retention:            {cron: "30 2 * * *"}    # DailyCleanupWorkflow until 88.5.4
+  hourly_health_check:  {cron: "0 * * * *"}
+  weekly_report:        {cron: "0 6 * * 0"}
+  metrics_aggregation:  {cron: "*/15 * * * *"}
+  cleanup_environments: {cron: "0 * * * *"}
+  knowledge_extraction: {cron: "30 3 * * *"}
+  knowledge_officer:    {cron: "0 4 * * *"}
+  embedding_backfill:   {cron: "15 4 * * *"}
