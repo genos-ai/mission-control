@@ -40,6 +40,7 @@ from modules.backend.agents.mission_control.outcome import (
     TaskTokenUsage,
 )
 from modules.backend.agents.mission_control.roster import Roster
+from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import MissionNarrativeEvent, PlanCreatedEvent, SystemEvent
 from modules.backend.schemas.task_plan import TaskPlan
@@ -409,8 +410,15 @@ async def _execute_layer(
         from modules.backend.core.database import get_session_factory
 
         session_factory = get_session_factory()
+    manual = get_app_config().gate.manual
     waiters = [
-        wait_until_approved(task_id=t.task_id, session_factory=session_factory) for t in layer_tasks
+        wait_until_approved(
+            task_id=t.task_id,
+            session_factory=session_factory,
+            timeout_seconds=manual.timeout_seconds,
+            poll_interval_seconds=manual.poll_interval_seconds,
+        )
+        for t in layer_tasks
     ]
     if waiters:
         await asyncio.gather(*waiters)

@@ -1,17 +1,18 @@
-"""Unit tests for task_approval.py (Plan 80h).
+"""Unit tests for task_approval.py (Plan 80h, Plan 88.0.13a).
 
-Covers:
-- already-approved fast path (no waiting, no registry entry)
-- waiter registered → notify_approved fires the Event
-- timeout returns TaskApprovalTimeout
-- cancellation propagates without leaking registry entries
+Covers the cross-process polling wait:
+- already-approved fast path (no sleep)
+- PROPOSED then APPROVED on a later poll returns (approval committed by
+  "another process": the row the session factory returns changes, no
+  in-process notification)
+- CANCELLED raises TaskApprovalCancelled (initially and mid-wait)
+- deadline raises TaskApprovalTimeout
 - unknown task → TaskApprovalUnknown
-- notify_approved on unknown id is a logged no-op (single-process safety)
-- multiple independent waiters
+- no process-local registry survives in the module
 
-Test strategy: patch _current_status indirectly by stubbing the session
-factory's execute. Each test stub controls what status comes back per
-call, which is what the function under test cares about.
+Test strategy: the session factory yields a stub session whose
+``execute(...)`` returns whatever status the shared ``row`` dict holds at
+that moment, which is what MissionPlanService.get_task reads.
 """
 
 from __future__ import annotations
@@ -23,47 +24,38 @@ from typing import Any
 
 import pytest
 
+from modules.backend.agents.mission_control import task_approval
 from modules.backend.agents.mission_control.task_approval import (
-    _PENDING,
+    TaskApprovalCancelled,
     TaskApprovalTimeout,
     TaskApprovalUnknown,
-    notify_approved,
     wait_until_approved,
 )
 from modules.backend.models.task import TaskStatus
 
+_POLL = 1
+
 # ── Test scaffolding ──────────────────────────────────────────────
 
 
-def _factory_returning(*statuses: str | None):
-    """Return a session_factory whose successive `execute(...)` calls
-    yield the given statuses (None means "row not found").
-
-    Each call to `execute(...)` consumes one value from the sequence.
-    Once exhausted, all further calls return the last value (so a single
-    "APPROVED" handles tight-loop re-checks).
-    """
-    state = {"calls": 0, "values": list(statuses)}
-
-    def _next_value():
-        idx = min(state["calls"], len(state["values"]) - 1)
-        state["calls"] += 1
-        return state["values"][idx]
+def _row_factory(status: str | None):
+    """Session factory backed by a mutable row; tests mutate ``row["status"]``."""
+    row: dict[str, Any] = {"status": status, "reads": 0}
 
     @asynccontextmanager
     async def factory():
-        session = _StubSession(_next_value)
-        yield session
+        yield _StubSession(row)
 
-    return factory, state
+    return factory, row
 
 
 class _StubSession:
-    def __init__(self, next_value_fn) -> None:
-        self._next = next_value_fn
+    def __init__(self, row: dict[str, Any]) -> None:
+        self._row = row
 
     async def execute(self, _statement: Any) -> "_StubResult":
-        return _StubResult(self._next())
+        self._row["reads"] += 1
+        return _StubResult(self._row["status"])
 
 
 class _StubResult:
@@ -73,140 +65,127 @@ class _StubResult:
     def scalar_one_or_none(self):
         if self._value is None:
             return None
-        # _current_status now goes through MissionPlanService.get_task(),
-        # which fetches the full Task row (not a bare status column) —
-        # mimic that shape: a task-like object with a .status attribute.
         return SimpleNamespace(status=SimpleNamespace(value=self._value))
 
 
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    _PENDING.clear()
-    yield
-    _PENDING.clear()
+@pytest.fixture
+def fast_sleep(monkeypatch):
+    """Replace asyncio.sleep in the module so polls run without real delay.
+
+    Each fake sleep advances a virtual clock used by the deadline check and
+    runs an optional per-poll hook (the "other process" committing).
+    """
+    clock = {"now": 0.0, "hooks": []}
+    real_sleep = asyncio.sleep
+
+    async def _sleep(seconds: float) -> None:
+        clock["now"] += seconds
+        for hook in clock["hooks"]:
+            hook(clock["now"])
+        await real_sleep(0)
+
+    class _Loop:
+        def time(self) -> float:
+            return clock["now"]
+
+    # Patch the module's own ``asyncio`` reference only, so the event loop
+    # and pytest-asyncio keep the real ``asyncio.sleep``/``get_running_loop``.
+    fake_asyncio = SimpleNamespace(sleep=_sleep, get_running_loop=lambda: _Loop())
+    monkeypatch.setattr(task_approval, "asyncio", fake_asyncio)
+    return clock
+
+
+async def _wait(factory, *, timeout_seconds: int = 30) -> None:
+    await wait_until_approved(
+        task_id="task-1",
+        session_factory=factory,
+        timeout_seconds=timeout_seconds,
+        poll_interval_seconds=_POLL,
+    )
 
 
 # ── Tests ─────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_already_approved_returns_immediately():
-    """Task already APPROVED → return without registering an Event."""
-    factory, _state = _factory_returning(TaskStatus.APPROVED.value)
-    await asyncio.wait_for(
-        wait_until_approved(task_id="any", session_factory=factory, timeout_seconds=5),
-        timeout=1.0,
-    )
-    assert _PENDING == {}
+async def test_already_approved_returns_immediately(fast_sleep):
+    factory, row = _row_factory(TaskStatus.APPROVED.value)
+    await _wait(factory)
+    assert row["reads"] == 1
+    assert fast_sleep["now"] == 0.0
 
 
 @pytest.mark.asyncio
-async def test_proposed_waits_until_notify():
-    """PROPOSED → block on Event → notify_approved wakes the waiter."""
-    # Calls: initial check returns PROPOSED, after the wait re-check
-    # returns APPROVED (status changed while we waited).
-    factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value,
-        TaskStatus.PROPOSED.value,
-        TaskStatus.APPROVED.value,
-    )
-
-    async def _approve_after_delay():
-        for _ in range(50):
-            if _PENDING:
-                break
-            await asyncio.sleep(0.01)
-        task_id = next(iter(_PENDING.keys()))
-        await notify_approved(task_id)
-
-    approver = asyncio.create_task(_approve_after_delay())
-    await wait_until_approved(task_id="abc", session_factory=factory, timeout_seconds=5)
-    await approver
-
-    assert _PENDING == {}
+async def test_past_approval_status_returns_immediately(fast_sleep):
+    factory, row = _row_factory(TaskStatus.RUNNING.value)
+    await _wait(factory)
+    assert row["reads"] == 1
 
 
 @pytest.mark.asyncio
-async def test_timeout_raises_task_approval_timeout():
-    """No notify within timeout → TaskApprovalTimeout."""
-    factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value,
-        TaskStatus.PROPOSED.value,
-    )
+async def test_proposed_then_approved_on_later_poll(fast_sleep):
+    """Approval committed elsewhere is seen on the next poll."""
+    factory, row = _row_factory(TaskStatus.PROPOSED.value)
+
+    def _approve_at_3s(now: float) -> None:
+        if now >= 3:
+            row["status"] = TaskStatus.APPROVED.value
+
+    fast_sleep["hooks"].append(_approve_at_3s)
+    await _wait(factory)
+    assert fast_sleep["now"] == 3.0
+    assert row["reads"] == 4  # initial read + three polls
+
+
+@pytest.mark.asyncio
+async def test_initially_cancelled_raises():
+    factory, _row = _row_factory(TaskStatus.CANCELLED.value)
+    with pytest.raises(TaskApprovalCancelled):
+        await _wait(factory)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_while_waiting_raises(fast_sleep):
+    factory, row = _row_factory(TaskStatus.PROPOSED.value)
+
+    def _cancel_at_2s(now: float) -> None:
+        if now >= 2:
+            row["status"] = TaskStatus.CANCELLED.value
+
+    fast_sleep["hooks"].append(_cancel_at_2s)
+    with pytest.raises(TaskApprovalCancelled):
+        await _wait(factory)
+
+
+@pytest.mark.asyncio
+async def test_deadline_raises_task_approval_timeout(fast_sleep):
+    factory, row = _row_factory(TaskStatus.PROPOSED.value)
     with pytest.raises(TaskApprovalTimeout):
-        await wait_until_approved(task_id="abc", session_factory=factory, timeout_seconds=1)
-    assert _PENDING == {}
-
-
-@pytest.mark.asyncio
-async def test_cancellation_propagates_and_cleans_registry():
-    """CancelledError propagates; registry cleaned in finally."""
-    factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value,
-        TaskStatus.PROPOSED.value,
-    )
-    task = asyncio.create_task(
-        wait_until_approved(task_id="abc", session_factory=factory, timeout_seconds=30),
-    )
-    for _ in range(50):
-        if _PENDING:
-            break
-        await asyncio.sleep(0.01)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert _PENDING == {}
+        await _wait(factory, timeout_seconds=5)
+    assert fast_sleep["now"] == 5.0
+    assert row["reads"] == 6  # initial read + five polls
 
 
 @pytest.mark.asyncio
 async def test_unknown_task_id_raises_task_approval_unknown():
-    """Row missing → TaskApprovalUnknown."""
-    factory, _state = _factory_returning(None)
+    factory, _row = _row_factory(None)
     with pytest.raises(TaskApprovalUnknown):
-        await wait_until_approved(task_id="ghost", session_factory=factory, timeout_seconds=1)
+        await _wait(factory)
 
 
 @pytest.mark.asyncio
-async def test_notify_approved_unknown_id_is_safe_noop():
-    """notify_approved with no registered waiter must not raise."""
-    await notify_approved("not-a-real-task-id")  # must not raise
+async def test_real_poll_interval_wakes_waiter():
+    """End-to-end with real sleeps: a concurrent status change wakes the waiter."""
+    factory, row = _row_factory(TaskStatus.PROPOSED.value)
+    waiter = asyncio.create_task(_wait(factory, timeout_seconds=10))
+    await asyncio.sleep(0.05)
+    assert not waiter.done()
+    row["status"] = TaskStatus.APPROVED.value
+    await asyncio.wait_for(waiter, timeout=3)
 
 
-@pytest.mark.asyncio
-async def test_multiple_waiters_independent():
-    """Two waiters keyed by different ids — notifying one doesn't wake the other."""
-    factory, _state = _factory_returning(
-        TaskStatus.PROPOSED.value,  # task_a initial
-        TaskStatus.PROPOSED.value,  # task_a re-check
-        TaskStatus.PROPOSED.value,  # task_b initial
-        TaskStatus.PROPOSED.value,  # task_b re-check
-        TaskStatus.APPROVED.value,  # task_a read-back after notify
-    )
-
-    async def _waiter(task_id: str) -> str:
-        await wait_until_approved(
-            task_id=task_id,
-            session_factory=factory,
-            timeout_seconds=5,
-        )
-        return task_id
-
-    wa = asyncio.create_task(_waiter("task-a"))
-    wb = asyncio.create_task(_waiter("task-b"))
-
-    for _ in range(50):
-        if len(_PENDING) >= 2:
-            break
-        await asyncio.sleep(0.01)
-    assert len(_PENDING) == 2
-
-    # Notify only task-a; task-b should remain blocked.
-    await notify_approved("task-a")
-    done, pending = await asyncio.wait({wa, wb}, timeout=1.0)
-    assert wa in done
-    assert wb in pending
-
-    # Clean up task-b.
-    wb.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await wb
+def test_no_process_local_registry():
+    """Plan 88.0.13a: the Event registry and its notifier are gone."""
+    assert not hasattr(task_approval, "_PENDING")
+    assert not hasattr(task_approval, "_LOCK")
+    assert not hasattr(task_approval, "notify_approved")

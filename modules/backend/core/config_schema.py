@@ -779,11 +779,12 @@ class GateManualSchema(_StrictBase):
     """Manual gate configuration (Plan 80g)."""
 
     timeout_seconds: int = Field(
-        default=1800,
+        ...,
+        ge=1,
         description=(
-            "How long a manual gate waits for an HTTP decision before "
-            "auto-aborting. 30 min default; reduce for ephemeral runs, "
-            "increase for long unattended sessions."
+            "How long a manual gate or a PROPOSED task approval waits for "
+            "an HTTP decision before auto-aborting. Reduce for ephemeral "
+            "runs, increase for long unattended sessions."
         ),
     )
     poll_interval_seconds: int = Field(..., ge=1)

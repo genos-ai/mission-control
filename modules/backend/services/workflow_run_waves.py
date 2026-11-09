@@ -340,10 +340,13 @@ class WorkflowRunWavesMixin:
                 from modules.backend.core.database import get_session_factory
 
                 factory = get_session_factory()
+                manual = get_app_config().gate.manual
                 waiters = [
                     wait_until_approved(
                         task_id=_step_task_map[sid],
                         session_factory=factory,
+                        timeout_seconds=manual.timeout_seconds,
+                        poll_interval_seconds=manual.poll_interval_seconds,
                     )
                     for sid in executable_ids
                     if sid in _step_task_map
