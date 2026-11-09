@@ -810,6 +810,23 @@ class GateSchema(_StrictBase):
 
 
 # =============================================================================
+# cli.yaml (Plan 88 step 88.1.13)
+# =============================================================================
+
+
+class CliMcSchema(_StrictBase):
+    """User CLI (mc.py) presentation settings."""
+
+    runs_list_limit: int = Field(..., ge=1, le=200)
+
+
+class CliSchema(_StrictBase):
+    """CLI configuration (cli.yaml)."""
+
+    mc: CliMcSchema
+
+
+# =============================================================================
 # cost.yaml (Plan 60)
 # =============================================================================
 

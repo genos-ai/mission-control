@@ -1,6 +1,9 @@
 """
 mc trace — Temporal workflow execution tracer.
 
+Accepts a mission run sequence, resolved through GET /missions/{id}/runs/{seq}
+to the run's temporal_workflow_id (Plan 88 step 88.1.13), or a workflow id.
+
 Queries Temporal workflow history and displays a timeline of activity
 starts, completions, and failures. Combined with TRACE log entries,
 this pinpoints exactly where execution hangs.
@@ -8,11 +11,31 @@ this pinpoints exactly where execution hangs.
 
 from __future__ import annotations
 
+import sys
+from typing import TYPE_CHECKING
+
 from google.protobuf.json_format import MessageToDict
 
 from modules.backend.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from modules.clients.cli.api_client import CliApiClient
+
 logger = get_logger(__name__)
+
+
+async def resolve_workflow_id(api: CliApiClient, mission_id: str, target: str) -> str:
+    """A run sequence (digits) becomes its temporal_workflow_id; anything else passes through."""
+    if not target.isdigit():
+        return target
+    detail = await api.get(f"/missions/{mission_id}/runs/{target}")
+    workflow_id = detail.get("run", {}).get("temporal_workflow_id")
+    if not workflow_id:
+        from modules.clients.common.display import get_console
+
+        get_console().print(f"[red]Run #{target} has no Temporal workflow yet.[/red]")
+        sys.exit(1)
+    return workflow_id
 
 
 async def trace_workflow(

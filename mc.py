@@ -49,6 +49,7 @@ from modules.clients.cli.mc_groups.status_history import (  # noqa: E402
     trace,
 )
 from modules.clients.cli.mc_groups.team import team  # noqa: E402
+from modules.clients.cli.mc_groups.workflow_runs import workflow_runs  # noqa: E402
 
 # =============================================================================
 # Click utilities (no backend imports)
@@ -180,23 +181,11 @@ mc.add_command(mission)
 
 @mc.command()
 @click.option("--objective", "-o", required=True, help="Objective text or workflow name.")
-@click.option("--budget", type=float, default=None, help="Cost ceiling override.")
-@click.option(
-    "--gate",
-    "gate_override",
-    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-    default=None,
-    help="Gate mode override.",
-)
-@click.option("--step", is_flag=True, help="Alias for --gate interactive.")
 @click.option("--dry-run", is_flag=True, help="Show plan + estimated cost, don't execute.")
 @click.option("--context", "-c", multiple=True, help="Context overrides as key=value (repeatable).")
 @click.pass_obj
-def run(ctx, objective, budget, gate_override, step, dry_run, context):
+def run(ctx, objective, dry_run, context):
     """Run a task or workflow against the current mission."""
-    if step:
-        gate_override = "interactive"
-
     # Parse --context key=value pairs
     context_overrides = {}
     for item in context:
@@ -217,8 +206,6 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
                 api,
                 objective,
                 mission_id=mid,
-                budget=budget,
-                gate_override=gate_override,
                 dry_run=dry_run,
                 quiet=ctx.quiet,
                 verbose=ctx.verbose,
@@ -229,6 +216,7 @@ def run(ctx, objective, budget, gate_override, step, dry_run, context):
 
 
 mc.add_command(runs)
+mc.add_command(workflow_runs)
 # =============================================================================
 # Retry command
 # =============================================================================
@@ -236,15 +224,8 @@ mc.add_command(runs)
 
 @mc.command()
 @click.option("--run", "n", type=int, required=True, help="Nth most recent execution to retry.")
-@click.option(
-    "--gate",
-    "gate_override",
-    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-    default=None,
-    help="Gate mode override.",
-)
 @click.pass_obj
-def retry(ctx, n, gate_override):
+def retry(ctx, n):
     """Retry failed plan tasks, or re-run a past execution."""
     from modules.clients.cli.mc_run import retry as mc_retry
 
@@ -255,7 +236,6 @@ def retry(ctx, n, gate_override):
                 api,
                 n,
                 mission_id=mid,
-                gate_override=gate_override,
                 quiet=ctx.quiet,
                 verbose=ctx.verbose,
             )
@@ -341,6 +321,7 @@ mc.add_command(knowledge)
 @mc.command()
 def tree():
     """Show all commands in a tree structure."""
+    from rich.markup import escape
     from rich.tree import Tree
 
     from modules.clients.common.display import get_console
@@ -350,7 +331,13 @@ def tree():
     def _build(group: click.Group, node: Tree) -> None:
         for name in sorted(group.commands):
             cmd = group.commands[name]
-            label = f"[cyan]{name}[/cyan]"
+            parts = [name]
+            for param in cmd.params:
+                if isinstance(param, click.Argument):
+                    parts.append(param.human_readable_name.upper())
+                elif isinstance(param, click.Option) and param.name != "help":
+                    parts.append(f"[{max(param.opts, key=len)}]")
+            label = f"[cyan]{escape(' '.join(parts))}[/cyan]"
             if cmd.help:
                 short = cmd.help.split("\n")[0]
                 label += f"  [dim]{short}[/dim]"

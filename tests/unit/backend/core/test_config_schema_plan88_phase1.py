@@ -47,3 +47,7 @@ def test_deleted_temporal_keys_rejected() -> None:
 
 def test_repo_yaml_loads() -> None:
     assert get_app_config().missions.recurrence.default_catch_up_window_seconds == 21600
+
+
+def test_cli_yaml_loads() -> None:
+    assert get_app_config().cli.mc.runs_list_limit == 20

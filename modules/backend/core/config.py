@@ -26,6 +26,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from modules.backend.core.config_schema import (
     ApplicationSchema,
+    CliSchema,
     CostSchema,
     DatabaseSchema,
     EventsSchema,
@@ -159,6 +160,7 @@ class AppConfig:
         self._providers = _load_validated_optional(ProvidersSchema, "providers.yaml")
         self._models = _load_validated(ModelsSchema, "models.yaml")
         self._cost = _load_validated(CostSchema, "cost.yaml")
+        self._cli = _load_validated(CliSchema, "cli.yaml")
         self._security_assessment = _load_validated_optional(
             SecurityAssessmentSchema,
             "security_assessment.yaml",
@@ -254,6 +256,11 @@ class AppConfig:
     def cost(self) -> CostSchema:
         """Cost management settings (Plan 60)."""
         return self._cost
+
+    @property
+    def cli(self) -> CliSchema:
+        """User CLI presentation settings (Plan 88 step 88.1.13)."""
+        return self._cli
 
     @property
     def security_assessment(self) -> SecurityAssessmentSchema:

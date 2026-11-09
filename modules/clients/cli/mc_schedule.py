@@ -1,209 +1,241 @@
-"""Recurring workflow schedule CLI (Plan 83).
+"""Mission schedule CLI renderer (Plan 88 step 88.1.13, contracts 3.5.4).
 
-`mc schedule` is the end-user surface for cron-based scheduling of a
-mission's **defined workflows**. It is a strict thin client: every
-command goes through the REST API via `CliApiClient` — there are zero
-backend-service imports here (contrast `schedule_cmds.py`, the admin-only
-service-based renderer, which must NOT be reused from `mc.py`).
-
-The scheduled unit is a `workflow_definition_id`; scheduling a free-form
-mission objective is a separate, out-of-scope path (Plan 83 §8).
-
-Commands:
-    mc schedule                 # list schedules for the current mission
-    mc schedule list            # same as above
-    mc schedule create --workflow <id> --cron "0 9 * * *"
-    mc schedule enable <schedule_id>
-    mc schedule disable <schedule_id>
-    mc schedule delete <schedule_id>
+`mc schedule` manages a mission's recurring schedules through the REST API
+only. A schedule is addressed by its name, resolved with an exact match over
+`GET /missions/{id}/schedules?include_archived=true`. A schedule runs either an
+objective template or a saved workflow; `--workflow NAME` is resolved through
+`GET /missions/{id}/workflows`. Zero backend-service imports.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
-from typing import Any
+from typing import Any, NoReturn
 
-from modules.clients.cli.api_client import ApiError, CliApiClient, resolve_short_id
-from modules.clients.common.display import build_table, get_console
+import click
+
+from modules.clients.cli.api_client import CliApiClient
+from modules.clients.cli.report import build_table, get_console
+
+_DURATION = re.compile(r"^(\d+)([smhd])$")
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
 
 # =============================================================================
-# list — schedules for the current mission
+# Presentation parsing
+# =============================================================================
+
+
+def parse_duration(value: str | None) -> int | None:
+    """`90s`, `15m`, `6h` or `2d` to seconds; None passes through."""
+    if value is None:
+        return None
+    match = _DURATION.match(value.strip())
+    if match is None:
+        raise click.BadParameter(f"{value!r} is not a duration like 90s, 15m, 6h or 2d")
+    return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+
+
+def parse_params(items: tuple[str, ...]) -> dict[str, str]:
+    """Repeated `k=v` options to a dict."""
+    params: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise click.BadParameter(f"{item!r} is not key=value", param_hint="--param")
+        key, value = item.split("=", 1)
+        params[key] = value
+    return params
+
+
+# =============================================================================
+# Commands
 # =============================================================================
 
 
 async def list_schedules(
-    api: CliApiClient,
-    *,
-    mission_id: str,
-    output_format: str = "human",
+    api: CliApiClient, *, mission_id: str, include_archived: bool, as_json: bool
 ) -> None:
-    """List every schedule (enabled and disabled) for the current mission."""
-    console = get_console()
-    try:
-        data = await api.get(
-            f"/missions/{mission_id}/schedules",
-            params={"enabled_only": "false"},
-        )
-    except ApiError as exc:
-        _fail(exc)
-
+    """Print the mission's schedules."""
+    data = await api.get(
+        f"/missions/{mission_id}/schedules",
+        params={"include_archived": str(include_archived).lower()},
+    )
     schedules = data.get("schedules", []) if isinstance(data, dict) else []
-
-    if output_format == "json":
+    console = get_console()
+    if as_json:
         console.print(json.dumps(data, indent=2, default=str))
         return
-
     if not schedules:
         console.print("[dim]No schedules. Create one with `mc schedule create`.[/dim]")
         return
 
     table = build_table(
-        "Workflow Schedules",
+        "Mission Schedules",
         columns=[
-            ("ID", {"style": "cyan", "width": 38}),
-            ("Enabled", {"width": 9}),
-            ("Cron", {"width": 18}),
-            ("Workflow", {"width": 38}),
-            ("Iterations", {"width": 12}),
-            ("Next Fire", {"width": 20}),
-            ("Description", {"ratio": 1, "no_wrap": False}),
+            ("Name", {"style": "cyan", "width": 24}),
+            ("Status", {"width": 10}),
+            ("Kind", {"width": 20}),
+            ("Cron", {"width": 16}),
+            ("Time zone", {"width": 20}),
+            ("Runs", {"justify": "right", "width": 8}),
+            ("Sync", {"width": 8}),
         ],
     )
     for s in schedules:
-        enabled = "[green]yes[/green]" if s.get("enabled") else "[red]no[/red]"
-        iters = str(s.get("iteration_count", 0))
-        if s.get("max_iterations"):
-            iters += f"/{s['max_iterations']}"
-        next_fire = (s.get("next_fire_at") or "—")[:19]
+        runs = str(s.get("executed_run_count", 0))
+        if s.get("max_runs"):
+            runs += f"/{s['max_runs']}"
         table.add_row(
-            s.get("id", "?"),
-            enabled,
-            s.get("cron_expression", "?"),
-            s.get("workflow_definition_id", "?"),
-            iters,
-            next_fire,
-            s.get("description", ""),
+            s.get("name", ""),
+            s.get("status", ""),
+            s.get("kind", ""),
+            s.get("cron_expression", ""),
+            s.get("time_zone_name", ""),
+            runs,
+            _sync_label(s),
         )
     console.print(table)
 
 
-# =============================================================================
-# create — new cron schedule for a workflow
-# =============================================================================
+async def show_schedule(api: CliApiClient, *, mission_id: str, name: str) -> None:
+    """Print one schedule with its next fire times and Temporal sync state."""
+    sid = (await resolve_schedule(api, mission_id, name))["id"]
+    s = await api.get(f"/missions/{mission_id}/schedules/{sid}")
+    console = get_console()
+    console.print(f"[bold]Schedule {s.get('name')}[/bold]  status=[cyan]{s.get('status')}[/cyan]")
+    rows = [
+        ("id", s.get("id")),
+        ("kind", s.get("kind")),
+        ("objective", s.get("objective_template")),
+        ("workflow", s.get("workflow_definition_id")),
+        ("parameters", s.get("workflow_parameters") or None),
+        ("cron", s.get("cron_expression")),
+        ("time zone", s.get("time_zone_name")),
+        ("starts at", s.get("starts_at")),
+        ("ends at", s.get("ends_at")),
+        (
+            "runs",
+            f"{s.get('executed_run_count', 0)}/{s.get('max_runs') or 'unlimited'}",
+        ),
+        ("catch-up", f"{s.get('catch_up_window_seconds')}s"),
+        ("completed", s.get("completed_reason")),
+        ("temporal id", s.get("temporal_schedule_id")),
+    ]
+    for label, value in rows:
+        if value is not None:
+            console.print(f"  {label + ':':14}{value}")
+    console.print(f"  {'sync:':14}{_sync_label(s)}")
+    if s.get("temporal_sync_state") == "failed":
+        console.print(f"  [red]{s.get('temporal_sync_error') or 'sync failed'}[/red]")
+    fire_times = s.get("next_fire_times") or []
+    console.print("\n[bold]Next fire times:[/bold]")
+    if not fire_times:
+        console.print("  [dim]none[/dim]")
+    for fire_time in fire_times:
+        console.print(f"  {fire_time}")
 
 
 async def create_schedule(
-    api: CliApiClient,
-    *,
-    mission_id: str,
-    workflow: str,
-    cron: str,
-    description: str,
-    budget: float | None,
-    max_iterations: int | None,
-    cooldown: int,
+    api: CliApiClient, *, mission_id: str, name: str, fields: dict[str, Any]
 ) -> None:
-    """Create a cron schedule bound to a workflow definition.
-
-    Builds a `WorkflowScheduleCreateRequest`-shaped payload and omits keys
-    whose value is ``None`` (the backend schema is ``extra="forbid"`` — do
-    not send nulls for optional numeric fields).
-    """
-    console = get_console()
-    payload: dict[str, Any] = {
-        "workflow_definition_id": workflow,
-        "cron_expression": cron,
-        "cooldown_seconds": cooldown,
-    }
-    if description:
-        payload["description"] = description
-    if budget is not None:
-        payload["budget_per_run_usd"] = budget
-    if max_iterations is not None:
-        payload["max_iterations"] = max_iterations
-
-    try:
-        schedule = await api.post(
-            f"/missions/{mission_id}/schedules",
-            body=payload,
-        )
-    except ApiError as exc:
-        _fail(exc)
-
-    console.print(f"[green]Schedule created:[/green] [cyan]{schedule.get('id')}[/cyan]")
-    console.print(f"  Cron:      {schedule.get('cron_expression')}")
-    console.print(f"  Next fire: {schedule.get('next_fire_at') or '—'}")
+    """POST a new schedule built from the CLI flags."""
+    body = await _build_body(api, mission_id, fields)
+    body["name"] = name
+    if body.get("objective_template") is not None:
+        body["kind"] = "objective"
+    elif body.get("workflow_definition_id") is not None:
+        body["kind"] = "workflow_definition"
+    else:
+        _fail("Pass --objective TEXT or --workflow NAME.")
+    s = await api.post(f"/missions/{mission_id}/schedules", body=body)
+    _print_result("created", s)
 
 
-# =============================================================================
-# enable / disable — toggle a schedule
-# =============================================================================
-
-
-async def set_enabled(
-    api: CliApiClient,
-    *,
-    mission_id: str,
-    schedule_id: str,
-    enabled: bool,
+async def edit_schedule(
+    api: CliApiClient, *, mission_id: str, name: str, fields: dict[str, Any]
 ) -> None:
-    """Enable or disable a schedule by id (accepts a short prefix)."""
-    console = get_console()
-    sid = await _resolve_schedule_id(api, mission_id, schedule_id)
-    try:
-        await api.patch(
-            f"/missions/{mission_id}/schedules/{sid}",
-            body={"enabled": enabled},
-        )
-    except ApiError as exc:
-        _fail(exc)
-    state = "enabled" if enabled else "disabled"
-    console.print(f"[green]Schedule {state}:[/green] [cyan]{sid}[/cyan]")
+    """PATCH the named schedule with only the flags given."""
+    sid = (await resolve_schedule(api, mission_id, name))["id"]
+    body = await _build_body(api, mission_id, fields)
+    if not body:
+        _fail("Nothing to change. Pass at least one flag.")
+    s = await api.patch(f"/missions/{mission_id}/schedules/{sid}", body=body)
+    _print_result("updated", s)
+
+
+async def change_status(api: CliApiClient, *, mission_id: str, name: str, action: str) -> None:
+    """Pause, resume or delete (archive) the named schedule."""
+    sid = (await resolve_schedule(api, mission_id, name))["id"]
+    path = f"/missions/{mission_id}/schedules/{sid}"
+    if action == "delete":
+        s = await api.delete(path)
+        _print_result("deleted", s)
+        return
+    s = await api.post(f"{path}/{action}")
+    _print_result(f"{action}d", s)
 
 
 # =============================================================================
-# delete — remove a schedule
+# Resolution helpers
 # =============================================================================
 
 
-async def delete_schedule(
-    api: CliApiClient,
-    *,
-    mission_id: str,
-    schedule_id: str,
-) -> None:
-    """Delete a schedule by id (accepts a short prefix)."""
-    console = get_console()
-    sid = await _resolve_schedule_id(api, mission_id, schedule_id)
-    try:
-        await api.delete(f"/missions/{mission_id}/schedules/{sid}")
-    except ApiError as exc:
-        _fail(exc)
-    console.print(f"[green]Schedule deleted:[/green] [cyan]{sid}[/cyan]")
+async def resolve_schedule(api: CliApiClient, mission_id: str, name: str) -> dict[str, Any]:
+    """The schedule whose name matches exactly, archived included; exit 1 when none."""
+    data = await api.get(f"/missions/{mission_id}/schedules", params={"include_archived": "true"})
+    for s in data.get("schedules", []) if isinstance(data, dict) else []:
+        if s.get("name") == name:
+            return s
+    _fail(f"Schedule '{name}' not found")
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
+async def resolve_workflow(api: CliApiClient, mission_id: str, name: str) -> str:
+    """The mission workflow definition id whose name matches exactly; exit 1 when none."""
+    data = await api.get(f"/missions/{mission_id}/workflows")
+    for w in data.get("workflows", []) if isinstance(data, dict) else []:
+        if w.get("name") == name:
+            return w["id"]
+    _fail(f"Workflow '{name}' not found in this mission")
 
 
-async def _resolve_schedule_id(
-    api: CliApiClient,
-    mission_id: str,
-    prefix: str,
-) -> str:
-    """Accept a full UUID or unique >=4-char prefix, matched against schedules."""
-    return await resolve_short_id(
-        api,
-        list_url=f"/missions/{mission_id}/schedules?enabled_only=false",
-        list_field="schedules",
-        prefix=prefix,
-        not_found_hint="Run `mc schedule list` to see ids.",
+async def _build_body(api: CliApiClient, mission_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """Map CLI flags to a create/update body, leaving out flags that were not given."""
+    body: dict[str, Any] = {}
+    if fields.get("objective") is not None and fields.get("workflow") is not None:
+        _fail("Pass either --objective or --workflow, not both.")
+    if fields.get("objective") is not None:
+        body["objective_template"] = fields["objective"]
+    if fields.get("workflow") is not None:
+        body["workflow_definition_id"] = await resolve_workflow(api, mission_id, fields["workflow"])
+    if fields.get("params"):
+        body["workflow_parameters"] = fields["params"]
+    for flag, key in (
+        ("cron", "cron_expression"),
+        ("tz", "time_zone_name"),
+        ("starts_at", "starts_at"),
+        ("ends_at", "ends_at"),
+        ("max_runs", "max_runs"),
+        ("catch_up_window_seconds", "catch_up_window_seconds"),
+    ):
+        if fields.get(flag) is not None:
+            body[key] = fields[flag]
+    return body
+
+
+def _sync_label(s: dict[str, Any]) -> str:
+    state = s.get("temporal_sync_state") or ""
+    return f"[red]{state}[/red]" if state == "failed" else state
+
+
+def _print_result(verb: str, s: dict[str, Any]) -> None:
+    get_console().print(
+        f"[green]Schedule {verb}:[/green] [cyan]{s.get('name')}[/cyan]  "
+        f"status={s.get('status')}  sync={_sync_label(s)}"
     )
 
 
-def _fail(exc: ApiError) -> None:
-    """Print a red, actionable message and exit (rule 002.3 / 014 — no swallow)."""
-    get_console().print(f"[red]Schedule request failed:[/red] {exc}")
+def _fail(message: str) -> NoReturn:
+    get_console().print(f"[red]{message}[/red]")
     sys.exit(1)

@@ -21,8 +21,6 @@ async def run(
     objective_or_workflow: str,
     *,
     mission_id: str,
-    budget: float | None,
-    gate_override: str | None,
     dry_run: bool,
     quiet: bool,
     verbose: bool,
@@ -43,8 +41,6 @@ async def run(
             api,
             matched[0],
             mission_id=mission_id,
-            budget=budget,
-            gate_override=gate_override,
             dry_run=dry_run,
             verbose=verbose,
             context_overrides=context_overrides,
@@ -54,8 +50,6 @@ async def run(
             api,
             objective_or_workflow,
             mission_id=mission_id,
-            budget=budget,
-            gate_override=gate_override,
             dry_run=dry_run,
             quiet=quiet,
             verbose=verbose,
@@ -67,7 +61,6 @@ async def retry(
     n: int,
     *,
     mission_id: str,
-    gate_override: str | None,
     quiet: bool = False,
     verbose: bool = False,
 ) -> None:
@@ -133,8 +126,6 @@ async def retry(
         api,
         objective,
         mission_id=mission_id,
-        budget=original.get("cost_ceiling_usd"),
-        gate_override=gate_override,
         dry_run=False,
         quiet=quiet,
         verbose=verbose,
@@ -151,8 +142,6 @@ async def _run_workflow(
     workflow: dict,
     *,
     mission_id: str,
-    budget: float | None,
-    gate_override: str | None,
     dry_run: bool,
     verbose: bool,
     context_overrides: dict | None = None,
@@ -185,10 +174,6 @@ async def _run_workflow(
     console.print(f"[bold]Running workflow:[/bold] {wf_name}\n")
 
     body: dict = {"triggered_by": "user:cli"}
-    if gate_override:
-        body["gate_mode"] = gate_override
-    if budget is not None:
-        body["budget_ceiling_usd"] = budget
     if context_overrides:
         body["context_overrides"] = context_overrides
 
@@ -211,49 +196,34 @@ async def _run_adhoc(
     objective: str,
     *,
     mission_id: str,
-    budget: float | None,
-    gate_override: str | None,
     dry_run: bool,
     quiet: bool,
     verbose: bool,
 ) -> None:
-    """Execute an ad-hoc objective via the plan path.
+    """Start a mission run for an ad-hoc objective (POST /missions/{id}/runs).
 
-    Posts to plan/run-objective, which Plan 88 step 88.1.8 deleted; 88.1.13
-    moves this to POST /missions/{id}/runs. Progress is streamed via SSE with
-    polling fallback.
+    Gate mode is a plan setting; per-run caps arrive in Plan 88 step 88.4.1.
+    Progress is streamed via SSE with polling fallback.
     """
     console = get_console()
 
     if dry_run:
         console.print(f"[bold]Dry run:[/bold] {objective}\n")
         console.print(f"  Mission: {mission_id}")
-        if budget:
-            console.print(f"  Budget: ${budget:.2f}")
         console.print("\n[dim]Run without --dry-run to execute.[/dim]")
         return
 
     console.print(f"[bold]Running:[/bold] {objective}\n")
 
-    body: dict = {
-        "objective": objective,
-    }
-    if gate_override:
-        body["gate_mode"] = gate_override
-    if budget is not None:
-        body["budget_ceiling_usd"] = budget
-
-    result = await api.post(
-        f"/missions/{mission_id}/plan/run-objective",
-        body=body,
-    )
+    result = await api.post(f"/missions/{mission_id}/runs", body={"objective": objective})
 
     if verbose:
         print(json.dumps(result, default=str, indent=2), flush=True)
 
-    # Endpoint returns immediately — refine + dispatch run in Temporal.
+    # Endpoint returns immediately — planning and execution run in Temporal.
     # Stream progress via SSE until all tasks complete.
-    console.print("Dispatched. Streaming progress...\n")
+    console.print(f"[green]Run #{result.get('sequence')} started[/green]")
+    console.print("Streaming progress...\n")
     await _stream_plan_progress(api, mission_id, verbose=verbose, quiet=quiet)
 
 
@@ -337,9 +307,6 @@ async def _stream_plan_sse(
                     console.print(
                         f"  {STATUS_ICONS.get('failed', chr(0x2717))} " f"{tid} failed: {reason}"
                     )
-
-        elif evt == "mission_plan.run.completed":
-            total_cost = d.get("total_spent_usd", total_cost)
 
         elif evt == "mission_plan.supervisor_decision":
             action = d.get("action", "")

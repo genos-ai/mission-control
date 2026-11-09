@@ -1,14 +1,14 @@
 """Workflow-run lifecycle CLI (Plan 80h follow-up).
 
 Surfaces the existing `/missions/{mid}/workflow-runs` endpoints + a new
-cancel endpoint as user CLI commands. Distinct from `mc run` (verb,
-starts a workflow) — `mc runs` is the noun (manage existing runs).
+cancel endpoint as user CLI commands. Distinct from `mc runs`, which
+lists mission runs (Plan 88 step 88.1.13).
 
 Commands:
-    mc runs                  # default: list active workflow runs
-    mc runs list [--all]     # list (active by default, --all = include terminal)
-    mc runs show <id>        # detail
-    mc runs cancel <id>      # mark as CANCELLED (for stale RUNNING orphans)
+    mc workflow-runs                  # default: list active workflow runs
+    mc workflow-runs list [--all]     # list (active by default, --all = include terminal)
+    mc workflow-runs show <id>        # detail
+    mc workflow-runs cancel <id>      # mark as CANCELLED (for stale RUNNING orphans)
 """
 
 from __future__ import annotations

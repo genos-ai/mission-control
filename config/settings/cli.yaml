@@ -1,0 +1,12 @@
+# =============================================================================
+# CLI Configuration
+# =============================================================================
+#   Presentation settings for the user CLI (mc.py). Business rules stay in
+#   the backend; these values only shape what the thin client requests.
+#
+# Available options:
+#   mc.runs_list_limit   - Rows returned by `mc runs list` when --limit is omitted (integer, 1-200)
+# =============================================================================
+
+mc:
+  runs_list_limit: 20      # rows returned by `mc runs list` when --limit is omitted
