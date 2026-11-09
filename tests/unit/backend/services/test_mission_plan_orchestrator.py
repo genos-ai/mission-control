@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission import Mission
-from modules.backend.models.mission_plan import MissionPlan
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_outcome import (
@@ -40,10 +40,13 @@ async def mission_context(db_session: AsyncSession, test_user) -> dict:
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for orchestrator helpers",
         owner_id=test_user.id,
-        gate_mode="autonomous",
         budget_ceiling_usd=10.0,
     )
     db_session.add(m)
+    await db_session.flush()
+    db_session.add(
+        MissionPlan(mission_id=m.id, gate_mode=GateMode.AUTONOMOUS, budget_usd_ceiling=10.0)
+    )
     await db_session.flush()
     return {"mission_id": m.id, "user_id": test_user.id}
 

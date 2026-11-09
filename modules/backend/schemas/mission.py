@@ -8,6 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from modules.backend.models.mission_plan import GateMode
+
 
 class MissionCreate(BaseModel):
     """Schema for creating a new mission."""
@@ -73,6 +75,7 @@ class MissionCreate(BaseModel):
         pattern=r"^(local|worktree|container)$",
         description="Default execution environment for this mission. NULL = local.",
     )
+    gate_mode: GateMode = Field(..., description="Plan gate mode")
 
 
 class MissionUpdate(BaseModel):

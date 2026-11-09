@@ -57,7 +57,7 @@ async def show(
         return
 
     plan_status = plan.get("status", "?")
-    gate_mode = plan.get("gate_mode") or "autonomous"
+    gate_mode = plan["gate_mode"]
     spent = plan.get("total_spent_usd", 0.0) or 0.0
     ceiling = plan.get("budget_usd_ceiling")
     header = (

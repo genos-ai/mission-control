@@ -183,12 +183,6 @@ class Task(UUIDMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    veto_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        comment="For ai_assisted mode: deadline to veto auto-approval",
-    )
-
     retry_count: Mapped[int] = mapped_column(
         Integer,
         default=0,

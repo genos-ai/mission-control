@@ -1,4 +1,4 @@
-"""Fail-closed gate handling in MissionPlanOrchestrator.run_objective (Plan 88 step 88.0.5).
+"""Gate handling in MissionPlanOrchestrator.run_objective (Plan 88 steps 88.0.5, 88.1.0).
 
 refine() is patched to create real PROPOSED task rows; everything else
 runs against the real db_session.
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
@@ -20,16 +21,17 @@ from modules.backend.services.mission_plan_orchestrator import MissionPlanOrches
 
 @pytest.fixture
 async def mission_context(db_session: AsyncSession, test_user) -> dict:
-    """A real mission with no gate_mode, owned by the shared test user."""
+    """A real mission with a MANUAL plan, owned by the shared test user."""
     m = Mission(
         id=str(uuid.uuid4()),
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for fail-closed gate handling",
         owner_id=test_user.id,
-        gate_mode=None,
         budget_ceiling_usd=10.0,
     )
     db_session.add(m)
+    await db_session.flush()
+    db_session.add(MissionPlan(mission_id=m.id, gate_mode=GateMode.MANUAL, budget_usd_ceiling=10.0))
     await db_session.flush()
     return {"mission_id": m.id, "user_id": test_user.id}
 
@@ -76,7 +78,7 @@ async def test_run_objective_rejects_invalid_gate_mode_override(
 
 
 @pytest.mark.asyncio
-async def test_run_objective_null_gate_mode_leaves_tasks_proposed(
+async def test_run_objective_manual_gate_mode_leaves_tasks_proposed(
     orchestrator: MissionPlanOrchestrator,
     mission_context: dict,
     db_session: AsyncSession,

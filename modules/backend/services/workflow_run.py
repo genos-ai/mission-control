@@ -465,11 +465,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         try:
             import uuid as _uuid
 
+            from modules.backend.models.mission_plan import GateMode
             from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
-            from modules.backend.services.mission_plan import (
-                MissionPlanService,
-                resolve_gate_mode,
-            )
+            from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
             # Map step IDs to UUIDs so Task rows get valid PKs
@@ -527,7 +525,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 plan.id,
                 status=TaskStatus.PROPOSED,
             )
-            if resolve_gate_mode(plan.gate_mode) == "autonomous":
+            if plan.gate_mode == GateMode.AUTONOMOUS:
                 # Autonomous-mode auto-approver: transition immediately at
                 # creation. Same end state as the legacy bulk-approve, but
                 # routed through the canonical lifecycle so the Kanban
@@ -548,7 +546,7 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                     extra={
                         "mission_id": mission_id,
                         "plan_id": plan.id,
-                        "gate_mode": plan.gate_mode,
+                        "gate_mode": plan.gate_mode.value,
                     },
                 )
             await self._session.commit()

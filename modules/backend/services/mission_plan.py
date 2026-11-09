@@ -27,13 +27,11 @@ from modules.backend.events.types import (
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.mission_plan import (  # noqa: F401
     AUTO_APPROVE_GATE_MODES,
-    VALID_GATE_MODES,
+    GateMode,
     MissionPlan,
     MissionPlanStatus,
-    resolve_gate_mode,
 )
 from modules.backend.models.task import Task, TaskStatus
-from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.services.base import BaseService
@@ -61,7 +59,7 @@ _REJECTABLE_FROM = frozenset(
 )
 
 
-def gate_mode_auto_approves(gate_mode: str | None) -> bool:
+def gate_mode_auto_approves(gate_mode: GateMode) -> bool:
     """Whether proposed tasks are approved without a person in this gate mode.
 
     For callers outside the service layer, such as agent tools, which may not import models.
@@ -98,7 +96,6 @@ class MissionPlanService(BaseService):
     ) -> None:
         super().__init__(session)
         self._repo = MissionPlanRepository(session)
-        self._mission_repo = MissionRepository(session)
         self._task_repo = TaskRepository(session)
         # Optional: many callers only read/mutate plan state and never
         # emit (admin ops, gate-request queries). _emit() below tolerates
@@ -159,24 +156,15 @@ class MissionPlanService(BaseService):
         return await self._repo.get_by_mission_id(mission_id)
 
     async def get_or_create_plan(self, mission_id: str) -> MissionPlan:
-        """Return the mission's plan, creating it lazily on first access."""
-        existing = await self._repo.get_by_mission_id(mission_id)
-        if existing is not None:
-            return existing
+        """Return the mission's plan.
 
-        mission = await self._mission_repo.get_by_id(mission_id)
-
-        plan = await self._repo.create_for_mission(
-            mission_id=mission_id,
-            gate_mode=mission.gate_mode,
-            budget_usd_ceiling=mission.budget_ceiling_usd,
-        )
-        self._log_operation(
-            "MissionPlan created",
-            mission_id=mission_id,
-            plan_id=plan.id,
-            gate_mode=plan.gate_mode,
-        )
+        Every mission has a plan from creation (MissionService.create_mission);
+        the name is kept for its many call sites. Raises NotFoundError when
+        the plan is absent.
+        """
+        plan = await self._repo.get_by_mission_id(mission_id)
+        if plan is None:
+            raise NotFoundError(f"Mission {mission_id} has no plan")
         return plan
 
     async def get_tasks(
@@ -202,19 +190,21 @@ class MissionPlanService(BaseService):
         mission_plan_id: str,
         gate_mode: str,
     ) -> MissionPlan:
-        """Update the plan's autonomy mode."""
-        if gate_mode not in VALID_GATE_MODES:
+        """Update the plan's autonomy mode. Raises ValidationError for an unknown mode."""
+        try:
+            new_mode = GateMode(gate_mode)
+        except ValueError as exc:
             raise ValidationError(
-                f"Invalid gate_mode {gate_mode!r}. " f"Must be one of: {sorted(VALID_GATE_MODES)}"
-            )
+                f"Invalid gate_mode {gate_mode!r}. Must be one of: {[m.value for m in GateMode]}"
+            ) from exc
         plan = await self._repo.get_by_id(mission_plan_id)
         previous_mode = plan.gate_mode
-        plan.gate_mode = gate_mode
+        plan.gate_mode = new_mode
         await self._session.flush()
         self._log_operation(
             "MissionPlan gate_mode changed",
             plan_id=mission_plan_id,
-            gate_mode=gate_mode,
+            gate_mode=new_mode.value,
         )
         await self._emit(
             plan.mission_id,
@@ -223,8 +213,8 @@ class MissionPlanService(BaseService):
                 source="mission_plan_service",
                 mission_id=plan.mission_id,
                 plan_id=plan.id,
-                from_mode=previous_mode,
-                to_mode=gate_mode,
+                from_mode=previous_mode.value,
+                to_mode=new_mode.value,
             ),
         )
         return plan
@@ -256,7 +246,7 @@ class MissionPlanService(BaseService):
             update(MissionPlan)
             .where(
                 MissionPlan.status == MissionPlanStatus.ACTIVE,
-                MissionPlan.gate_mode == "autonomous",
+                MissionPlan.gate_mode == GateMode.AUTONOMOUS,
             )
             .values(status=MissionPlanStatus.PAUSED)
         )

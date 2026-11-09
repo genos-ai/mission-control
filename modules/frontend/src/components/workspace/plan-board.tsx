@@ -384,11 +384,9 @@ function EmptyState({
         <Brain className="h-3.5 w-3.5" />
         Talk to the Director
       </Button>
-      {plan.gate_mode && (
-        <p className="font-mono text-2xs text-faint">
-          Plan v{plan.version} · gate_mode: {plan.gate_mode}
-        </p>
-      )}
+      <p className="font-mono text-2xs text-faint">
+        Plan v{plan.version} · gate_mode: {plan.gate_mode}
+      </p>
     </div>
   )
 }

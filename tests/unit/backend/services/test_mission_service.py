@@ -27,6 +27,7 @@ class TestCreateMission:
     @pytest.mark.asyncio
     async def test_creates_mission(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="test-mission",
             description="A test mission",
             owner_id=TEST_USER_ID,
@@ -40,6 +41,7 @@ class TestCreateMission:
     @pytest.mark.asyncio
     async def test_creates_owner_membership(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="test-membership",
             description="Test membership creation",
             owner_id=TEST_USER_ID,
@@ -52,12 +54,14 @@ class TestCreateMission:
     @pytest.mark.asyncio
     async def test_duplicate_name_raises_conflict(self, service):
         await service.create_mission(
+            gate_mode="manual",
             name="unique-name",
             description="First mission",
             owner_id=TEST_USER_ID,
         )
         with pytest.raises(ConflictError, match="already exists"):
             await service.create_mission(
+                gate_mode="manual",
                 name="unique-name",
                 description="Second mission",
                 owner_id=TEST_USER_ID,
@@ -66,6 +70,7 @@ class TestCreateMission:
     @pytest.mark.asyncio
     async def test_optional_fields(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="full-mission",
             description="With all fields",
             owner_id=TEST_USER_ID,
@@ -86,6 +91,7 @@ class TestGetMission:
     @pytest.mark.asyncio
     async def test_get_by_id(self, service):
         created = await service.create_mission(
+            gate_mode="manual",
             name="get-test",
             description="Get test",
             owner_id=TEST_USER_ID,
@@ -101,6 +107,7 @@ class TestGetMission:
     @pytest.mark.asyncio
     async def test_get_by_name(self, service):
         await service.create_mission(
+            gate_mode="manual",
             name="named-mission",
             description="Named",
             owner_id=TEST_USER_ID,
@@ -119,11 +126,13 @@ class TestListMissions:
     @pytest.mark.asyncio
     async def test_list_active(self, service):
         await service.create_mission(
+            gate_mode="manual",
             name="active-one",
             description="Active",
             owner_id=TEST_USER_ID,
         )
         await service.create_mission(
+            gate_mode="manual",
             name="active-two",
             description="Active",
             owner_id=TEST_USER_ID,
@@ -134,11 +143,13 @@ class TestListMissions:
     @pytest.mark.asyncio
     async def test_list_by_owner(self, service):
         await service.create_mission(
+            gate_mode="manual",
             name="owner-a",
             description="A",
             owner_id=TEST_USER_ID_2,
         )
         await service.create_mission(
+            gate_mode="manual",
             name="owner-b",
             description="B",
             owner_id=TEST_USER_ID,
@@ -151,6 +162,7 @@ class TestUpdateMission:
     @pytest.mark.asyncio
     async def test_update_description(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="update-test",
             description="Original",
             owner_id=TEST_USER_ID,
@@ -166,6 +178,7 @@ class TestArchiveMission:
     @pytest.mark.asyncio
     async def test_archive(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="archive-test",
             description="To archive",
             owner_id=TEST_USER_ID,
@@ -176,6 +189,7 @@ class TestArchiveMission:
     @pytest.mark.asyncio
     async def test_archived_not_in_active_list(self, service):
         mission = await service.create_mission(
+            gate_mode="manual",
             name="archived-hidden",
             description="Hidden",
             owner_id=TEST_USER_ID,

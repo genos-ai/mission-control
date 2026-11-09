@@ -17,8 +17,8 @@ async def create(
     *,
     name: str,
     description: str,
+    gate_mode: str,
     brief: str | None = None,
-    gate_mode: str | None = None,
     budget: float | None = None,
 ) -> None:
     """Create a new mission."""
@@ -28,7 +28,12 @@ async def create(
     me = await api.get("/auth/me")
     owner_id = me["id"]
 
-    body: dict = {"name": name, "description": description, "owner_id": owner_id}
+    body: dict = {
+        "name": name,
+        "description": description,
+        "owner_id": owner_id,
+        "gate_mode": gate_mode,
+    }
     if brief:
         body["brief"] = brief
     if budget is not None:
@@ -38,14 +43,7 @@ async def create(
 
     console.print(f"[green]Mission created:[/green] {mission['id']}")
     console.print(f"  Name: {mission['name']}")
-
-    # Set gate mode if specified (via plan endpoint)
-    if gate_mode:
-        await api.patch(
-            f"/missions/{mission['id']}/plan",
-            body={"gate_mode": gate_mode},
-        )
-        console.print(f"  Gate: {gate_mode}")
+    console.print(f"  Gate: {gate_mode}")
 
 
 async def list_missions(api: CliApiClient) -> None:

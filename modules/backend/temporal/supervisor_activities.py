@@ -120,6 +120,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
     from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
     from modules.backend.core.database import get_async_session
+    from modules.backend.models.mission_plan import GateMode
     from modules.backend.models.task import TaskStatus
 
     async with get_async_session() as db:
@@ -161,7 +162,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 
         reviewer = AutonomousPostRunReviewer(
             session=db,
-            gate_mode=input.gate_mode,
+            gate_mode=GateMode(input.gate_mode),
         )
         decision = await reviewer.review(context)
 

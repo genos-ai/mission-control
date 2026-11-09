@@ -1,12 +1,13 @@
 """Setup shared by the mission API integration tests: missions, team members, LLM spend."""
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.utils import utc_now
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
-from modules.backend.models.mission_plan import MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.services.agent_catalog import AgentCatalogService
@@ -15,12 +16,14 @@ from modules.backend.services.token_economics import TokenEconomicsService
 
 
 async def create_mission(db: AsyncSession, name: str, owner_id: str) -> Mission:
-    """A mission with its owner as a member, members loaded as the real query loads them."""
+    """A mission with its owner as a member and a MANUAL plan, members loaded as the real
+    query loads them."""
     mission = Mission(
         name=name, description=name, owner_id=owner_id, status="active", default_roster="default"
     )
     db.add(mission)
     await db.flush()
+    db.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
     db.add(MissionMember(mission_id=mission.id, user_id=owner_id, role=MissionMemberRole.OWNER))
     await db.flush()
     await db.refresh(mission, ["members"])
@@ -66,14 +69,13 @@ async def record_spend(db: AsyncSession, mission: Mission, *costs: float) -> Non
     await db.flush()
 
 
-async def create_plan(
-    db: AsyncSession, mission: Mission, gate_mode: str | None, status=None
+async def set_plan(
+    db: AsyncSession, mission: Mission, gate_mode: GateMode, status=None
 ) -> MissionPlan:
-    """A plan on the mission, ACTIVE unless a status is given."""
-    plan = MissionPlan(
-        mission_id=mission.id, gate_mode=gate_mode, status=status or MissionPlanStatus.ACTIVE
-    )
-    db.add(plan)
+    """The mission's plan, set to `gate_mode` and ACTIVE unless a status is given."""
+    plan = await db.scalar(select(MissionPlan).where(MissionPlan.mission_id == mission.id))
+    plan.gate_mode = gate_mode
+    plan.status = status or MissionPlanStatus.ACTIVE
     await db.flush()
     return plan
 

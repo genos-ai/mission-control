@@ -78,7 +78,7 @@ async def _action_create(
     budget,
     repo_url,
     repo_root,
-    gate_mode=None,
+    gate_mode,
     tier="user",
     **_,
 ):
@@ -110,8 +110,7 @@ async def _action_create(
     console.print(f"  Name: {mission.name}")
     console.print(f"  Tier: {mission.tier}")
     console.print(f"  Owner: {mission.owner_id}")
-    if gate_mode:
-        console.print(f"  Gate: {gate_mode}")
+    console.print(f"  Gate: {gate_mode}")
 
 
 async def _action_list(cli_logger, *, output_format, **_):
@@ -143,6 +142,15 @@ async def _action_list(cli_logger, *, output_format, **_):
             names = [t["agent_name"] for t in team_info]
             team_summaries[m.id] = "\n".join(names) if names else "[dim]none[/dim]"
 
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.mission_plan import MissionPlanService
+
+    gate_modes: dict[str, str] = {}
+    async with get_async_session() as db:
+        plan_svc = MissionPlanService(db)
+        for m in missions:
+            gate_modes[m.id] = (await plan_svc.get_or_create_plan(m.id)).gate_mode.value
+
     table = build_table(
         "Missions",
         columns=[
@@ -161,7 +169,7 @@ async def _action_list(cli_logger, *, output_format, **_):
             m.description[:60] + "..." if len(m.description or "") > 60 else (m.description or "")
         )
         name = annotate_current_mission(m.name, m.id, current_mission_id)
-        gate = m.gate_mode or "[dim]off[/dim]"
+        gate = gate_modes[m.id]
         team = team_summaries.get(m.id, "[dim]none[/dim]")
         table.add_row(styled_status(m.status), name, m.id, gate, team, desc)
 
@@ -407,8 +415,10 @@ async def _action_summarize(cli_logger, *, mission_id, **_):
 
 
 async def _action_set_gate(cli_logger, *, mission_id, gate_mode, **_):
-    """Set the default gate mode for a mission."""
+    """Set the plan gate mode for a mission."""
+    from modules.backend.core.database import get_async_session
     from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_plan import MissionPlanService
     from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
@@ -416,11 +426,16 @@ async def _action_set_gate(cli_logger, *, mission_id, gate_mode, **_):
 
     if not gate_mode:
         console.print(
-            "[red]Gate mode is required. Valid: off, interactive, ai_assisted, autonomous[/red]"
+            "[red]Gate mode is required. Valid: interactive, manual, ai_assisted, autonomous[/red]"
         )
         sys.exit(1)
 
-    async with MissionService.factory() as svc:
-        mission = await svc.set_gate_mode(mission_id, gate_mode)
+    async with get_async_session() as db:
+        mission = await MissionService(db).get_mission(mission_id)
+        mission_name = mission.name
+        plan_svc = MissionPlanService(db)
+        plan = await plan_svc.get_or_create_plan(mission_id)
+        await plan_svc.set_gate_mode(plan.id, gate_mode)
+        await db.commit()
 
-    console.print(f"[green]Gate mode set:[/green] {mission.name} → {gate_mode}")
+    console.print(f"[green]Gate mode set:[/green] {mission_name} → {gate_mode}")

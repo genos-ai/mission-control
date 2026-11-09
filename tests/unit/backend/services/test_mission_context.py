@@ -384,6 +384,7 @@ class TestMCDCreationViaMissionService:
 
         svc = MissionService(db_session)
         mission = await svc.create_mission(
+            gate_mode="manual",
             name="mcd-seeded",
             description="Test MCD seeding",
             owner_id=TEST_USER_ID,

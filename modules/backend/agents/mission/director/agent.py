@@ -137,10 +137,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         mission_id = ctx.deps.mission_id
 
         try:
-            from modules.backend.services.mission_plan import (
-                MissionPlanService,
-                resolve_gate_mode,
-            )
+            from modules.backend.services.mission_plan import MissionPlanService
 
             plan_svc = MissionPlanService(ctx.deps.db_session)
             plan = await plan_svc.get_or_create_plan(mission_id)
@@ -152,7 +149,7 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
                 s = t.status.value if hasattr(t.status, "value") else str(t.status)
                 counts[s] = counts.get(s, 0) + 1
 
-            gate = resolve_gate_mode(plan.gate_mode)
+            gate = plan.gate_mode.value
             parts.append("[Plan State]")
             parts.append(f"Version: {plan.version} | Gate: {gate} | Tasks: {len(tasks)}")
             if counts:

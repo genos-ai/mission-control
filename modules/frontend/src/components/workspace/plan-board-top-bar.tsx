@@ -17,11 +17,11 @@ import {
   useUpdatePlan,
   useLastSupervisorDecision,
   type MissionPlan,
-  type GateMode,
 } from '@/hooks/use-mission-plan'
 import { fmtCost, fmtUsd } from '@/lib/format'
 import { planProgress } from '@/lib/plan-progress'
 import type { Tone } from '@/lib/status-tone'
+import type { GateMode } from '@/types/mission'
 import type { JoinedTask } from './plan-board-types'
 import { PRE_RUN_GATE_KEY } from './plan-board-types'
 
@@ -112,7 +112,7 @@ export function PlanTopBar({
 
         <Segmented
           label="Autonomy mode"
-          value={plan.gate_mode ?? 'interactive'}
+          value={plan.gate_mode}
           onChange={handleGateMode}
           options={GATE_OPTIONS}
           disabled={updatePlan.isPending}

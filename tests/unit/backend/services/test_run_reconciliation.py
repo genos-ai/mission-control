@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import ExternalServiceError
 from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
-from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.run_reconciliation import RunReconciliationService
 from modules.backend.temporal.workflow_gateway import WorkflowState
 
@@ -73,7 +73,9 @@ async def _mission_plan(db: AsyncSession, owner_id: str) -> tuple[str, str]:
     )
     db.add(mission)
     await db.flush()
-    plan = await MissionPlanService(db).get_or_create_plan(mission.id)
+    plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+    db.add(plan)
+    await db.flush()
     return mission.id, plan.id
 
 

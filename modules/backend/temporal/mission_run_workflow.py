@@ -24,7 +24,6 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from modules.backend.core.config import get_app_config
-    from modules.backend.models.mission_plan import resolve_gate_mode
     from modules.backend.temporal import activities
     from modules.backend.temporal import supervisor_activities as sup
     from modules.backend.temporal.activity_options import activity_kwargs
@@ -111,7 +110,7 @@ class MissionRunWorkflow:
                 mission_id=input.mission_id or input.mission_run_id,
                 plan_id=input.mission_run_id,
                 execution_record_id=result.execution_record_id or "",
-                gate_mode=resolve_gate_mode(input.gate_mode),
+                gate_mode=input.gate_mode,
                 supervisor_iteration_count=self._iteration - 1,
                 max_supervisor_iterations=max_loop_iterations,
                 budget_usd_ceiling=input.mission_budget_usd,

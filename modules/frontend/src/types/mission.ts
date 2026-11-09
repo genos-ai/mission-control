@@ -31,11 +31,14 @@ export interface MissionResponse extends MissionListItem {
   repo_root: string | null
 }
 
+export type GateMode = 'interactive' | 'manual' | 'ai_assisted' | 'autonomous'
+
 export interface MissionCreateRequest {
   name: string
   description: string
   brief?: string
   owner_id: string
+  gate_mode: GateMode
   tier?: MissionTier
   budget_ceiling_usd?: number
   repo_url?: string

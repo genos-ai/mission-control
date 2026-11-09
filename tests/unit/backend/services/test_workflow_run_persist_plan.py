@@ -10,10 +10,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.workflow import WorkflowSchema
-from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.workflow_run import WorkflowRunService
 
 
@@ -34,20 +34,19 @@ def _workflow() -> WorkflowSchema:
     )
 
 
-async def _persist(db_session: AsyncSession, owner_id: str, gate_mode: str | None):
+async def _persist(db_session: AsyncSession, owner_id: str, gate_mode: GateMode):
     """Create a mission with the given gate_mode, persist the workflow, return (plan, tasks)."""
     mission = Mission(
         id=str(uuid.uuid4()),
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for _persist_workflow_as_plan",
         owner_id=owner_id,
-        gate_mode=gate_mode,
         budget_ceiling_usd=10.0,
     )
     db_session.add(mission)
     await db_session.flush()
-    plan = await MissionPlanService(db_session).get_or_create_plan(mission.id)
-    plan.gate_mode = gate_mode
+    plan = MissionPlan(mission_id=mission.id, gate_mode=gate_mode, budget_usd_ceiling=10.0)
+    db_session.add(plan)
     await db_session.flush()
 
     step_map = await WorkflowRunService(db_session)._persist_workflow_as_plan(
@@ -63,35 +62,28 @@ async def _persist(db_session: AsyncSession, owner_id: str, gate_mode: str | Non
 
 @pytest.mark.asyncio
 async def test_autonomous_gate_mode_preserved(db_session: AsyncSession, test_user):
-    plan, _ = await _persist(db_session, test_user.id, "autonomous")
+    plan, _ = await _persist(db_session, test_user.id, GateMode.AUTONOMOUS)
 
-    assert plan.gate_mode == "autonomous"
-
-
-@pytest.mark.asyncio
-async def test_null_gate_mode_preserved(db_session: AsyncSession, test_user):
-    plan, _ = await _persist(db_session, test_user.id, None)
-
-    assert plan.gate_mode is None
+    assert plan.gate_mode == GateMode.AUTONOMOUS
 
 
 @pytest.mark.asyncio
 async def test_autonomous_auto_approves_tasks(db_session: AsyncSession, test_user):
-    _, tasks = await _persist(db_session, test_user.id, "autonomous")
+    _, tasks = await _persist(db_session, test_user.id, GateMode.AUTONOMOUS)
 
     assert {t.status for t in tasks} == {TaskStatus.APPROVED}
 
 
 @pytest.mark.asyncio
 async def test_manual_leaves_tasks_proposed(db_session: AsyncSession, test_user):
-    plan, tasks = await _persist(db_session, test_user.id, "manual")
+    plan, tasks = await _persist(db_session, test_user.id, GateMode.MANUAL)
 
-    assert plan.gate_mode == "manual"
+    assert plan.gate_mode == GateMode.MANUAL
     assert {t.status for t in tasks} == {TaskStatus.PROPOSED}
 
 
 @pytest.mark.asyncio
-async def test_null_leaves_tasks_proposed(db_session: AsyncSession, test_user):
-    _, tasks = await _persist(db_session, test_user.id, None)
+async def test_interactive_leaves_tasks_proposed(db_session: AsyncSession, test_user):
+    _, tasks = await _persist(db_session, test_user.id, GateMode.INTERACTIVE)
 
     assert {t.status for t in tasks} == {TaskStatus.PROPOSED}

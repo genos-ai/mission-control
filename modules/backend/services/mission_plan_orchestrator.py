@@ -30,7 +30,7 @@ from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.events.types import MissionPlanRefinedEvent, SystemEvent
-from modules.backend.models.mission_plan import VALID_GATE_MODES, resolve_gate_mode
+from modules.backend.models.mission_plan import GateMode
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository
@@ -364,7 +364,7 @@ class MissionPlanOrchestrator(BaseService):
         user_id: str,
         *,
         session_id: str | None = None,
-        gate_mode: str | None = None,
+        gate_mode: GateMode | None = None,
         budget_ceiling_usd: float | None = None,
     ) -> dict:
         """Create/refine a plan from an objective and dispatch via Temporal.
@@ -400,11 +400,13 @@ class MissionPlanOrchestrator(BaseService):
 
         # 2. Apply overrides
         if gate_mode is not None:
-            if gate_mode not in VALID_GATE_MODES:
+            try:
+                plan.gate_mode = GateMode(gate_mode)
+            except ValueError as exc:
                 raise ValidationError(
-                    f"Invalid gate_mode {gate_mode!r}. Must be one of: {sorted(VALID_GATE_MODES)}"
-                )
-            plan.gate_mode = gate_mode
+                    f"Invalid gate_mode {gate_mode!r}. "
+                    f"Must be one of: {[m.value for m in GateMode]}"
+                ) from exc
         if budget_ceiling_usd is not None:
             plan.budget_usd_ceiling = budget_ceiling_usd
         await self._session.flush()
@@ -424,8 +426,7 @@ class MissionPlanOrchestrator(BaseService):
         task_count = len(plan.tasks)
 
         # 5. Auto-approve (gate mode permitting)
-        effective_gate = resolve_gate_mode(plan.gate_mode)
-        if effective_gate != "autonomous":
+        if plan.gate_mode != GateMode.AUTONOMOUS:
             self._log_operation(
                 "run_objective: non-autonomous gate, stopping after refine",
                 plan_id=plan.id,

@@ -24,7 +24,7 @@ from modules.backend.agents.mission_control.roster import (
 )
 from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.models.mission import Mission
-from modules.backend.models.mission_plan import MissionPlan
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task
 from modules.backend.models.task import TaskStatus as DbTaskStatus
 from modules.backend.schemas.task_plan import TaskPlan
@@ -161,7 +161,7 @@ async def _seed_approved(factory, plan: TaskPlan) -> str:
                 owner_id=str(uuid4()),
             )
         )
-        session.add(MissionPlan(id=plan_id, mission_id=mission_id))
+        session.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
         for task in plan.tasks:
             session.add(
                 Task(

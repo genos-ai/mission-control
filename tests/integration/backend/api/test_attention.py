@@ -17,15 +17,15 @@ from modules.backend.models.mission import (
     MissionStatus,
     MissionTier,
 )
-from modules.backend.models.mission_plan import MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlanStatus
 from modules.backend.models.task import TaskStatus
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 from tests.integration.backend.api.helpers import (
     create_gate_request,
     create_human_input,
     create_mission,
-    create_plan,
     create_tasks,
+    set_plan,
 )
 
 pytestmark = pytest.mark.usefixtures("signed_in")
@@ -40,7 +40,7 @@ async def world(db_session: AsyncSession, test_user, test_user_2):
 
     # A: owned by the caller. Interactive plan: 3 tasks to approve, 2 failed, a gate and a question.
     a = await create_mission(db, "mission-a", TEST_USER_ID)
-    plan_a = await create_plan(db, a, "interactive")
+    plan_a = await set_plan(db, a, GateMode.INTERACTIVE)
     await create_tasks(db, plan_a, TaskStatus.PROPOSED, 3)
     await create_tasks(db, plan_a, TaskStatus.FAILED, 2)
     await create_gate_request(db, a, plan_a, gate_type="post_run")
@@ -49,19 +49,19 @@ async def world(db_session: AsyncSession, test_user, test_user_2):
     # B: owned by the caller. The plan auto-approves, so its proposed tasks need nobody.
     # One failure does.
     b = await create_mission(db, "mission-b", TEST_USER_ID)
-    plan_b = await create_plan(db, b, "ai_assisted")
+    plan_b = await set_plan(db, b, GateMode.AUTONOMOUS)
     await create_tasks(db, plan_b, TaskStatus.PROPOSED, 4)
     await create_tasks(db, plan_b, TaskStatus.FAILED, 1)
 
     # C: owned by the caller, but its plan is completed: failures there are history.
     c = await create_mission(db, "mission-c", TEST_USER_ID)
-    plan_c = await create_plan(db, c, "interactive", status=MissionPlanStatus.COMPLETED)
+    plan_c = await set_plan(db, c, GateMode.INTERACTIVE, status=MissionPlanStatus.COMPLETED)
     await create_tasks(db, plan_c, TaskStatus.FAILED, 5)
     await create_tasks(db, plan_c, TaskStatus.PROPOSED, 5)
 
     # D: someone else's. The caller must never see it.
     d = await create_mission(db, "mission-d", TEST_USER_ID_2)
-    plan_d = await create_plan(db, d, "interactive")
+    plan_d = await set_plan(db, d, GateMode.INTERACTIVE)
     await create_tasks(db, plan_d, TaskStatus.FAILED, 7)
     await create_gate_request(db, d, plan_d)
 
@@ -69,16 +69,16 @@ async def world(db_session: AsyncSession, test_user, test_user_2):
     e = await create_mission(db, "mission-e", TEST_USER_ID_2)
     db.add(MissionMember(mission_id=e.id, user_id=TEST_USER_ID, role=MissionMemberRole.VIEWER))
     await db.flush()
-    plan_e = await create_plan(db, e, "manual")
+    plan_e = await set_plan(db, e, GateMode.MANUAL)
     await create_tasks(db, plan_e, TaskStatus.PROPOSED, 1)
 
     # F: an archived mission of the caller's, G: one of the caller's on the platform tier.
     f = await create_mission(db, "mission-f", TEST_USER_ID)
     f.status = MissionStatus.ARCHIVED
-    await create_tasks(db, await create_plan(db, f, "interactive"), TaskStatus.FAILED, 3)
+    await create_tasks(db, await set_plan(db, f, GateMode.INTERACTIVE), TaskStatus.FAILED, 3)
     g = await create_mission(db, "mission-g", TEST_USER_ID)
     g.tier = MissionTier.platform
-    await create_tasks(db, await create_plan(db, g, "interactive"), TaskStatus.FAILED, 3)
+    await create_tasks(db, await set_plan(db, g, GateMode.INTERACTIVE), TaskStatus.FAILED, 3)
     await db.flush()
     return {m.name: m for m in (a, b, c, d, e, f, g)}
 

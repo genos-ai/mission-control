@@ -21,6 +21,7 @@ from modules.backend.agents.mission.director.tools.approve_plan_tasks import (
     _dedupe_preserving_order,
     _validate_reason,
 )
+from modules.backend.models.mission_plan import GateMode
 
 
 class _StubTask:
@@ -75,24 +76,23 @@ class TestValidateReason:
 
 
 class TestCheckGateMode:
-    @pytest.mark.parametrize("mode", ["ai_assisted", "autonomous"])
-    def test_permits_modes_that_delegate_approval(self, mode: str):
-        _check_gate_mode(mode)
+    def test_permits_autonomous(self):
+        _check_gate_mode(GateMode.AUTONOMOUS)
 
-    @pytest.mark.parametrize("mode", ["interactive", None])
-    def test_refuses_when_the_user_approves_manually(self, mode: str | None):
-        """interactive, and an unset mode which defaults to it, must not be bypassed."""
+    def test_refuses_when_the_user_approves_manually(self):
+        """interactive must not be bypassed."""
+        with pytest.raises(ToolRefusal) as exc:
+            _check_gate_mode(GateMode.INTERACTIVE)
+        assert "interactive mode" in exc.value.message
+        assert "autonomous" in exc.value.message
+        # The mode is echoed back so the LLM can tell the user what to change.
+        assert exc.value.details == {"gate_mode": "interactive"}
+
+    @pytest.mark.parametrize("mode", [GateMode.MANUAL, GateMode.AI_ASSISTED])
+    def test_refuses_modes_where_a_human_decides(self, mode: GateMode):
         with pytest.raises(ToolRefusal) as exc:
             _check_gate_mode(mode)
-        assert "interactive mode" in exc.value.message
-        assert "ai_assisted" in exc.value.message
-        # The mode is echoed back so the LLM can tell the user what to change.
-        assert exc.value.details == {"gate_mode": mode}
-
-    def test_refuses_an_unrecognised_mode(self):
-        with pytest.raises(ToolRefusal) as exc:
-            _check_gate_mode("something_new")
-        assert exc.value.message == "Unsupported gate_mode for auto-approval: something_new"
+        assert exc.value.message == f"Unsupported gate_mode for auto-approval: {mode.value}"
         assert exc.value.details == {}
 
 

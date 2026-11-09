@@ -31,9 +31,9 @@ async def find_ready_plans() -> list[dict]:
     from modules.backend.core.database import get_async_session
     from modules.backend.models.mission import Mission, MissionStatus
     from modules.backend.models.mission_plan import (
+        GateMode,
         MissionPlan,
         MissionPlanStatus,
-        resolve_gate_mode,
     )
     from modules.backend.models.task import Task, TaskStatus
     from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
@@ -59,7 +59,7 @@ async def find_ready_plans() -> list[dict]:
                 # Only dispatch for active missions — paused/archived skip
                 Mission.status == MissionStatus.ACTIVE,
                 MissionPlan.status == MissionPlanStatus.ACTIVE,
-                MissionPlan.gate_mode == "autonomous",
+                MissionPlan.gate_mode == GateMode.AUTONOMOUS,
                 approved_count > 0,
                 # A workflow run owns the tasks of its mission while active.
                 ~exists(
@@ -91,7 +91,7 @@ async def find_ready_plans() -> list[dict]:
                 "mission_id": plan.mission_id,
                 "brief": mission.brief or mission.description or "",
                 "budget_remaining_usd": remaining,
-                "gate_mode": resolve_gate_mode(plan.gate_mode),
+                "gate_mode": plan.gate_mode.value,
                 "roster": mission.default_roster or "default",
                 "owner_id": mission.owner_id,
             }

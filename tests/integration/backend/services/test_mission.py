@@ -26,6 +26,7 @@ class TestCreateMission:
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
+            gate_mode="manual",
             name="new-mission",
             description="A new test mission",
             owner_id=regular_user.id,
@@ -44,6 +45,7 @@ class TestCreateMission:
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
+            gate_mode="manual",
             name="full-mission",
             description="Mission with all fields",
             brief="Strategic brief for agents",
@@ -162,6 +164,7 @@ class TestDeleteMission:
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
+            gate_mode="manual",
             name="delete-me",
             description="Temporary mission",
             owner_id=regular_user.id,
@@ -243,7 +246,10 @@ class TestDeleteMissionTemporal:
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
-            name="p88-delete-terminates", description="tmp", owner_id=regular_user.id
+            gate_mode="manual",
+            name="p88-delete-terminates",
+            description="tmp",
+            owner_id=regular_user.id,
         )
         mission_id = mission.id
         plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
@@ -265,7 +271,10 @@ class TestDeleteMissionTemporal:
     ):
         service = MissionService(db_session)
         mission = await service.create_mission(
-            name="p88-delete-aborts", description="tmp", owner_id=regular_user.id
+            gate_mode="manual",
+            name="p88-delete-aborts",
+            description="tmp",
+            owner_id=regular_user.id,
         )
         mission_id = mission.id
         await MissionPlanService(db_session).get_or_create_plan(mission_id)

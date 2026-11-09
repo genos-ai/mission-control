@@ -164,16 +164,6 @@ async def test_supervisor_receives_input_gate_mode(temporal_env: WorkflowEnviron
     assert _captured[0].gate_mode == "manual"
 
 
-async def test_supervisor_receives_manual_when_gate_mode_missing(
-    temporal_env: WorkflowEnvironment,
-):
-    result = await _run(temporal_env, None)
-
-    assert result["last_action"] == "escalate"
-    assert len(_captured) == 1
-    assert _captured[0].gate_mode == "manual"
-
-
 async def test_cancel_reaches_execute_mission(bare_env: WorkflowEnvironment):
     async with _worker(
         bare_env,

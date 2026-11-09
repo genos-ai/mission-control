@@ -31,8 +31,8 @@ async def get_plan_state(
 ) -> dict[str, Any]:
     """Read the current mission plan with all tasks.
 
-    Returns plan metadata, per-task status, gate_mode, budget, veto
-    window, and supervisor counters. Used by both Director and
+    Returns plan metadata, per-task status, gate_mode, budget and
+    supervisor counters. Used by both Director and
     Supervisor agents.
     """
     svc = MissionPlanService(session)
@@ -46,7 +46,6 @@ async def get_plan_state(
         "gate_mode": plan.gate_mode,
         "budget_usd_ceiling": plan.budget_usd_ceiling,
         "total_spent_usd": plan.total_spent_usd,
-        "veto_window_sec": plan.veto_window_sec,
         "supervisor_iteration_count": plan.supervisor_iteration_count,
         "max_supervisor_iterations": plan.max_supervisor_iterations,
         "summary": plan.summary,

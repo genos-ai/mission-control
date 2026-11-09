@@ -57,12 +57,12 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             # Use mission owner for approval — input.user_id is "who
             # requested refinement" which may differ from the mission owner
             # (e.g. admin acting on behalf of a user).
-            from modules.backend.models.mission_plan import resolve_gate_mode
+            from modules.backend.models.mission_plan import GateMode
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
 
             approved_count = 0
-            if resolve_gate_mode(refined.gate_mode) == "autonomous":
+            if refined.gate_mode == GateMode.AUTONOMOUS:
                 mission = await MissionService(db).get_mission(input.mission_id)
                 plan_svc = MissionPlanService(db, event_bus=event_bus)
                 approved_ids = await plan_svc.approve_all_proposed(

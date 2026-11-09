@@ -793,7 +793,7 @@ class GateManualSchema(_StrictBase):
 class GateSchema(_StrictBase):
     """Gate reviewer configuration (gate.yaml)."""
 
-    mode: _GateMode = "autonomous"
+    mode: _GateMode = Field(...)
     ai: GateAiSchema
     manual: GateManualSchema
     points: GatePointsSchema = Field(default_factory=GatePointsSchema)

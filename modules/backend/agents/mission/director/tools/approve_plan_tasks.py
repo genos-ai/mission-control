@@ -29,6 +29,8 @@ _MAX_REASON_CHARS = 500
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from modules.backend.services.mission_plan import GateMode
+
 
 def _validate_reason(reason: str) -> None:
     """Reject a missing or over-long approval reason."""
@@ -38,25 +40,25 @@ def _validate_reason(reason: str) -> None:
         raise ToolRefusal(f"reason too long ({len(reason)} chars, max {_MAX_REASON_CHARS})")
 
 
-def _check_gate_mode(gate_mode: str | None) -> None:
+def _check_gate_mode(gate_mode: GateMode) -> None:
     """Refuse auto-approval unless the gate mode delegates it to the Director.
 
-    `interactive` (and an unset mode, which defaults to it) means the user
-    opted into approving every task themselves, and must not be bypassed.
+    `interactive` means the user opted into approving every task themselves,
+    and must not be bypassed.
     """
-    if gate_mode == "interactive" or gate_mode is None:
+    # Imported here, like the service below, so the agent layer does not load sqlalchemy at import.
+    from modules.backend.services.mission_plan import GateMode, gate_mode_auto_approves
+
+    if gate_mode == GateMode.INTERACTIVE:
         raise ToolRefusal(
             "Plan is in interactive mode — the user approves "
             "tasks manually. Tell them to switch the plan to "
-            "ai_assisted if they want you to auto-approve on "
+            "autonomous if they want you to auto-approve on "
             "their behalf.",
-            {"gate_mode": gate_mode},
+            {"gate_mode": gate_mode.value},
         )
-    # Imported here, like the service below, so the agent layer does not load sqlalchemy at import.
-    from modules.backend.services.mission_plan import gate_mode_auto_approves
-
     if not gate_mode_auto_approves(gate_mode):
-        raise ToolRefusal(f"Unsupported gate_mode for auto-approval: {gate_mode}")
+        raise ToolRefusal(f"Unsupported gate_mode for auto-approval: {gate_mode.value}")
 
 
 async def _approve_each(
@@ -152,7 +154,7 @@ async def approve_plan_tasks(
     # Save plan attributes before commit — commit() expires all ORM
     # attributes and any later access raises MissingGreenlet.
     plan_id = plan.id
-    gate_mode = plan.gate_mode
+    gate_mode = plan.gate_mode.value
     await db_session.commit()
 
     unique_transitioned = _dedupe_preserving_order(transitioned)

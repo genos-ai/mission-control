@@ -35,6 +35,7 @@ from modules.backend.agents.mission_control.gate_prompt import (
     _parse_action,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.services.mission_plan import GateMode
 
 logger = get_logger(__name__)
 
@@ -257,18 +258,18 @@ class ConfigurableGate:
 
         effective_mode = self._effective_mode(gate_type)
 
-        if effective_mode == "interactive":
+        if effective_mode == GateMode.INTERACTIVE:
             return await self._get_cli().review(context)
 
-        if effective_mode == "manual":
+        if effective_mode == GateMode.MANUAL:
             return await self._get_manual().review(context)
 
-        if effective_mode == "ai_assisted":
+        if effective_mode == GateMode.AI_ASSISTED:
             recommendation = await self._get_llm().review(context)
             context.ai_recommendation = recommendation
             return await self._get_cli().review(context)
 
-        if effective_mode == "autonomous":
+        if effective_mode == GateMode.AUTONOMOUS:
             if self._should_auto_continue(context):
                 return GateDecision(
                     action=GateAction.CONTINUE,
@@ -286,7 +287,7 @@ class ConfigurableGate:
 
 
 def create_gate(
-    mode_override: str | None = None,
+    mode_override: GateMode | None = None,
     console: Any = None,
     verbose: bool = False,
     session_factory: Any = None,
@@ -307,7 +308,7 @@ def create_gate(
     config = get_app_config().gate
 
     if mode_override is not None:
-        config = config.model_copy(update={"mode": mode_override})
+        config = config.model_copy(update={"mode": GateMode(mode_override).value})
 
     return ConfigurableGate(
         config=config,

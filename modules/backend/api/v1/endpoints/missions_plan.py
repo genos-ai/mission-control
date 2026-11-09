@@ -97,7 +97,7 @@ async def update_plan(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Update gate_mode, status, budget, veto window, or task display order.
+    """Update gate_mode, status, budget, or task display order.
 
     Only the fields present in the request body are applied — all are
     optional. Gate mode is validated against the existing gate system's
@@ -117,9 +117,6 @@ async def update_plan(
         )
     if data.budget_usd_ceiling is not None:
         plan.budget_usd_ceiling = data.budget_usd_ceiling
-        await db.flush()
-    if data.veto_window_sec is not None:
-        plan.veto_window_sec = data.veto_window_sec
         await db.flush()
     # Plan 72: task ordering is by created_at — no manual reorder needed.
 

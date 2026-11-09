@@ -308,7 +308,7 @@ class TestLlmGateReviewer:
 
 class TestGateSchema:
     def test_defaults(self):
-        schema = GateSchema(ai=AI, manual=MANUAL)
+        schema = GateSchema(mode="autonomous", ai=AI, manual=MANUAL)
         assert schema.mode == "autonomous"
         assert schema.ai.model == AI.model
         assert schema.ai.temperature == 0.0
@@ -345,7 +345,7 @@ class TestGateSchema:
 
     def test_custom_ai_model(self):
         ai = GateAiSchema(model="anthropic:claude-sonnet-4-20250514", max_tokens=2048)
-        schema = GateSchema(ai=ai, manual=MANUAL)
+        schema = GateSchema(mode="autonomous", ai=ai, manual=MANUAL)
         assert schema.ai.model == "anthropic:claude-sonnet-4-20250514"
         assert schema.ai.max_tokens == 2048
 

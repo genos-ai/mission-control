@@ -31,8 +31,10 @@ async def get_mission_info(db_session: AsyncSession, mission_id: str) -> dict:
         and creation time.
     """
     from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_plan import MissionPlanService
 
     mission = await MissionService(db_session).get_mission(mission_id)
+    plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
 
     return {
         "name": mission.name,
@@ -40,7 +42,7 @@ async def get_mission_info(db_session: AsyncSession, mission_id: str) -> dict:
         "brief": mission.brief,
         # status may be the enum or an already-coerced string.
         "status": (mission.status if isinstance(mission.status, str) else mission.status.value),
-        "gate_mode": mission.gate_mode,
+        "gate_mode": plan.gate_mode.value,
         "budget_ceiling_usd": mission.budget_ceiling_usd,
         "owner_id": mission.owner_id,
         "created_at": str(mission.created_at),

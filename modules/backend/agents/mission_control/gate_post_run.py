@@ -43,7 +43,7 @@ from modules.backend.core.decision_reasoning import (
 )
 from modules.backend.core.logging import get_logger
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
-from modules.backend.services.mission_plan import resolve_gate_mode
+from modules.backend.services.mission_plan import GateMode
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,13 +71,13 @@ class AutonomousPostRunReviewer:
         self,
         session: AsyncSession,
         *,
-        gate_mode: str | None = None,
+        gate_mode: GateMode,
         stall_threshold: int = DEFAULT_STALL_THRESHOLD,
         budget_safety_factor: float = BUDGET_SAFETY_FACTOR,
         cost_floor_usd: float = DEFAULT_COST_FLOOR_USD,
     ) -> None:
         self._session = session
-        self._gate_mode = resolve_gate_mode(gate_mode)
+        self._gate_mode = gate_mode
         self._stall_threshold = stall_threshold
         self._budget_safety_factor = budget_safety_factor
         self._cost_floor_usd = cost_floor_usd
@@ -87,11 +87,11 @@ class AutonomousPostRunReviewer:
         self._mission_id = context.mission_id
 
         # ── Manual gate mode (Plan 80g) ─────────────────────────────
-        # When the mission's gate_mode is "manual", defer the supervisor
+        # When the mission's gate_mode is GateMode.MANUAL, defer the supervisor
         # decision to an external HTTP client (CLI / TUI / script) via
         # ManualGateReviewer. This stops the autonomy loop from spawning
         # new plans without explicit operator approval.
-        if self._gate_mode == "manual":
+        if self._gate_mode == GateMode.MANUAL:
             from modules.backend.agents.mission_control.gate_manual import ManualGateReviewer
             from modules.backend.core.config import get_app_config
             from modules.backend.core.database import get_session_factory
@@ -188,16 +188,16 @@ class AutonomousPostRunReviewer:
                     rule="4-headroom",
                 )
 
-            if self._gate_mode == "autonomous":
+            if self._gate_mode == GateMode.AUTONOMOUS:
                 # Rule #5
                 return self._decide(
                     GateAction.ADVANCE_APPROVED,
                     f"Auto-advancing {proposed_count} proposed task(s) — "
-                    f"gate_mode={self._gate_mode}.",
+                    f"gate_mode={self._gate_mode.value}.",
                     execution_record_id=execution_record_id,
                     rule=5,
                 )
-            elif self._gate_mode == "ai_assisted":
+            elif self._gate_mode == GateMode.AI_ASSISTED:
                 # Rule #6
                 return self._decide(
                     GateAction.ADVANCE_APPROVED,

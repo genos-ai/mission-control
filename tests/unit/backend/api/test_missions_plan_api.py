@@ -13,8 +13,8 @@ from modules.backend.api.v1.endpoints.missions_plan import router
 from modules.backend.core import security
 from modules.backend.core.exception_handlers import register_exception_handlers
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
-from modules.backend.services.mission_plan import MissionPlanService
 
 
 @pytest.mark.asyncio
@@ -42,9 +42,8 @@ async def test_patch_plan_gate_mode_viewer_forbidden(db_session, test_user):
     db_session.add(
         MissionMember(mission_id=mission.id, user_id=viewer.id, role=MissionMemberRole.VIEWER)
     )
-    await db_session.flush()
-    plan = await MissionPlanService(db_session).get_or_create_plan(mission.id)
-    plan.gate_mode = "manual"
+    plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+    db_session.add(plan)
     await db_session.flush()
 
     app = FastAPI()
@@ -66,4 +65,4 @@ async def test_patch_plan_gate_mode_viewer_forbidden(db_session, test_user):
 
     assert response.status_code == 403
     await db_session.refresh(plan)
-    assert plan.gate_mode == "manual"
+    assert plan.gate_mode == GateMode.MANUAL

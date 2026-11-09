@@ -7,10 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { InputGroup } from '@/components/ui/input-group'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { TopBar } from '@/components/layout/top-bar'
 import { DocumentPage } from '@/components/layout/document-page'
+import type { GateMode } from '@/types/mission'
+
+const GATE_MODE_OPTIONS: { value: GateMode; label: string }[] = [
+  { value: 'interactive', label: 'Interactive' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'ai_assisted', label: 'AI-assisted' },
+  { value: 'autonomous', label: 'Autonomous' },
+]
 
 const MISSION_NAME_PATTERN = /^[a-z][a-z0-9_-]*$/
 
@@ -42,6 +51,7 @@ export default function NewMissionPage() {
   const [brief, setBrief] = useState('')
   const [budgetCeiling, setBudgetCeiling] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
+  const [gateMode, setGateMode] = useState<GateMode | ''>('')
   const [error, setError] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
 
@@ -58,6 +68,7 @@ export default function NewMissionPage() {
 
     if (!user) return
     if (nameError) return
+    if (!gateMode) return
 
     try {
       const mission = await createMission.mutateAsync({
@@ -65,6 +76,7 @@ export default function NewMissionPage() {
         description,
         brief: brief || undefined,
         owner_id: user.id,
+        gate_mode: gateMode,
         budget_ceiling_usd: budgetCeiling ? parseFloat(budgetCeiling) : undefined,
         repo_url: repoUrl || undefined,
       })
@@ -144,6 +156,28 @@ export default function NewMissionPage() {
             />
           </Field>
 
+          <Field
+            label="Gate mode"
+            htmlFor="mission-gate-mode"
+            hint="Who approves the plan's tasks"
+          >
+            <Select
+              id="mission-gate-mode"
+              value={gateMode}
+              onChange={(e) => setGateMode(e.target.value as GateMode)}
+              required
+            >
+              <option value="" disabled>
+                Choose a gate mode
+              </option>
+              {GATE_MODE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Budget ceiling" htmlFor="mission-budget">
               <InputGroup
@@ -174,7 +208,7 @@ export default function NewMissionPage() {
             <Button type="button" variant="secondary" size="lg" onClick={() => navigate(-1)}>
               Cancel
             </Button>
-            <Button type="submit" size="lg" disabled={createMission.isPending || nameError !== null}>
+            <Button type="submit" size="lg" disabled={createMission.isPending || nameError !== null || !gateMode}>
               {createMission.isPending ? <Spinner /> : null}
               Create mission
             </Button>

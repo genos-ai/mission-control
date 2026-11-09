@@ -17,6 +17,7 @@ class TestMissionCreate:
             name="my-mission",
             description="A test mission",
             owner_id=TEST_USER_ID,
+            gate_mode="manual",
         )
         assert schema.name == "my-mission"
         assert schema.default_roster == "default"
@@ -26,6 +27,7 @@ class TestMissionCreate:
             name="full-mission",
             description="Full mission",
             owner_id=TEST_USER_ID,
+            gate_mode="manual",
             team_id="team-alpha",
             default_roster="research",
             budget_ceiling_usd=50.0,
@@ -40,6 +42,7 @@ class TestMissionCreate:
                 name="MyMission",
                 description="Bad name",
                 owner_id=TEST_USER_ID,
+                gate_mode="manual",
             )
 
     def test_invalid_name_starts_with_number(self):
@@ -48,6 +51,7 @@ class TestMissionCreate:
                 name="1mission",
                 description="Bad name",
                 owner_id=TEST_USER_ID,
+                gate_mode="manual",
             )
 
     def test_empty_name_rejected(self):
@@ -56,6 +60,7 @@ class TestMissionCreate:
                 name="",
                 description="No name",
                 owner_id=TEST_USER_ID,
+                gate_mode="manual",
             )
 
     def test_budget_must_be_positive(self):
@@ -64,6 +69,7 @@ class TestMissionCreate:
                 name="cheap-mission",
                 description="Negative budget",
                 owner_id=TEST_USER_ID,
+                gate_mode="manual",
                 budget_ceiling_usd=0.0,
             )
 
@@ -73,6 +79,7 @@ class TestMissionCreate:
                 name="strict-mission",
                 description="No extras",
                 owner_id=TEST_USER_ID,
+                gate_mode="manual",
                 unknown_field="bad",
             )
 

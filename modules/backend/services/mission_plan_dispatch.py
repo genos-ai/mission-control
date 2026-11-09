@@ -26,7 +26,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from modules.backend.core.exceptions import ConflictError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.types import MissionPlanDispatchedEvent
-from modules.backend.models.mission_plan import MissionPlanStatus, resolve_gate_mode
+from modules.backend.models.mission_plan import MissionPlanStatus
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.services import mission_plan_supervisor, mission_plan_taskio
@@ -114,7 +114,7 @@ async def start_temporal_run_workflow(
         roster_name=mission.default_roster or "default",
         mission_budget_usd=max(remaining_budget, 0.01),
         mission_id=plan.mission_id,
-        gate_mode=resolve_gate_mode(plan.gate_mode),
+        gate_mode=plan.gate_mode.value,
     )
 
     workflow_id = mission_run_workflow_id(plan.id)
@@ -257,7 +257,7 @@ async def dispatch_approved(
         user_id=user_id,
         task_count=len(approved_task_ids),
         task_ids=sorted(approved_task_ids),
-        gate_mode=plan.gate_mode,
+        gate_mode=plan.gate_mode.value,
         execution_record_id=early_record_id,
     )
 
@@ -265,7 +265,7 @@ async def dispatch_approved(
     from modules.backend.agents.mission_control.gate import create_gate
 
     gate_reviewer = create_gate(
-        mode_override=resolve_gate_mode(plan.gate_mode),
+        mode_override=plan.gate_mode,
         event_bus=orchestrator._event_bus,
     )
 

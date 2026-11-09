@@ -68,7 +68,7 @@ async def show(api: CliApiClient, *, mission_id: str) -> None:
     # Current mode from the plan.
     try:
         plan = await api.get(f"/missions/{mission_id}/plan")
-        mode = plan.get("gate_mode") or "autonomous"
+        mode = plan["gate_mode"]
     except ApiError as exc:
         if exc.status == 404:
             mode = "(no plan yet)"

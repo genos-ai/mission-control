@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlanStatus
 from modules.backend.models.task import TaskStatus
 
 # ── Plan-level ───────────────────────────────────────────────────────────
@@ -47,9 +47,9 @@ class MissionPlanUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gate_mode: str | None = Field(
+    gate_mode: GateMode | None = Field(
         None,
-        description=(f"Autonomy mode. One of: {sorted(VALID_GATE_MODES)}."),
+        description=f"Autonomy mode. One of: {[m.value for m in GateMode]}.",
     )
     status: str | None = Field(
         None,
@@ -59,12 +59,6 @@ class MissionPlanUpdate(BaseModel):
         None,
         ge=0.0,
         description="Cumulative cap across all runs from this plan",
-    )
-    veto_window_sec: int | None = Field(
-        None,
-        ge=1,
-        le=3600,
-        description="Seconds a user has to veto an auto-approved task.",
     )
 
 
@@ -93,7 +87,6 @@ class TaskResponse(BaseModel):
     status: str
     approved_by_user_id: str | None = None
     approved_at: datetime | None = None
-    veto_expires_at: datetime | None = None
     retry_count: int = 0
     last_attempt_at: datetime | None = None
     result_summary: str | None = None
@@ -135,12 +128,11 @@ class MissionPlanResponse(BaseModel):
     estimated_cost_usd: float = 0.0
     estimated_duration: int = 0
     execution_hints_json: dict = Field(default_factory=dict)
-    gate_mode: str | None = None
+    gate_mode: GateMode
     status: str
     version: int
     budget_usd_ceiling: float | None = None
     total_spent_usd: float = 0.0
-    veto_window_sec: int | None = None
     supervisor_iteration_count: int = 0
     max_supervisor_iterations: int = 20
     tasks: list[TaskResponse] = Field(default_factory=list)
@@ -161,7 +153,7 @@ class RunObjectiveRequest(BaseModel):
         min_length=5,
         description="Natural-language objective for the Planning Agent",
     )
-    gate_mode: str | None = Field(None)
+    gate_mode: GateMode | None = Field(None)
     budget_ceiling_usd: float | None = Field(None, ge=0.01)
 
 

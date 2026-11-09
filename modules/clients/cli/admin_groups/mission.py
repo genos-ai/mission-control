@@ -19,7 +19,8 @@ def mission(ctx):
 
     \b
     Examples:
-        python admin.py mission create --name my-mission --description "My mission"
+        python admin.py mission create --name my-mission --description "My mission" \\
+            --gate-mode manual
         python admin.py mission list
         python admin.py mission detail <id>
         python admin.py mission archive <id>
@@ -39,8 +40,17 @@ def mission(ctx):
 @click.option(
     "--tier", default="user", type=click.Choice(["user", "platform"]), help="Mission tier."
 )
+@click.option(
+    "--gate-mode",
+    "gate_mode",
+    required=True,
+    type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
+    help="Plan gate mode.",
+)
 @click.pass_obj
-def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo_root, tier):
+def mission_create(
+    ctx, name, description, brief, roster, budget, repo_url, repo_root, tier, gate_mode
+):
     """Create a new mission."""
     from modules.clients.cli.mission_cmds import run_mission
 
@@ -54,6 +64,7 @@ def mission_create(ctx, name, description, brief, roster, budget, repo_url, repo
         budget=budget,
         repo_url=repo_url,
         repo_root=repo_root,
+        gate_mode=gate_mode,
         tier=tier,
         output_format=ctx.output_format,
     )

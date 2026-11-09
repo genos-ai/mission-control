@@ -58,7 +58,12 @@ class TestSpendInTheResponses:
     async def test_create_returns_zero_spend(self, client, test_user):
         resp = await client.post(
             "/api/v1/missions",
-            json={"name": "brand-new", "description": "a new mission", "owner_id": TEST_USER_ID},
+            json={
+                "name": "brand-new",
+                "description": "a new mission",
+                "owner_id": TEST_USER_ID,
+                "gate_mode": "manual",
+            },
         )
         assert resp.status_code in (200, 201), resp.text
         assert resp.json()["data"]["spent_usd"] == 0.0

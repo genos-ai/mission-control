@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Clock,
   Copy,
   GitBranch,
   GitMerge,
@@ -30,7 +29,6 @@ import { Menu, type MenuItem } from '@/components/ui/menu'
 import { StatusIcon } from '@/components/ui/status-icon'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { useApproveTask, useRejectTask, useRetryTask } from '@/hooks/use-mission-plan'
-import { useVetoCountdown } from '@/hooks/use-veto-countdown'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { AnnotatedTask } from './plan-board-types'
 
@@ -63,12 +61,6 @@ export function TaskCard({
   const currentTool = useWorkspaceStore((s) =>
     effectiveStatus === 'running' ? s.agentStatuses[task.agent]?.currentTool ?? null : null,
   )
-
-  // Plan 42 §4.4: live countdown for the ai_assisted auto-approval veto
-  // window. Only meaningful when the task is currently approved AND was
-  // auto-approved by the Director (has a veto_expires_at timestamp).
-  const veto = useVetoCountdown(task.veto_expires_at)
-  const inVetoWindow = effectiveStatus === 'approved' && veto !== null && !veto.expired
 
   async function handleApprove() {
     try {
@@ -158,15 +150,6 @@ export function TaskCard({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
-          {inVetoWindow && veto && (
-            <span
-              className="flex h-[18px] items-center gap-1 rounded-sm bg-warning/10 px-1.5 font-mono text-2xs text-warning"
-              title="Auto-approved by the Director — click X to veto before expiry"
-            >
-              <Clock className="h-2.5 w-2.5" />
-              {veto.remainingSec}s
-            </span>
-          )}
           {(effectiveStatus === 'failed' || effectiveStatus === 'skipped' || effectiveStatus === 'cancelled') && (
             <StatusIcon {...taskTone[effectiveStatus]} />
           )}
@@ -263,13 +246,8 @@ export function TaskCard({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={inVetoWindow ? 'Veto this auto-approval' : 'Unapprove (reject)'}
-              title={
-                inVetoWindow
-                  ? `Veto this auto-approval (${veto?.remainingSec ?? 0}s remaining)`
-                  : 'Unapprove (reject)'
-              }
-              className={cn(inVetoWindow && 'text-warning')}
+              aria-label="Unapprove (reject)"
+              title="Unapprove (reject)"
               onClick={act(handleReject)}
               disabled={reject.isPending}
             >

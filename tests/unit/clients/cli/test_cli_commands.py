@@ -112,12 +112,15 @@ class TestMissionGroup:
                     "test-mission",
                     "--description",
                     "A test",
+                    "--gate-mode",
+                    "manual",
                 ],
             )
         mock_fn.assert_called_once()
         call_kwargs = mock_fn.call_args
         assert call_kwargs[0][1] == "create"  # action arg
         assert call_kwargs[1]["name"] == "test-mission"
+        assert call_kwargs[1]["gate_mode"] == "manual"
         assert result.exit_code == 0
 
     def test_mission_list_dispatches(self, runner):

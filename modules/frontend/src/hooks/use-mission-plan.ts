@@ -11,6 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import type { GateMode } from '@/types/mission'
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -25,8 +26,6 @@ export type PlanTaskStatus =
   | 'cancelled'
 
 export type MissionPlanStatus = 'active' | 'paused' | 'completed' | 'archived'
-
-export type GateMode = 'interactive' | 'manual' | 'ai_assisted' | 'autonomous'
 
 /** Unified task: definition fields + state fields merged (Plan 72). */
 export interface PlanTask {
@@ -44,7 +43,6 @@ export interface PlanTask {
   status: PlanTaskStatus
   approved_by_user_id: string | null
   approved_at: string | null
-  veto_expires_at: string | null
   retry_count: number
   last_attempt_at: string | null
   result_summary: string | null
@@ -62,12 +60,11 @@ export interface MissionPlan {
   estimated_cost_usd: number | null
   estimated_duration: number | null
   execution_hints_json: Record<string, unknown> | null
-  gate_mode: GateMode | null
+  gate_mode: GateMode
   status: MissionPlanStatus
   version: number
   budget_usd_ceiling: number | null
   total_spent_usd: number
-  veto_window_sec: number | null
   tasks: PlanTask[]
   created_at: string
   updated_at: string
@@ -128,12 +125,11 @@ export function useRefinePlan(missionId: string) {
   })
 }
 
-/** Update plan-level settings (gate_mode / status / budget / veto). */
+/** Update plan-level settings (gate_mode / status / budget). */
 export interface PlanUpdatePayload {
   gate_mode?: GateMode
   status?: MissionPlanStatus
   budget_usd_ceiling?: number
-  veto_window_sec?: number
 }
 
 export function useUpdatePlan(missionId: string) {

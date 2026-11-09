@@ -28,11 +28,11 @@ def mission(ctx):
 @click.option("--description", required=True, help="Mission description.")
 @click.option("--brief", default=None, help="Strategic brief for agents.")
 @click.option(
-    "--gate",
+    "--gate-mode",
     "gate_mode",
+    required=True,
     type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
-    default=None,
-    help="Default gate mode.",
+    help="Plan gate mode.",
 )
 @click.option("--budget", type=float, default=None, help="Budget ceiling in USD.")
 def mission_create(name, description, brief, gate_mode, budget):

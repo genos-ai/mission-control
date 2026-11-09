@@ -24,7 +24,7 @@ from modules.backend.models.mission_context import ContextChange, ContextMilesto
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
 from modules.backend.models.mission_intent import IntentSource, MissionIntent
 from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
-from modules.backend.models.mission_plan import VALID_GATE_MODES, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.model_pricing import ModelPricing
 from modules.backend.models.prompt_version import PromptVersion
@@ -57,6 +57,7 @@ __all__ = [
     "GateRequestStatus",
     "HumanInputRequest",
     "HumanInputRequestStatus",
+    "GateMode",
     "IntentSource",
     "LearningKind",
     "LearningStatus",
@@ -88,7 +89,6 @@ __all__ = [
     "User",
     "VALID_ARTIFACT_TYPES",
     "VALID_CONTENT_TYPES",
-    "VALID_GATE_MODES",
     "VALID_TASK_TRANSITIONS",
     "WorkflowDefinition",
     "WorkflowRun",

@@ -13,10 +13,11 @@ from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from modules.backend.core.exceptions import ConflictError
+from modules.backend.models.mission_plan import GateMode
 from modules.backend.services import mission_plan_dispatch
 
 
-def _plan(gate_mode: str | None = "autonomous") -> SimpleNamespace:
+def _plan(gate_mode: GateMode = GateMode.AUTONOMOUS) -> SimpleNamespace:
     return SimpleNamespace(
         id=str(uuid.uuid4()),
         mission_id=str(uuid.uuid4()),
@@ -87,7 +88,7 @@ async def test_start_conflict_raises_conflict_error():
 
 
 async def test_start_passes_plan_gate_mode_not_environment():
-    plan = _plan(gate_mode="manual")
+    plan = _plan(gate_mode=GateMode.MANUAL)
     client = MagicMock()
     client.start_workflow = AsyncMock()
 
@@ -101,8 +102,8 @@ class _StopAfterGate(Exception):
     """Raised by the patched create_gate to end dispatch_approved early."""
 
 
-async def test_dispatch_approved_null_gate_mode_builds_manual_gate():
-    plan = _plan(gate_mode=None)
+async def test_dispatch_approved_builds_gate_from_plan_mode():
+    plan = _plan(gate_mode=GateMode.MANUAL)
     approved = SimpleNamespace(id=str(uuid.uuid4()), status=None, last_attempt_at=None)
     orchestrator = SimpleNamespace(
         _repo=SimpleNamespace(get_by_id=AsyncMock(return_value=plan)),
@@ -129,5 +130,5 @@ async def test_dispatch_approved_null_gate_mode_builds_manual_gate():
             orchestrator, plan.id, str(uuid.uuid4()), temporal_workflow_id="mission-run-test"
         )
 
-    assert create_gate.call_args.kwargs["mode_override"] == "manual"
+    assert create_gate.call_args.kwargs["mode_override"] == GateMode.MANUAL
     assert create_gate.call_args.kwargs["event_bus"] is orchestrator._event_bus

@@ -19,7 +19,11 @@ from modules.backend.core.dependencies import (
     require_mission_access,
     require_mission_operator,
 )
-from modules.backend.core.exceptions import AuthorizationError, NotFoundError
+from modules.backend.core.exceptions import (
+    AuthorizationError,
+    NotFoundError,
+    ValidationError,
+)
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.workflow import WorkflowEdgeSchema
 from modules.backend.schemas.workflow_schedule import (
@@ -271,7 +275,7 @@ async def run_mission_workflow(
 
     Optional body fields:
         triggered_by: str — trigger origin (default: "user:api")
-        gate_mode: str — gate override (off, interactive, etc.)
+        gate_mode: str — gate override (interactive, manual, ai_assisted, autonomous)
         context_overrides: dict — merge into workflow context before execution
 
     Supports Idempotency-Key header — safe to retry on network timeout.
@@ -300,11 +304,23 @@ async def run_mission_workflow(
     # back to the plan's persisted gate_mode. Interactive modes return
     # the endpoint immediately (Plan 80h) — synchronous blocking is
     # meaningless when the workflow is waiting on operator approval.
+    from modules.backend.schemas.mission_plan import GateMode
     from modules.backend.services.mission_plan import MissionPlanService
 
-    existing_plan = await MissionPlanService(db).get_plan(mission_id)
-    effective_gate_mode = gate_mode_override or (existing_plan.gate_mode if existing_plan else None)
-    interactive = effective_gate_mode in ("manual", "interactive", "ai_assisted")
+    if gate_mode_override is not None:
+        try:
+            effective_gate_mode = GateMode(gate_mode_override)
+        except ValueError as exc:
+            raise ValidationError(f"Invalid gate_mode {gate_mode_override!r}") from exc
+    else:
+        effective_gate_mode = (
+            await MissionPlanService(db).get_or_create_plan(mission_id)
+        ).gate_mode
+    interactive = effective_gate_mode in (
+        GateMode.MANUAL,
+        GateMode.INTERACTIVE,
+        GateMode.AI_ASSISTED,
+    )
 
     redis = AsyncRedis.from_url(get_redis_url())
     event_bus = SessionEventBus(redis, mission_id=mission_id)
@@ -368,7 +384,7 @@ async def run_mission_workflow(
             data={
                 "status": "pending_approval",
                 "workflow_name": workflow_name,
-                "gate_mode": effective_gate_mode,
+                "gate_mode": effective_gate_mode.value,
                 "execution_record_id": record_id,
                 "temporal_workflow_id": workflow_id,
                 "next": "Approve tasks via `mc plan approve <task_id>` or "

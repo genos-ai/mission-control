@@ -13,13 +13,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.agent_registry import get_registry
-from modules.backend.core.exceptions import ConflictError, NotFoundError
+from modules.backend.core.exceptions import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.mission_event import MissionEvent
-from modules.backend.models.mission_plan import VALID_GATE_MODES
+from modules.backend.models.mission_plan import GateMode
 from modules.backend.models.user import User
 from modules.backend.repositories.mission import MissionMemberRepository, MissionRepository
+from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.schemas.mission import MissionResponse
 from modules.backend.services.base import BaseService
 from modules.backend.services.token_economics import TokenEconomicsService
@@ -62,19 +67,28 @@ class MissionService(BaseService):
         name: str,
         description: str,
         owner_id: str,
+        gate_mode: str,
         brief: str | None = None,
         team_id: str | None = None,
         default_roster: str = "default",
         budget_ceiling_usd: float | None = None,
         repo_url: str | None = None,
         repo_root: str | None = None,
-        gate_mode: str | None = None,
         tier: str = "user",
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
-        Creates: missions row, mission_members row (owner), seed MCD.
+        Creates: missions row, mission_plans row (with the gate mode),
+        mission_members row (owner), seed MCD. Raises ValidationError for an
+        unknown gate mode.
         """
+        try:
+            resolved_gate_mode = GateMode(gate_mode)
+        except ValueError as exc:
+            raise ValidationError(
+                f"Invalid gate_mode {gate_mode!r}. Must be one of: {[m.value for m in GateMode]}"
+            ) from exc
+
         existing = await self._mission_repo.get_by_name(name)
         if existing:
             raise ConflictError(f"Mission name already exists: {name}")
@@ -89,8 +103,13 @@ class MissionService(BaseService):
             budget_ceiling_usd=budget_ceiling_usd,
             repo_url=repo_url,
             repo_root=repo_root,
-            gate_mode=gate_mode,
             tier=tier,
+        )
+
+        await MissionPlanRepository(self._session).create_for_mission(
+            mission_id=mission.id,
+            gate_mode=resolved_gate_mode,
+            budget_usd_ceiling=budget_ceiling_usd,
         )
 
         # Auto-create owner membership
@@ -196,7 +215,6 @@ class MissionService(BaseService):
         # not cancel: the rows are about to go, so no cleanup activity may run.
         # ExternalServiceError aborts the delete (fail closed).
         from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
-        from modules.backend.repositories.mission_plan import MissionPlanRepository
         from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
         from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
@@ -470,18 +488,6 @@ class MissionService(BaseService):
     ) -> Mission:
         """Update mission fields."""
         return await self._mission_repo.update(mission_id, **updates)
-
-    async def set_gate_mode(self, mission_id: str, mode: str) -> Mission:
-        """Update the default gate mode for a mission."""
-        if mode not in VALID_GATE_MODES:
-            raise ValueError(
-                f"Invalid gate mode: {mode}. " f"Valid: {', '.join(sorted(VALID_GATE_MODES))}"
-            )
-        mission = await self.get_mission(mission_id)
-        mission.gate_mode = mode
-        await self._session.flush()
-        self._log_operation("Gate mode updated", mission_id=mission_id, gate_mode=mode)
-        return mission
 
     async def archive_mission(self, mission_id: str) -> Mission:
         """Archive a mission. No new executions can be created."""

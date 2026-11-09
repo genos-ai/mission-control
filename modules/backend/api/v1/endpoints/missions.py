@@ -72,6 +72,7 @@ async def create_mission(
         budget_ceiling_usd=data.budget_ceiling_usd,
         repo_url=data.repo_url,
         repo_root=data.repo_root,
+        gate_mode=data.gate_mode,
         tier=data.tier,
     )
     response = (await service.to_responses([mission]))[0]

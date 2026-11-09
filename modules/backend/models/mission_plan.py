@@ -18,7 +18,7 @@ Plan 72 changes:
 
 import enum
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,32 +42,22 @@ class MissionPlanStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
-# Gate modes — mirrors config/settings/gate.yaml values verbatim so
-# MissionPlanService can pass this string straight to create_gate(mode_override=...).
-# Plan 42 §10.4: autonomy is gate mode lifted to plan level.
-VALID_GATE_MODES: frozenset[str] = frozenset(
-    {
-        "interactive",
-        "manual",
-        "ai_assisted",
-        "autonomous",
-    }
-)
+class GateMode(str, enum.Enum):
+    """Plan gate mode (Plan 88 contracts 3.1.2).
 
-# Gate modes in which proposed tasks are approved without a person: the supervisor or
-# the Director does it. In every other mode a human has to approve them.
-AUTO_APPROVE_GATE_MODES: frozenset[str] = frozenset({"ai_assisted", "autonomous"})
-
-FAIL_CLOSED_GATE_MODE: str = "manual"
-
-
-def resolve_gate_mode(value: str | None) -> str:
-    """Resolve a stored gate mode, failing closed.
-
-    NULL, 'workflow_managed' and any value outside VALID_GATE_MODES resolve to
-    MANUAL (decision 7, fail closed).
+    Stored by NAME (uppercase) in ``mission_plans.gate_mode``; the lowercase
+    value is the wire format and matches config/settings/gate.yaml.
     """
-    return value if value in VALID_GATE_MODES else FAIL_CLOSED_GATE_MODE
+
+    INTERACTIVE = "interactive"
+    MANUAL = "manual"
+    AI_ASSISTED = "ai_assisted"
+    AUTONOMOUS = "autonomous"
+
+
+# Gate modes in which proposed tasks are approved without a person. AI_ASSISTED
+# means the AI recommends and a human decides, so it is not listed here.
+AUTO_APPROVE_GATE_MODES: frozenset[GateMode] = frozenset({GateMode.AUTONOMOUS})
 
 
 class MissionPlan(UUIDMixin, TimestampMixin, Base):
@@ -124,13 +114,10 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
 
     # ── Gate configuration ─────────────────────────────────────────────────
 
-    gate_mode: Mapped[str | None] = mapped_column(
-        String(20),
-        nullable=True,
-        comment=(
-            "Autonomy mode: interactive, manual, ai_assisted, autonomous. "
-            "Inherits from missions.gate_mode at creation."
-        ),
+    gate_mode: Mapped[GateMode] = mapped_column(
+        Enum(GateMode, native_enum=False, length=32),
+        nullable=False,
+        comment="Autonomy mode. Set by MissionService.create_mission.",
     )
 
     status: Mapped[str] = mapped_column(
@@ -162,15 +149,6 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         server_default="0.0",
         nullable=False,
         comment="Running total across all dispatched executions",
-    )
-
-    veto_window_sec: Mapped[int | None] = mapped_column(
-        Integer,
-        nullable=True,
-        comment=(
-            "For ai_assisted mode: seconds the user has to veto an "
-            "auto-approved task before it queues. NULL = no window."
-        ),
     )
 
     # ── Supervisor autonomy loop (Plan 51 Phase C) ─────────────────────────
