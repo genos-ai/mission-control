@@ -33,7 +33,7 @@ export interface AdminAgentStats {
 
 export interface HealthCheck {
   status: string
-  checks: Record<string, { status: string; latency_ms?: number; error?: string }>
+  checks: Record<string, { status: string; latency_ms?: number; error?: string; detail?: string }>
 }
 
 // Token Economics types (Plan 60)

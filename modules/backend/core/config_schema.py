@@ -51,6 +51,7 @@ class TimeoutsSchema(_StrictBase):
     agent_task: int  # wall-clock seconds for one agent task when the agent sets none
     tool_bridge: int = 300
     sse_keepalive: int = 15
+    health_probe: int = 10  # seconds one dependency probe on the admin health page may take
 
 
 class TelegramAppSchema(_StrictBase):

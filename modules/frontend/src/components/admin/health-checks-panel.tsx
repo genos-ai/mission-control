@@ -31,7 +31,7 @@ export function HealthChecksPanel({ checks }: { checks: HealthCheck['checks'] })
               <div key={name} className={cn(ROW_GRID, 'border-t border-line py-[11px] text-sm')}>
                 <span className="flex min-w-0 items-center gap-2">
                   <StatusIcon {...style} className="h-3.5 w-3.5" />
-                  <span className="truncate font-medium">{name}</span>
+                  <span className="truncate font-medium">{name.replace(/_/g, ' ')}</span>
                 </span>
                 <span>
                   <StatusPill tone={style.tone}>{statusLabel(check.status)}</StatusPill>
@@ -39,8 +39,11 @@ export function HealthChecksPanel({ checks }: { checks: HealthCheck['checks'] })
                 <span className="text-right font-mono text-text-3">
                   {check.latency_ms != null ? `${check.latency_ms.toFixed(0)}ms` : '—'}
                 </span>
-                <span className="truncate text-danger" title={check.error}>
-                  {check.error}
+                <span
+                  className={cn('truncate', check.error ? 'text-danger' : 'text-subtle')}
+                  title={check.error ?? check.detail}
+                >
+                  {check.error ?? check.detail}
                 </span>
               </div>
             )

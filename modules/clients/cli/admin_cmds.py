@@ -179,7 +179,12 @@ async def _action_health(cli_logger, *, output_format, **_):
 
     if output_format == "json":
         checks = {
-            c.name: {"status": c.status, "latency_ms": c.latency_ms, "error": c.error}
+            c.name: {
+                "status": c.status,
+                "latency_ms": c.latency_ms,
+                "error": c.error,
+                "detail": c.detail,
+            }
             for c in report.components
         }
         console.print_json(json.dumps(checks, default=str))
@@ -193,6 +198,10 @@ async def _action_health(cli_logger, *, output_format, **_):
         console.print(f"  [{color}]{component.name}: {status}[/{color}]")
         if component.latency_ms is not None:
             console.print(f"    latency: {component.latency_ms}ms")
+        if component.detail:
+            console.print(f"    {component.detail}")
+        if component.error:
+            console.print(f"    [red]{component.error}[/red]")
 
 
 async def _action_roles(cli_logger, *, output_format, **_):

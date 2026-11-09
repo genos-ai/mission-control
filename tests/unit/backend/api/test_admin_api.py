@@ -19,6 +19,9 @@ SEED_FN = "modules.backend.services.catalog_seeder.seed_catalog"
 APP_CONFIG = "modules.backend.core.config.get_app_config"
 CHECK_DB = "modules.backend.api.health.check_database"
 CHECK_REDIS = "modules.backend.api.health.check_redis"
+CHECK_TEMPORAL = "modules.backend.services.health.check_temporal"
+CHECK_WORKER = "modules.backend.services.health.check_temporal_worker"
+CHECK_FOUNDRY = "modules.backend.services.health.check_foundry"
 
 
 @pytest.fixture
@@ -261,6 +264,9 @@ class TestSystemOps:
         assert resp.json()["data"]["application"]["name"] == "mission-control"
 
     @pytest.mark.asyncio
+    @patch(CHECK_FOUNDRY, new=AsyncMock(return_value={"status": "healthy", "detail": "token"}))
+    @patch(CHECK_WORKER, new=AsyncMock(return_value={"status": "healthy", "detail": "1 worker"}))
+    @patch(CHECK_TEMPORAL, new=AsyncMock(return_value={"status": "healthy", "latency_ms": 3}))
     @patch(CHECK_REDIS)
     @patch(CHECK_DB)
     async def test_health_check(self, mock_db, mock_redis, client):
@@ -272,8 +278,19 @@ class TestSystemOps:
         data = resp.json()["data"]
         assert data["status"] == "healthy"
         assert data["checks"]["database"]["status"] == "healthy"
+        assert set(data["checks"]) == {
+            "database",
+            "redis",
+            "temporal",
+            "temporal_worker",
+            "foundry",
+        }
+        assert data["checks"]["temporal_worker"]["detail"] == "1 worker"
 
     @pytest.mark.asyncio
+    @patch(CHECK_FOUNDRY, new=AsyncMock(return_value={"status": "healthy"}))
+    @patch(CHECK_WORKER, new=AsyncMock(return_value={"status": "healthy"}))
+    @patch(CHECK_TEMPORAL, new=AsyncMock(return_value={"status": "healthy"}))
     @patch(CHECK_REDIS)
     @patch(CHECK_DB)
     async def test_health_check_degraded(self, mock_db, mock_redis, client):

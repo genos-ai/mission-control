@@ -63,6 +63,7 @@ pagination:
 #   agent_task    - one agent task, for agents whose YAML sets no timeout_seconds
 #   tool_bridge   - copilot tool execution (planning needs multiple LLM round-trips)
 #   sse_keepalive - SSE comment interval to prevent idle connection drops
+#   health_probe  - Seconds one dependency probe on the admin health page may take
 timeouts:
   database: 10
   external_api: 30
@@ -70,6 +71,7 @@ timeouts:
   agent_task: 120
   tool_bridge: 300
   sse_keepalive: 15
+  health_probe: 10
 
 telegram:
   webhook_path: "/webhook/telegram"

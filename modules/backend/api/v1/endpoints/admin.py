@@ -684,6 +684,7 @@ async def admin_health_check(
                     "status": c.status,
                     **({"latency_ms": c.latency_ms} if c.latency_ms is not None else {}),
                     **({"error": c.error} if c.error else {}),
+                    **({"detail": c.detail} if c.detail else {}),
                 }
                 for c in report.components
             },
