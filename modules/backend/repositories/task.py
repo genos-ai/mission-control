@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import NamedTuple
 from uuid import uuid7
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import selectinload
 
 from modules.backend.core.logging import get_logger
@@ -61,6 +61,53 @@ class TaskRepository(BaseRepository[Task]):
             query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def list_by_run(
+        self,
+        run_id: str,
+        status: TaskStatus | None = None,
+    ) -> list[Task]:
+        """Return the tasks owned by a mission run, optionally filtered by status."""
+        query = (
+            select(Task)
+            .where(Task.mission_run_id == run_id)
+            .options(selectinload(Task.dependencies))
+            .order_by(Task.created_at)
+        )
+        if status is not None:
+            query = query.where(Task.status == status)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def adopt_backlog(
+        self,
+        plan_id: str,
+        run_id: str,
+        statuses: list[TaskStatus],
+    ) -> list[str]:
+        """Assign the plan's backlog tasks in ``statuses`` to the run; return their ids."""
+        stmt = (
+            update(Task)
+            .where(
+                Task.plan_id == plan_id,
+                Task.mission_run_id.is_(None),
+                Task.status.in_(statuses),
+            )
+            .values(mission_run_id=run_id)
+            .returning(Task.id)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def release_to_backlog(self, run_id: str, statuses: list[TaskStatus]) -> int:
+        """Return the run's tasks in ``statuses`` to the backlog; return how many."""
+        stmt = (
+            update(Task)
+            .where(Task.mission_run_id == run_id, Task.status.in_(statuses))
+            .values(mission_run_id=None)
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount
 
     async def get_domain_tags_by_ids(self, task_ids: list[str]) -> dict[str, list | None]:
         """Batch-fetch domain_tags for a set of task ids in one query.
@@ -166,11 +213,13 @@ class TaskRepository(BaseRepository[Task]):
         domain_tags: list | None = None,
         status: TaskStatus = TaskStatus.PROPOSED,
         task_id: str | None = None,
+        mission_run_id: str | None = None,
     ) -> Task:
         """Create a new task. Optionally supply a pre-generated UUID."""
         task = Task(
             id=task_id or str(uuid7()),
             plan_id=plan_id,
+            mission_run_id=mission_run_id,
             mission_id=mission_id,
             agent=agent,
             description=description,
@@ -224,6 +273,9 @@ class TaskRepository(BaseRepository[Task]):
         plan_id: str,
         mission_id: str,
         new_task_defs: list[dict],
+        *,
+        scope_run_id: str | None = None,
+        assign_run_id: str | None = None,
     ) -> dict[str, int]:
         """Reconcile existing Task rows against a new set of task definitions.
 
@@ -234,6 +286,9 @@ class TaskRepository(BaseRepository[Task]):
             mission_id: The mission (for new task creation).
             new_task_defs: List of dicts with keys matching Task columns.
                 Each must have an 'id' (UUID string) key.
+            scope_run_id: When set, only tasks of this run or the backlog
+                (mission_run_id IS NULL) are reconciled.
+            assign_run_id: mission_run_id written on newly created tasks.
 
         Returns:
             Stats dict: {"cancelled": N, "new": M, "updated": K}
@@ -250,6 +305,8 @@ class TaskRepository(BaseRepository[Task]):
         new_by_id: dict[str, dict] = {d["id"]: d for d in new_task_defs}
 
         existing_tasks = await self.get_by_plan_id(plan_id)
+        if scope_run_id is not None:
+            existing_tasks = [t for t in existing_tasks if t.mission_run_id in (scope_run_id, None)]
         existing_by_id: dict[str, Task] = {t.id: t for t in existing_tasks}
 
         cancelled_count = 0
@@ -303,6 +360,7 @@ class TaskRepository(BaseRepository[Task]):
                 constraints_json=task_def.get("constraints_json", {}),
                 domain_tags=task_def.get("domain_tags", []),
                 status=TaskStatus.PROPOSED,
+                mission_run_id=assign_run_id,
             )
             new_count += 1
 

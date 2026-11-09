@@ -6,7 +6,7 @@ Data access for missions and mission membership.
 
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import selectinload
 
 from modules.backend.core.exceptions import NotFoundError
@@ -32,6 +32,20 @@ class MissionRepository(BaseRepository[Mission]):
         if mission is None:
             raise NotFoundError("Mission not found")
         return mission
+
+    async def increment_run_sequence(self, mission_id: str) -> int:
+        """Issue the mission's next run sequence number.
+
+        The UPDATE's row lock makes this race-free. The increment rolls back with
+        the transaction or savepoint that contains it, so sequences stay gap-free.
+        """
+        stmt = (
+            update(Mission)
+            .where(Mission.id == mission_id)
+            .values(run_sequence_counter=Mission.run_sequence_counter + 1)
+            .returning(Mission.run_sequence_counter)
+        )
+        return (await self.session.execute(stmt)).scalar_one()
 
     async def get_by_name(self, name: str) -> Mission | None:
         """Get a mission by unique name."""

@@ -1,0 +1,63 @@
+"""Fixtures for repository integration tests: committed missions for multi-session tests."""
+
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from uuid import uuid7
+
+import pytest
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from modules.backend.core import security
+from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
+from modules.backend.models.user import User
+
+
+@pytest.fixture
+async def committed_owner(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncGenerator[Callable[[], Awaitable[tuple[User, Mission, MissionPlan]]], None]:
+    """Factory for a committed user, mission and MANUAL plan; all deleted on teardown.
+
+    Multi-session tests need rows other sessions can see, so the rolled-back
+    db_session fixture does not serve.
+    """
+    users: list[str] = []
+    missions: list[str] = []
+
+    async def make() -> tuple[User, Mission, MissionPlan]:
+        suffix = str(uuid7())
+        async with db_session_factory() as session:
+            user = User(
+                email=f"repo-{suffix}@test.dev",
+                display_name="Repo Test",
+                hashed_password=security.hash_password("repo-test-password"),
+                system_role="user",
+                is_active=True,
+            )
+            session.add(user)
+            await session.flush()
+            mission = Mission(
+                name=f"repo-{suffix}",
+                description="repository test",
+                owner_id=user.id,
+                status="active",
+                default_roster="default",
+            )
+            session.add(mission)
+            await session.flush()
+            plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+            session.add(plan)
+            await session.commit()
+            users.append(user.id)
+            missions.append(mission.id)
+            return user, mission, plan
+
+    yield make
+
+    async with db_session_factory() as session:
+        if missions:
+            await session.execute(delete(Mission).where(Mission.id.in_(missions)))
+        if users:
+            await session.execute(delete(User).where(User.id.in_(users)))
+        await session.commit()
