@@ -570,7 +570,8 @@ Other repositories:
 - `test_redaction.py`:
   - `test_redacts_bot_token`: `"https://api.telegram.org/bot123:AA-b_c/sendMessage"` contains no `123:AA-b_c`.
   - `test_redacts_action_token`.
-  - `test_redacts_provider_key`, `test_redacts_bearer`, `test_redacts_url_credentials` and `test_redacts_key_value_secret`: one input per 3.5.5 pattern 3 to 6, which decision 15 needs (contracts 3.8.1).
+  - `test_redacts_provider_key`, `test_redacts_bearer`, `test_redacts_url_credentials`, `test_redacts_key_value_secret`, `test_redacts_github_token` and `test_redacts_aws_key`: one input per 3.5.5 pattern 3 to 8, which decision 15 needs (contracts 3.8.1).
+  - `test_redacts_env_style_names`: every `NAME=` line of `config/.env.example`, given a value, is redacted in both `NAME=value` and `NAME: value` form.
 - `test_mission_schedule_service.py`. Integration tests with a real DB; `TemporalScheduleGateway` is replaced by an in-memory `FakeScheduleGateway` defined in the test module.
   - `test_create_rejects_when_recurrence_disabled`: with `recurrence.enabled` patched to false, `ValidationError` is raised and the fake's `validate_spec` is never called.
   - `test_create_rejects_interactive_gate_mode`.

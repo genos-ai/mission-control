@@ -39,9 +39,9 @@ Each item has exactly one owning step. A later step that touches the item says "
 | `AgentMissionWorkflow` (`temporal/workflow.py`), `MissionWorkflowInput`, `POST /executions/{id}/execute`, `POST /executions/{id}/approve`, the approval code in `use-executions.ts`, and the config keys only they read (3.4.1) | 88.2.6 deletes them in one commit | 88.4.8 re-implements the signal, `wait_condition` and timer pattern inside `MissionRunWorkflow`, citing `a28ca771:modules/backend/temporal/workflow.py` |
 | `_gate()` seam in `MissionRunWorkflow` | 88.2.6 adds it, returning `"continue"` | 88.4.8 replaces it under patch id `p88-durable-gate` |
 | Continue-as-new | 88.2.7 only | Phase 1 has no continue-as-new (3.3.3) |
-| Failure columns on `tasks` and `task_executions` (3.1.8) | 88.1.2 creates them in `plan88_002`, unmapped by type | 88.2.3b maps them with the 3.8 enums; 88.2.4 writes them in `record`, `mark_cancelled`, `MissionRunService.finalise` and the reconciler; 88.4.6's record arrives through the classifier (3.8.3 step 1); the 88.5 task-output retention step nulls `failure_json` |
-| Fail-closed execution boundary: `ExecutionEnvironmentError`, no local fallback in `build_dispatch_runtime` or `_validate_mode`, `mission_repo_root` passed from `workflow_run_waves`, worktree rejected by `MissionService`, no host path in `run_command` or `run_tests`, the engine working-directory rules, `execute_copilot` not writing `AGENTS.md`, the write guard (3.8.5) | 88.2.3a | 88.2.3b changes the `run_command` and `run_tests` return shapes and makes the CLI engines raise `CliEngineError` |
-| `schemas/task_failure.py` (`FailureOrigin`, `FailureClass`, `CommandEvidence`, `FailureEvidence`, `TaskFailure`), `core/failure_classification.py` (`FailureClassifier`, `get_failure_classifier`), `config/settings/failure_signatures.yaml` and `FailureSignaturesSchema`, `CliEngineError`, `AgentAttemptError`, `WorkflowHaltedError`, `UpstreamOutputMissingError`, `TaskResult.failure`, `RetryHistoryEntry.failure_class`, `failed_result(task, failure, *, status, ...)`, `materialize_task_states` | 88.2.3b creates | 88.2.4 persists records and adds the failure fields of `ExecuteTaskResult`; 88.2.6 adds the workflow-internal `TaskFailureDigest` and the post-run `summary["failures"]` |
+| Failure columns on `tasks` and `task_executions` (3.1.8) | 88.1.2 creates them in `plan88_002`, unmapped by type | 88.2.3b maps them with the 3.8 enums; 88.2.4 adds `TaskRepository.set_failure`, the only writer, called from `record`, `mark_cancelled`, `MissionRunService.finalise` (which also covers orphaned runs) and the WorkflowRun task-fail paths; 88.4.6's record arrives through the classifier (3.8.3 step 1); 88.5.3 nulls `failure_json` |
+| Fail-closed execution boundary: `ExecutionEnvironmentError`, no local fallback in `build_dispatch_runtime` or `_validate_mode`, `mission_repo_root` passed from `workflow_run_waves`, worktree rejected by `MissionService`, `LocalBackend` deleted, `run_in_environment` as the single command path, `codex` and `copilot` deleted and rejected by `AgentConfigSchema`, `execute_claude_code(environment_handle=...)`, `chat_cli_handler` without a host fallback, the `pydantic_ai` write guard, `executions.yaml` required, `tool_runner._redact_secrets_in_text` replaced by `redact_secrets` (3.8.5, 3.4.10, 3.5.5) | 88.2.3a | none |
+| `schemas/task_failure.py` (`FailureOrigin`, `FailureClass`, `FailureEvidence`, `TaskFailure`), `core/failure_classification.py` (`FailureClassifier`, `get_failure_classifier`), `config/settings/failures.yaml` and `FailuresSchema`, `WorkflowStepFailedError` (in `core/failure_classification.py`), `WorkflowHaltedError`, `UpstreamOutputMissingError`, `TaskResult.failure`, `RetryHistoryEntry.failure_class`, `failed_result(task, failure, *, status, ..., cost_usd, token_usage, duration_seconds)` | 88.2.3b creates | 88.2.3c removes `MODIFY` at `verification_failed`; 88.2.4 adds `TaskRepository.set_failure` and the failure fields of `ExecuteTaskResult`; 88.2.4a adds `materialize_task_states`; 88.2.6 adds `TaskFailureDigest`, `digest_failures`, `TaskRepository.failed_tasks_for_run` and the post-run `summary["failures"]` |
 | `TaskFailedEvent` (3.6.1) | 88.2.4 adds it; `execute_plan_task` is its only publisher | none |
 | Budget: `BudgetService`, `check_run`, `check_run_budget` activity, caps, `llm_call_daily_aggregates` | Phase 4: 88.4.1 schema, 88.4.6 enforcement under patch id `p88-budget-caps` | Phases 1 to 3 contain no budget branch in workflows, claims or activities |
 | `mission_runs.cost_usd` | 88.1.7 (`finalise` writes it from the ledger) | Phase 4 adds aggregates to monthly and lifetime sums only |
@@ -111,8 +111,8 @@ Evolving it would rewrite the key, the target and most of the columns. That is a
 | `ActionTokenPurpose` (`models/action_token.py`) | `GATE_DECISION`, `CHANNEL_LINK` | 88.4.3 |
 | `NotificationKind` (`models/notification.py`) | `RUN_SUCCEEDED`, `RUN_FAILED`, `GATE_WAITING`, `GATE_ESCALATED`, `GATE_TIMEOUT_PAUSED`, `BUDGET_PAUSED`, `RUN_SKIPPED`, `RUN_MISSED` | 88.4.3 |
 | `NotificationDeliveryStatus` | `SENT`, `FAILED`, `SKIPPED_NO_IDENTITY`, `SKIPPED_DISABLED` | 88.4.3 |
-| `FailureOrigin` (`schemas/task_failure.py`) | `PLATFORM`, `PROVIDER`, `ENVIRONMENT`, `TARGET`, `AGENT`, `UPSTREAM`, `CONTROL`, `UNKNOWN` | 88.2.3b (columns since `plan88_002`) |
-| `FailureClass` (`schemas/task_failure.py`) | `TRANSIENT_PROVIDER`, `QUOTA_EXHAUSTED`, `AGENT_CONTRACT`, `AGENT_TOOL_ERROR`, `AGENT_ENGINE_ERROR`, `VERIFICATION_FAILED`, `TIMEOUT`, `UPSTREAM_BLOCKED`, `PLATFORM_DEFECT`, `PLATFORM_DEPENDENCY_MISSING`, `ORPHANED`, `ENV_UNAVAILABLE`, `TARGET_TOOL_MISSING`, `TARGET_DEPENDENCY_MISSING`, `TARGET_SYNTAX_OR_COLLECTION`, `TARGET_TEST_FAILURE`, `TARGET_RUNTIME_ERROR`, `CANCELLED`, `BUDGET_EXCEEDED`, `RUN_ABORTED`, `UNKNOWN` | 88.2.3b (columns since `plan88_002`) |
+| `FailureOrigin` (`schemas/task_failure.py`) | `PLATFORM`, `PROVIDER`, `ENVIRONMENT`, `AGENT`, `UPSTREAM`, `CONTROL`, `UNKNOWN` | 88.2.3b (columns since `plan88_002`) |
+| `FailureClass` (`schemas/task_failure.py`) | `TRANSIENT_PROVIDER`, `QUOTA_EXHAUSTED`, `AGENT_CONTRACT`, `AGENT_TOOL_ERROR`, `AGENT_REPORTED_FAILURE`, `VERIFICATION_FAILED`, `TIMEOUT`, `UPSTREAM_BLOCKED`, `PLATFORM_DEFECT`, `PLATFORM_DEPENDENCY_MISSING`, `PLATFORM_TRANSIENT`, `ORPHANED`, `ENV_UNAVAILABLE`, `CANCELLED`, `BUDGET_EXCEEDED`, `RUN_ABORTED`, `UNKNOWN`. `TARGET` origin and its classes arrive with the repair-loop plan (3.8.7) | 88.2.3b (columns since `plan88_002`) |
 
 **Status meanings:**
 - **Gate request `TIMED_OUT`.** The pause window passed and the run is PAUSED, but the gate can still be decided.
@@ -292,7 +292,7 @@ The run-finished notification states the generator.
 | `tasks.failure_origin` / `task_executions.failure_origin` | VARCHAR(32) `FailureOrigin` | YES (NULL unless the row is FAILED) | none | `plan88_002` |
 | `tasks.failure_class` / `task_executions.failure_class` | VARCHAR(40) `FailureClass` | YES (NULL unless the row is FAILED) | none | `plan88_002` |
 | `tasks.failure_fingerprint` / `task_executions.failure_fingerprint` | VARCHAR(64) | YES | `ix_task_executions_failure_fingerprint (failure_fingerprint)` on `task_executions` only. `tasks` holds the current attempt; `task_executions` holds one row per attempt and survives `retry_task`, which clears the `tasks` columns | `plan88_002` |
-| `task_executions.failure_json` | JSONB | YES | `TaskFailure.model_dump(mode="json")` (3.8.2), bounded by `failure_signatures.evidence`. Set to NULL with `output_data` after `retention.task_outputs_days`; the three classification columns are kept | `plan88_002` |
+| `task_executions.failure_json` | JSONB | YES | `TaskFailure.model_dump(mode="json")` (3.8.2), bounded by `failures.evidence`. Set to NULL with `output_data` after `retention.task_outputs_days`; the three classification columns are kept | `plan88_002` |
 | `context_changes.mission_run_id` | UUID | YES | FK `mission_runs.id` ON DELETE SET NULL; index | `plan88_002` |
 | `context_changes` index | n/a | n/a | `ix_context_changes_context_version (context_id, version)`. Keyed on `context_id` because legacy rows from `tools/update_context.py:37-48` and `services/summarization.py:101,162` have `mission_id IS NULL` | `plan88_002` |
 | `llm_calls.mission_run_id` | UUID | YES | no FK, matching the existing table style (`models/llm_call.py:15-34`); index `ix_llm_calls_mission_run_id (mission_run_id)` | `plan88_002` |
@@ -862,7 +862,7 @@ class RunConfigSnapshot:                      # 88.1.5
     max_parallel_tasks: int
     max_run_duration_seconds: int             # 88.2.2
     task_heartbeat_interval_seconds: int      # 88.2.2
-    max_failure_digests: int                  # 88.2.6; failure_signatures.supervisor.max_failure_digests (3.4.9)
+    max_failure_digests: int                  # 88.2.6; failures.supervisor.max_failure_digests (3.4.9)
 
 
 @dataclass(frozen=True)
@@ -976,13 +976,21 @@ class SupervisorFollowupInput:                # 88.1.8; fire_supervisor_followup
 
 
 @dataclass(frozen=True)
-class TaskFailureDigest:                      # 88.2.6; workflow-internal, built only from ExecuteTaskResult fields, rendered into REFINE_PROMPT
+class TaskFailureDigest:                      # 88.2.6; built only by digest_failures (below)
     task_id: str                              # first task in the wave with this fingerprint
     origin: str                               # FailureOrigin value
     failure_class: str                        # FailureClass value
     fingerprint: str
     summary: str                              # ExecuteTaskResult.failure_reason
-    occurrences: int                          # tasks in the wave sharing the fingerprint
+    occurrences: int                          # tasks sharing the fingerprint
+
+
+# 88.2.6, same module, pure (no I/O; workflow-sandbox safe). The only grouping rule for failure digests:
+# def digest_failures(items: Iterable[FailureItem], cap: int) -> tuple[list[TaskFailureDigest], int]
+# FailureItem is any object with task_id, failure_origin, failure_class, failure_fingerprint, failure_reason
+# (ExecuteTaskResult and the TaskRepository.failed_tasks_for_run rows both qualify). It groups by fingerprint
+# in input order, keeps the first item's task_id and summary, counts occurrences, keeps the first `cap` groups
+# and returns the number of groups dropped.
 
 
 @dataclass
@@ -1471,68 +1479,21 @@ mc:
   runs_list_limit: 20      # rows returned by `mc runs list` when --limit is omitted
 ```
 
-#### 3.4.9 `config/settings/failure_signatures.yaml` (new, 88.2.3b; loaded with `_load_validated`, required)
+#### 3.4.9 `config/settings/failures.yaml` (new, 88.2.3b; loaded with `_load_validated`, required)
 
-The file starts with the standard commented options header (rule 003.3). Rules are evaluated in order; the first match wins (3.8.3).
+The file starts with the standard commented options header (rule 003.3). It holds bounds and policy only. Classification rules are code (3.8.3).
 
 ```yaml
 evidence:
   max_message_chars: 2000        # FailureEvidence.message, after redact_secrets
   max_summary_chars: 300         # TaskFailure.summary
-  max_stderr_chars: 4000         # CommandEvidence.stderr_tail; run_command and run_tests stderr (88.2.3b)
-  max_stdout_lines: 50           # CommandEvidence.stdout_tail; run_command and run_tests stdout (88.2.3b)
   max_traceback_frames: 8        # innermost frames kept in FailureEvidence.traceback_tail
 supervisor:
   max_failure_digests: 10        # post-run summary["failures"] and REFINE_PROMPT digests; overflow is counted, never silent
 unknown_retryable: true          # retry policy for FailureClass.UNKNOWN (today's behaviour: retry)
-fingerprint_normalisers:         # applied in order; each match becomes "#" before hashing
-  - '0x[0-9a-fA-F]+'
-  - '/tmp/[^\s:]+'
-  - '\b\d+\b'
-rules:
-  - id: target_module_not_found
-    applies_to: command
-    match: {output_regex: "ModuleNotFoundError: No module named '([^']+)'"}
-    origin: target
-    failure_class: target_dependency_missing
-    retryable: false
-  - id: target_command_not_found
-    applies_to: command
-    match: {exit_codes: [126, 127]}
-    origin: target
-    failure_class: target_tool_missing
-    retryable: false
-  - id: target_pytest_collection
-    applies_to: command
-    match: {exit_codes: [2], output_regex: "(SyntaxError|IndentationError|ERROR collecting)"}
-    origin: target
-    failure_class: target_syntax_or_collection
-    retryable: true
-  - id: target_pytest_failures
-    applies_to: command
-    match: {exit_codes: [1], output_regex: "\\d+ failed"}
-    origin: target
-    failure_class: target_test_failure
-    retryable: true
-  - id: platform_import_error
-    applies_to: exception
-    match: {exception_types: [ModuleNotFoundError, ImportError]}
-    origin: platform
-    failure_class: platform_dependency_missing
-    retryable: false
 ```
 
-`FailureSignaturesSchema` (`core/config_schema.py`, `extra="forbid"`) validates the file at load:
-- **Identity and vocabulary.** `rules[].id` values are unique. `origin` and `failure_class` are `FailureOrigin` and `FailureClass` values.
-- **Match keys.** `match` holds at least one of `exception_types`, `exit_codes`, `output_regex` or `message_regex`. All present keys must hold (AND).
-  - `exception_types` names resolve at load to builtin exceptions or `core.exceptions` classes; an unknown name fails validation.
-  - Every regex compiles and is applied with `re.search`.
-- **Command rules.** `exit_codes` and `output_regex` are allowed only with `applies_to: command`; `exception_types` and `message_regex` only with `applies_to: exception`.
-- **Origins.** A rule with `origin: target` has `applies_to: command`. A rule with `applies_to: command` never has `origin: platform`, because a command result inside an environment handle cannot prove a platform defect.
-- **Platform rules.** An `applies_to: exception` rule with `origin: platform` is consulted only in 3.8.3 step 9, after the frame-path test has placed the exception in the platform. It refines the class and never assigns platform origin by itself. Every other `applies_to: exception` rule is consulted only in step 10.
-- **Retryability.** A rule whose `failure_class` is in the never-retryable list of 3.8.3 must have `retryable: false`.
-
-`AppConfig.__init__` loads it in 88.2.3b with `_load_validated(FailureSignaturesSchema, "failure_signatures.yaml")`, required, and adds the `failure_signatures` property.
+`FailuresSchema` (`core/config_schema.py`, `extra="forbid"`) requires every key. The bounds are `ge=1`. `AppConfig.__init__` loads it in 88.2.3b with `_load_validated(FailuresSchema, "failures.yaml")`, required, and adds the `failures` property.
 
 #### 3.4.10 `config/settings/executions.yaml` (append, 88.2.3a)
 
@@ -1540,7 +1501,7 @@ rules:
 run_tests_timeout_seconds: 900   # wall-clock limit for one run_tests call inside the environment handle
 ```
 
-`ExecutionsSchema` gains `run_tests_timeout_seconds: int = Field(..., ge=1)`, and the options header documents it. `run_tests` reads `get_app_config().executions.run_tests_timeout_seconds` and raises `ExecutionEnvironmentError` if the executions config is absent; it never uses a literal default.
+`ExecutionsSchema` gains `run_tests_timeout_seconds: int = Field(..., ge=1)`, and the options header documents it. 88.2.3a switches `executions.yaml` from `_load_validated_optional` to `_load_validated` (required), because a required key makes an absent file invalid. `run_tests` reads `get_app_config().executions.run_tests_timeout_seconds`; there is no literal default.
 
 ### 3.5 Service interfaces, repositories, API and CLI
 
@@ -1936,10 +1897,14 @@ All new groups expose themselves in `tree` automatically through the existing in
   3. Provider keys matching `sk-ant-[A-Za-z0-9_-]+` or `sk-[A-Za-z0-9_-]{16,}` become `"sk-<redacted>"`.
   4. `Bearer\s+[A-Za-z0-9._~+/=-]+` becomes `"Bearer <redacted>"`.
   5. URL credentials matching `://[^/\s:@]+:[^/\s@]+@` become `"://<redacted>@"`.
-  6. `(?i)\b(api[_-]?key|token|secret|password)=\S+` becomes `"\1=<redacted>"`.
+  6. `(?i)\b([A-Z0-9_]*(?:api[_-]?key|token|secret|password|passwd|salt|credential))(["']?\s*[=:]\s*)["']?[^\s"',}]+` becomes `\1\2<redacted>`. It covers the platform's own `.env` names (`AZURE_OPENAI_API_KEY=…`) and `key: value` forms.
+  7. `gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}` becomes `gh<redacted>`.
+  8. `AKIA[0-9A-Z]{16}` becomes `AKIA<redacted>`.
+  9. JWTs matching `eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}(\.[A-Za-z0-9_-]+)?` become `eyJ<redacted>`.
+  10. Keys matching `(?:sk|pk|ak|rk)[-_](?:live|test|prod)[-_][A-Za-z0-9]{16,}` become `<redacted>`.
 
-  Patterns 3 to 6 exist because 3.8 passes command lines, tool output and exception text through it (decision 15). It is applied to every stored `notification_deliveries.error`, `mission_schedules.temporal_sync_error`, `mission_runs.status_detail` and every event payload field that carries exception text (`NotificationDeliveryFailedEvent.error`, `MissionScheduleSyncFailedEvent.error`). Tests `test_redacts_bot_token`, `test_redacts_action_token`, `test_redacts_provider_key`, `test_redacts_bearer`, `test_redacts_url_credentials` and `test_redacts_key_value_secret` (88.1.6); `test_delivery_error_redacts_bot_token` (88.4.4). From 88.2.3b it is also applied to every field listed in 3.8.1 item 5.
-- **`core/exceptions.py`** gains `MissionRunStateError(ApplicationError)` (88.1.2) and `RunStartRejectedError(ValidationError)` (88.1.7), which covers `INVALID_GATE_MODE` and the owner-not-user `START_FAILED`. Both are in `NON_RETRYABLE`. `BudgetExceededError` exists (`core/exceptions.py:73`). 88.2.3a adds `ExecutionEnvironmentError(ApplicationError)`, which is in `NON_RETRYABLE`. 88.2.3b adds `CliEngineError(ApplicationError)` with `exit_code` and `stderr_tail`, and `AgentAttemptError(ApplicationError)` with `command_evidence` and the original exception as `__cause__`. `WorkflowHaltedError(RuntimeError)` lives in `tools/halt_workflow.py`, and `UpstreamOutputMissingError(KeyError)`, with `source_task` and `source_field`, lives in `agents/mission_control/dispatch/dag.py` (both 88.2.3b).
+  Patterns 3 to 10 exist because 3.8 passes exception text through it (decision 15). It is the platform's only secret redactor: 88.2.3a deletes `agents/security/tool_runner._redact_secrets_in_text`, and `strip_secret_values` calls `redact_secrets`. It is applied to every stored `notification_deliveries.error`, `mission_schedules.temporal_sync_error`, `mission_runs.status_detail` and every event payload field that carries exception text (`NotificationDeliveryFailedEvent.error`, `MissionScheduleSyncFailedEvent.error`). Tests `test_redacts_bot_token`, `test_redacts_action_token`, `test_redacts_provider_key`, `test_redacts_bearer`, `test_redacts_url_credentials`, `test_redacts_key_value_secret`, `test_redacts_env_style_names` (every `NAME=` line of `config/.env.example` with a value, in `NAME=value` and `NAME: value` form), `test_redacts_github_token`, `test_redacts_aws_key`, `test_redacts_jwt` and `test_redacts_stripe_style_key` (88.1.6); `test_delivery_error_redacts_bot_token` (88.4.4). From 88.2.3b it is also applied to every field listed in 3.8.1 item 5.
+- **`core/exceptions.py`** gains `MissionRunStateError(ApplicationError)` (88.1.2) and `RunStartRejectedError(ValidationError)` (88.1.7), which covers `INVALID_GATE_MODE` and the owner-not-user `START_FAILED`. Both are in `NON_RETRYABLE`. `BudgetExceededError` exists (`core/exceptions.py:73`). 88.2.3a adds `ExecutionEnvironmentError(ApplicationError)`, which is in `NON_RETRYABLE`. 88.2.3b defines `WorkflowStepFailedError(RuntimeError)`, carrying `failure: TaskFailure`, in `core/failure_classification.py`, beside its only consumer, so `core/exceptions.py` stays a leaf module. `WorkflowHaltedError(RuntimeError)`, carrying `reason`, lives in `tools/halt_workflow.py`, and `UpstreamOutputMissingError(KeyError)`, with `source_task` and `source_field`, lives in `agents/mission_control/dispatch/dag.py` (both 88.2.3b).
 
 ### 3.6 Event types and notification kinds
 
@@ -1995,31 +1960,36 @@ Before 88.4.5, `FinaliseRunResult.notification` and the tick's notifications are
 
 ### 3.8 Task failure evidence and the execution boundary (decision 15)
 
-An unattended run must be able to say why a task failed, in a form that code can route. Today it cannot: the reason is dropped, every failure looks the same, and a failed provisioning silently runs agents on the worker host. This section defines one failure contract that every failure path produces and every consumer reads. Classification is deterministic (P2); no LLM classifies.
+An unattended run must be able to say why a task failed, in a form that code can route. Today it cannot: the reason is dropped, every failure looks the same, and a failed provisioning silently runs agents on the worker host. This section defines one failure contract that every failure path produces and every consumer reads.
+
+**Scope.** Plan 88 builds the robust core only:
+- **A fail-closed execution boundary.**
+- **A typed failure record.** Its origin and class come from mechanical rules in code: exception types, traceback frame paths and explicit constructors.
+- **Persistence and visibility.** The record is stored and shown to the supervisor, the Director and the Planning Agent.
+
+Anything needed only to prove that a failure lies in the mission's target repository is deferred to the repair-loop plan (3.8.7).
 
 #### 3.8.1 Principles
 
 1. **Evidence before routing.** A failure that is not captured as typed data cannot be routed, deduplicated or repaired.
-2. **Origin decides who may act.** In production only `target`-origin failures may ever enter an automated repair loop (out of scope here, 3.8.7). `platform`-origin failures go to the operator.
-   - **Mechanical origins.** `PLATFORM`, `PROVIDER`, `ENVIRONMENT`, `CONTROL` and `UPSTREAM` come from mechanical rules or explicit constructors.
-   - **Target origin.** `TARGET` comes only from an `applies_to: command` rule over platform-issued command evidence run inside an environment handle.
-3. **Detect at durable boundaries.** Failure records are built from the task result, the exception and command evidence. The log-to-SSE bridge is a display channel (rule 014) and never a trigger.
-4. **Fail closed.** No isolated workspace means no execution and no writes, not local execution (3.8.5).
+2. **Mechanical classification only.** No LLM classifies, and no config rule assigns an origin. Plan 88 uses the class for two things only: to stop retries that cannot succeed, and to inform the supervisor, the Director and the Planning Agent.
+3. **Detect at durable boundaries.** Records are built from the task result and the exception at the activity boundary. The log-to-SSE bridge is a display channel (rule 014) and never a trigger.
+4. **Fail closed.** No isolated workspace means no execution, not local execution (3.8.5).
 5. **Bounded and redacted.**
-   - **Bounds:** sizes come from `failure_signatures.evidence`.
-   - **Redaction:** `message`, `summary`, `CommandEvidence.command`, `stdout_tail` and `stderr_tail` pass through `core/redaction.redact_secrets` (88.1.6, patterns in 3.5.5) before they are stored, emitted or put in workflow history.
+   - **Bounds.** Sizes come from `failures.evidence` (3.4.9).
+   - **Redaction.** `message` and `summary` pass through `core/redaction.redact_secrets` (88.1.6; patterns in 3.5.5) before they are stored, emitted or put in workflow history.
+   - **Replay safety.** No workflow code branches on `failure_reason` or `summary`, because 88.2.9 redacts them in committed replay fixtures. Workflow branches read `failure_class` only.
 
 #### 3.8.2 Types (`schemas/task_failure.py`, 88.2.3b)
 
 ```python
 class FailureOrigin(str, enum.Enum):
-    PLATFORM = "platform"          # defect in the running platform's code or its installed dependencies
+    PLATFORM = "platform"          # the running platform: its code, its installed dependencies, its infrastructure
     PROVIDER = "provider"          # LLM provider error, already typed by classify_provider_error
     ENVIRONMENT = "environment"    # no isolated workspace could be provided (3.8.5)
-    TARGET = "target"              # the mission's target repository or its toolchain, seen through platform-issued command evidence
-    AGENT = "agent"                # the agent run itself: output contract, tool misuse, verification, timeout, engine error
+    AGENT = "agent"                # the agent run itself: output contract, tool misuse, verification, timeout, reported failure
     UPSTREAM = "upstream"          # a dependency of this task failed or produced no output
-    CONTROL = "control"            # stopped by the platform: cancellation, budget, run end, workflow halt
+    CONTROL = "control"            # stopped by the platform: cancellation, budget, run end, gate abort
     UNKNOWN = "unknown"
 
 
@@ -2028,42 +1998,27 @@ class FailureClass(str, enum.Enum):
     QUOTA_EXHAUSTED = "quota_exhausted"
     AGENT_CONTRACT = "agent_contract"
     AGENT_TOOL_ERROR = "agent_tool_error"
-    AGENT_ENGINE_ERROR = "agent_engine_error"
+    AGENT_REPORTED_FAILURE = "agent_reported_failure"
     VERIFICATION_FAILED = "verification_failed"
     TIMEOUT = "timeout"
     UPSTREAM_BLOCKED = "upstream_blocked"
     PLATFORM_DEFECT = "platform_defect"
     PLATFORM_DEPENDENCY_MISSING = "platform_dependency_missing"
+    PLATFORM_TRANSIENT = "platform_transient"
     ORPHANED = "orphaned"
     ENV_UNAVAILABLE = "env_unavailable"
-    TARGET_TOOL_MISSING = "target_tool_missing"
-    TARGET_DEPENDENCY_MISSING = "target_dependency_missing"
-    TARGET_SYNTAX_OR_COLLECTION = "target_syntax_or_collection"
-    TARGET_TEST_FAILURE = "target_test_failure"
-    TARGET_RUNTIME_ERROR = "target_runtime_error"
     CANCELLED = "cancelled"
     BUDGET_EXCEEDED = "budget_exceeded"
     RUN_ABORTED = "run_aborted"
     UNKNOWN = "unknown"
 
 
-class CommandEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    command: str                   # redacted
-    exit_code: int
-    stdout_tail: str               # redacted; last failure_signatures.evidence.max_stdout_lines lines
-    stderr_tail: str               # redacted; cut to evidence.max_stderr_chars
-    in_environment: bool           # True only when run through an EnvironmentHandle
-    issued_by: Literal["platform", "agent"]   # "platform": fixed argv (run_tests); "agent": agent-composed (run_command)
-
-
 class FailureEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
     exception_type: str | None
-    message: str                   # redacted, cut to evidence.max_message_chars
-    traceback_tail: list[str]      # innermost evidence.max_traceback_frames frames, each written as in 3.8.4
+    message: str                   # redacted, cut to failures.evidence.max_message_chars
+    traceback_tail: list[str]      # innermost failures.evidence.max_traceback_frames frames, each written as in 3.8.4
     module_name: str | None        # ModuleNotFoundError.name, when present
-    command: CommandEvidence | None
 
 
 class TaskFailure(BaseModel):
@@ -2073,126 +2028,133 @@ class TaskFailure(BaseModel):
     fingerprint: str               # 64 hex chars (3.8.4)
     summary: str                   # see below; becomes tasks.failure_reason and ExecuteTaskResult.failure_reason
     retryable: bool                # whether the same agent may retry inside the task (3.8.3)
-    rule_id: str | None            # the failure_signatures rule that matched, or None
     evidence: FailureEvidence
 ```
 
-- **`summary`.** For classifier-built records it is `f"{failure_class.value}: {first line of the redacted message}"`, cut to `failure_signatures.evidence.max_summary_chars`. `control(...)` uses its argument verbatim, so `"budget_exceeded"` and `"cancelled"` stay exact strings that code may compare.
+- **`summary`.** For classifier-built records it is `f"{failure_class.value}: {first line of the redacted message}"`, cut to `failures.evidence.max_summary_chars`. `control` uses its `summary` verbatim; `plan_invalid`, `agent_outcome` and `orphaned` use their `detail` verbatim; `roster_miss`, `upstream_blocked` and `verification_failed` use `f"{failure_class.value}: {agent_name or missing_ref}"`. `control(...)` therefore stores `"budget_exceeded"` and `"cancelled"` exactly.
 - **`TaskResult.failure`.** `TaskResult` (`schemas/execution_outcome.py`) gains `failure: TaskFailure | None`. A model validator requires it when `status` is `FAILED` or `TIMEOUT`, and `None` otherwise.
-- **Every failed `TaskResult` carries a failure.** This applies to every construction whose status is or may be `FAILED` or `TIMEOUT`, whether through `failed_result` or a direct `TaskResult(...)`. A direct construction keeps its own fields, such as `output_reference` and `verification_outcome` on the exhausted-verification path.
-- **`failed_result`.** Its signature becomes `failed_result(task, failure: TaskFailure, *, status: TaskStatus = TaskStatus.FAILED, retry_count=0, retry_history=None, execution_id="")`, replacing `reason: str` (P3). `research_loop._failed_result` is deleted in its favour.
-- **`RetryHistoryEntry`** gains `failure_class: FailureClass | None`.
-- **`run_tests` return shape** (88.2.3b): `{passed, exit_code, stdout_tail, stderr_tail}`.
+- **Every failed result carries one.** Every construction whose status is or may be `FAILED` or `TIMEOUT` passes a `TaskFailure`. The 88.2.3b item 4 table assigns a constructor to each site. A direct construction keeps its own fields, such as spend and `verification_outcome`.
+- **`failed_result`.** `failed_result(task, failure: TaskFailure, *, status: TaskStatus = TaskStatus.FAILED, retry_count=0, retry_history=None, execution_id="", cost_usd=0.0, token_usage=None, duration_seconds=0.0)` replaces `reason: str` (P3). It is the only failed-result builder: `research_loop._failed_result` is deleted, and the research loop passes its spend through these keywords.
+- **`RetryHistoryEntry`** gains `failure_class: FailureClass | None`. It is stored in `execution_outcome_json`, and `task_attempts` gains no column.
 
 #### 3.8.3 Classification (`core/failure_classification.py`, 88.2.3b)
 
-`FailureClassifier(signatures: FailureSignaturesSchema, platform_modules_dir: Path)` is built once per process, from `get_app_config().failure_signatures` and `find_project_root() / "modules"` resolved with `realpath`. It does no I/O and imports nothing from `modules.backend.agents`.
+`FailureClassifier(config: FailuresSchema, platform_modules_dir: Path)` is built once per process, from `get_app_config().failures` and `find_project_root() / "modules"` resolved with `realpath`. It does no I/O and imports nothing from `modules.backend.agents` or `modules.backend.tools`. All rules below are code, not config. The module also defines `WorkflowStepFailedError(RuntimeError)`, which carries a `TaskFailure`, and the constant `AGENT_TOOL_DIRS = ("backend/tools", "backend/agents/deps")`, which is resolved under `platform_modules_dir`.
 
-**Explicit constructors**, for failures the platform itself decides:
-- `control(failure_class, summary)` gives `CONTROL` with `CANCELLED`, `BUDGET_EXCEEDED` or `RUN_ABORTED`.
-- `upstream_blocked(missing_ref, upstream_task_id)` gives `UPSTREAM`/`UPSTREAM_BLOCKED`. `run_single_task` calls it on `UpstreamOutputMissingError` (88.2.3b), which carries `source_task` and `source_field` as attributes, so no message parsing is needed.
-- `roster_miss(agent_name)` gives `PLATFORM`/`PLATFORM_DEFECT`.
-- `orphaned(detail)` gives `PLATFORM`/`ORPHANED`. The reconciler uses it.
-- `verification_failed(agent_name, verification_outcome, command)` gives `AGENT`/`VERIFICATION_FAILED`, with one exception. When `command` meets all three conditions below, the record takes that rule's `TARGET` origin and class instead:
-  - `issued_by == "platform"`;
-  - `in_environment=True` and a non-zero `exit_code`;
-  - a matching `applies_to: command` rule.
+**Explicit constructors**, for failures the platform decides without an exception:
 
-  Agent-issued commands are stored as evidence and never change the origin. The agent composes them, so they cannot be trusted to name a culprit.
+| Constructor | Origin / class | Used for |
+|---|---|---|
+| `control(failure_class, summary)` | `CONTROL` / `CANCELLED`, `BUDGET_EXCEEDED` or `RUN_ABORTED` | Cancellation, gate abort (`"aborted at <gate> gate"`), budget stop, run end |
+| `upstream_blocked(missing_ref, upstream_task_id)` | `UPSTREAM` / `UPSTREAM_BLOCKED` | `UpstreamOutputMissingError` from `resolve_upstream_inputs` |
+| `roster_miss(agent_name)` | `PLATFORM` / `PLATFORM_DEFECT` | The agent is not on the roster |
+| `plan_invalid(agent_name, detail)` | `AGENT` / `AGENT_CONTRACT` | The planner produced an unusable task, such as a missing `loop_config` |
+| `agent_outcome(agent_name, detail)` | `AGENT` / `AGENT_REPORTED_FAILURE` | An agent or sub-run finished without raising but reported failure: an unconverged convergence loop, `success: False`, a non-dict result, a failed research decomposition, or a halted workflow step (`"workflow halted: <reason>"`) |
+| `verification_failed(agent_name, verification_outcome)` | `AGENT` / `VERIFICATION_FAILED` | The verification retries are exhausted |
+| `orphaned(detail)` | `PLATFORM` / `ORPHANED` | `finalise` with reason `ORPHANED_WORKFLOW_CLOSED` or `ORPHANED_WORKFLOW_NOT_FOUND` |
 
-**`from_exception(exc, command)`.** The first match wins:
+**`from_exception(exc)`.** The first match wins.
 
-0. **`AgentAttemptError`** (88.2.3b): classify `exc.__cause__` with `exc.command_evidence`.
+0. **`WorkflowStepFailedError`** (defined in this module): return its carried `failure` unchanged.
 1. **`BudgetExceededError`**: `control(FailureClass.BUDGET_EXCEEDED, "budget_exceeded")`.
-2. **Provider errors**: `QuotaExhaustedError` gives `PROVIDER`/`QUOTA_EXHAUSTED`. `RateLimitedError` or `TransientProviderError` give `PROVIDER`/`TRANSIENT_PROVIDER`. Callers run `classify_provider_error` first, as `retry_handler` does today.
-3. **Contract errors**: `ContractViolationError`, pydantic `ValidationError`, `UnexpectedModelBehavior`, `IncompleteToolCall` or `UsageLimitExceeded` give `AGENT`/`AGENT_CONTRACT`. These match what the retry handler already fails fast on.
+2. **Provider errors.** `from_exception` first applies `classify_provider_error(exc, provider="", model="")` for typing only, so every caller passes the raw exception. The function is idempotent on typed errors and uses `provider` and `model` only as labels. `QuotaExhaustedError` gives `PROVIDER`/`QUOTA_EXHAUSTED`. `RateLimitedError` or `TransientProviderError` give `PROVIDER`/`TRANSIENT_PROVIDER`.
+3. **Contract errors.** `ContractViolationError`, pydantic `ValidationError`, `UnexpectedModelBehavior`, `IncompleteToolCall` or `UsageLimitExceeded` give `AGENT`/`AGENT_CONTRACT`. This tuple, `CONTRACT_ERRORS`, lives only in this module. The retry handler's `_CONTRACT_FAILURE_EXCEPTIONS` and `is_token_limit` are deleted (88.2.3b).
 4. **`ExecutionEnvironmentError`** (88.2.3a): `ENVIRONMENT`/`ENV_UNAVAILABLE`.
-5. **`CliEngineError`** (88.2.3b): `exit_code == -1` gives `AGENT`/`TIMEOUT`; otherwise `AGENT`/`AGENT_ENGINE_ERROR`.
-6. **`TimeoutError`**: `AGENT`/`TIMEOUT`.
-7. **`WorkflowHaltedError`** (88.2.3b; `halt_workflow` raises it in place of a bare `RuntimeError`, and it subclasses `RuntimeError` so the `tool_call` dispatcher's re-raise is unchanged): `CONTROL`/`CANCELLED`.
-8. **Agent tool errors**: a `PermissionError`, `ValueError` or `TypeError` whose innermost non-stdlib frame is under `modules/backend/tools/` or `modules/backend/agents/deps/` gives `AGENT`/`AGENT_TOOL_ERROR`. These are bad arguments or out-of-scope paths. Without this step an agent, or prompt-injected content steering it, could raise "platform defect" alarms on demand.
-9. **Frame-path test.**
-   - Skip frames whose file is under `sysconfig.get_paths()["stdlib"]` or `["platstdlib"]`, or starts with `<frozen`. Site-packages frames are not skipped.
-   - If the innermost remaining frame resolves under `platform_modules_dir`, the origin is `PLATFORM`. The class is the first `applies_to: exception`, `origin: platform` rule that matches, otherwise `PLATFORM_DEFECT`.
-   - Resolved file paths are used, never module-name strings, so a target repository with a top-level package named `modules` cannot claim platform origin.
-   - An exception raised inside site-packages (for example SQLAlchemy) is not `PLATFORM` by this test, and continues to step 10.
-10. **Other exception rules**: the first `applies_to: exception` rule with a non-platform origin that matches.
-11. **Fallback**: `UNKNOWN`/`UNKNOWN`.
+5. **`TimeoutError`**: `AGENT`/`TIMEOUT`.
+6. **Platform infrastructure.** `ExternalServiceError`, or a `DatabaseError` whose `__context__` is a `sqlalchemy.exc.OperationalError` or `InterfaceError`, gives `PLATFORM`/`PLATFORM_TRANSIENT`. Any other `DatabaseError`, such as a constraint violation (`services/base.py:117`), continues to step 8.
+7. **Agent tool errors.** A `PermissionError`, `ValueError` or `TypeError` whose innermost non-skipped frame is under any of `AGENT_TOOL_DIRS` gives `AGENT`/`AGENT_TOOL_ERROR`. These are bad arguments or out-of-scope paths. Without this step an agent, or content steering it, could raise "platform defect" alarms on demand.
+8. **Frame-path test.**
+   - **Skipped frames.** A frame is skipped when its resolved file starts with `<frozen`. It is also skipped when the file lies under `sysconfig.get_paths()["stdlib"]` or `["platstdlib"]` but not under `["purelib"]`, `["platlib"]` or any `site.getsitepackages()` entry. Site-packages frames are never skipped: in this environment site-packages sits inside the stdlib directory.
+   - **Platform origin.** If the innermost remaining frame resolves under `platform_modules_dir`, the origin is `PLATFORM`.
+   - **Class.** A `ModuleNotFoundError` or `ImportError` whose missing top-level module is not `modules` gives `PLATFORM_DEPENDENCY_MISSING`. Anything else gives `PLATFORM_DEFECT`.
+   - **Paths, not names.** The test uses resolved file paths, never module-name strings.
+   - **Library exceptions.** An exception raised inside site-packages, such as SQLAlchemy, is not `PLATFORM` by this test.
+9. **Fallback.** `UNKNOWN`/`UNKNOWN`.
 
-**Retryability:**
-- **Never retryable:** `QUOTA_EXHAUSTED`, `AGENT_CONTRACT`, `VERIFICATION_FAILED` (built only once the verification retries are exhausted), `UPSTREAM_BLOCKED`, `PLATFORM_DEFECT`, `PLATFORM_DEPENDENCY_MISSING`, `ORPHANED`, `ENV_UNAVAILABLE`, `CANCELLED`, `BUDGET_EXCEEDED` and `RUN_ABORTED`. The schema rejects a rule that marks any of them retryable.
-- **Always retryable:** `TRANSIENT_PROVIDER`, `AGENT_TOOL_ERROR`, `AGENT_ENGINE_ERROR` and `TIMEOUT`.
-- **Rule-matched records:** retryability comes from the rule.
-- **`UNKNOWN`:** `failure_signatures.unknown_retryable`.
-- **`rule_id`:** `None` except for rule matches.
-
-**Rule matching:**
-- Every key present in `match` must hold (AND).
-- `exception_types` matches by `isinstance` against builtin exception names or `core.exceptions` classes, resolved at load; an unknown name fails validation.
-- `exit_codes` matches `CommandEvidence.exit_code`.
-- `output_regex` is applied with `re.search` to `stdout_tail + "\n" + stderr_tail`, because pytest writes collection errors and import failures to stdout.
-- `message_regex` is applied with `re.search` to the redacted exception message.
+**Retryability** is the only retry decision in the platform. The retry handler reads `TaskFailure.retryable` and nothing else (88.2.3b).
+- **Provider errors:** `retryable = exc.retry_policy != "none"`, read from the typed `ProviderError` (`core/exceptions.py`). `retry_policy` is the single source for provider retryability.
+- **Retryable classes:**
+  - `PLATFORM_TRANSIENT`;
+  - `AGENT_TOOL_ERROR`;
+  - `TIMEOUT`.
+- **Not retryable:** every other class. For `VERIFICATION_FAILED` this means the record is built only once the verification retries are exhausted.
+- **Config-driven:** `UNKNOWN` follows `failures.unknown_retryable`, which keeps today's behaviour by default.
 
 #### 3.8.4 Fingerprint
 
-`sha256(f"{origin}|{failure_class}|{key}")`, in hex. Each regex in `failure_signatures.fingerprint_normalisers` is replaced with `#` in `key`, in list order, before hashing.
+`sha256(f"{origin}|{failure_class}|{key}")`, in hex. The first row that applies wins, top to bottom.
 
 | Case | `key` |
 |---|---|
-| `*_DEPENDENCY_MISSING` | the missing module name |
-| Exception | the exception type plus one frame, as `path.py:function`. The frame is the innermost one under `platform_modules_dir` (path relative to it), or, if there is none, the innermost frame outside the stdlib (path relative to its `sys.path` entry, for example `sqlalchemy/orm/session.py`). Line numbers are never used |
-| Command rule match | the rule id plus the first line matched by its `output_regex`, or the exit code when the rule has no regex |
+| `PLATFORM_DEPENDENCY_MISSING` | `FailureEvidence.module_name` |
 | `UPSTREAM_BLOCKED` | the upstream task id |
 | `VERIFICATION_FAILED` | the agent name plus the first failing tier and check name |
-| `control(...)`, `orphaned(...)`, `roster_miss(...)` | the class, plus the agent name for `roster_miss` |
+| `plan_invalid`, `agent_outcome`, `roster_miss` | the class plus the agent name (or `workflow:<name>`) |
+| `control(...)`, `orphaned(...)` | the class only |
+| Any other exception | The exception type plus one frame, written as `path.py:function`, with no line numbers. The frame is the innermost one under `platform_modules_dir`, with its path relative to that directory. If there is none, it is the innermost non-skipped frame, with its path relative to its `sys.path` entry (for example `sqlalchemy/orm/session.py`) |
 
-One root cause in one wave gives one fingerprint. That is what lets the supervisor and the Director see "one missing package, six tasks" as one digest (3.8.6).
+One root cause in one wave gives one fingerprint. That is what lets the reviewer and the Director see "one broken import, six tasks" as one digest (3.8.6).
 
 #### 3.8.5 Fail-closed execution boundary (88.2.3a)
 
 **No fallback to local:**
 - In `build_dispatch_runtime`, a non-local `execution_mode` without `mission_repo_root`, or any provisioning error, raises `ExecutionEnvironmentError`.
+- A git-aware container handle whose `host_working_dir is None` is a provisioning failure.
 - `_validate_mode` raises instead of returning `"local"`.
 - `repo_root` never defaults to `find_project_root()`.
-- `workflow_run_waves` passes `mission_repo_root` to `handle_mission`, so container workflow steps run in the mission's repository.
-- No worktree backend is registered. `MissionService` therefore rejects `execution_environment="worktree"` on create and update with `ValidationError`, and an existing worktree row fails its tasks with `ENV_UNAVAILABLE`.
+- `workflow_run_waves` passes `mission_repo_root` to `handle_mission`, and resolves dispatch parameters inside the step's `try`, so an environment error fails the step.
+- `MissionService` rejects `execution_environment="worktree"` on create and update, because no worktree backend is registered.
 
-**No host shell.** `run_command` without an environment handle raises `ExecutionEnvironmentError`, and `_run_local` is deleted. `run_tests` declares `TOOL_DEF["deps"] = ["environment_handle"]`, runs through the handle with `executions.run_tests_timeout_seconds` (3.4.9), and raises without a handle.
+**No host shell.** One helper runs commands in a handle, and nothing runs them on the host.
+- **The helper.** `services/execution_environment.run_in_environment(handle, argv, *, timeout_seconds) -> CommandResult` runs a command through one cached `ExecutionEnvironmentService` with `ContainerBackend` registered (lazy import, because `container_backend` imports this module). A `None` handle raises `ExecutionEnvironmentError`.
+- **Deleted, so that it is the only path:**
+  - `LocalBackend`, its default registration, and the `mode == "local"` branch and default of `get_or_create_for_mission`. An unregistered mode raises `ExecutionEnvironmentError`.
+  - `run_command._run_local` and `run_command._run_in_environment`.
+  - `tool_runner`'s local branch, `_get_env_service` and `_run_via_environment_service`.
+- **`run_command`** wraps `["sh", "-c", command]` and maps the result to its dict.
+- **`run_tests`** declares `TOOL_DEF["deps"] = ["environment_handle"]` and runs the module constant argv `RUN_TESTS_ARGV` with `executions.run_tests_timeout_seconds` (3.4.10).
+- **`tool_runner._run_tool_subprocess`** calls the helper.
 
-**Engine working directory:**
-- `codex` and `copilot` write to their working directory whatever `scope.write` says (`--full-auto`, and the `AGENTS.md` that `execute_copilot` writes). They therefore require a handle whose `host_working_dir` is not `None`.
-- `claude_code` without a handle is allowed only when `scope.write` is empty and the mission `repo_root` is set; `_make_agent_executor` gains `mission_repo_root` for this.
-- A handle with `host_working_dir is None` always raises.
-- `execute_copilot` no longer writes `AGENTS.md` into its working directory; it passes the system prompt through the CLI's prompt argument.
+**CLI engines.** `claude_code`, `codex` and `copilot` run as subprocesses on the worker host. A worktree only sets their working directory; it does not contain them. Until a later plan runs them inside the container (3.8.7):
+- **`codex` and `copilot` are deleted.** That covers `execute_codex`, `execute_copilot` and their entries in the engine dicts of `helpers/agent_executor.py` and `chat_cli_handler.py`, because they write regardless of `scope.write`. `AgentConfigSchema._validate_engine` accepts only `pydantic_ai` and `claude_code`, with an error that names this section. The repair-loop plan restores them inside the container.
+- **`execute_claude_code`** takes `environment_handle` in place of `working_dir`. It raises `ExecutionEnvironmentError` when `scope.write` is non-empty, or when the handle or its `host_working_dir` is `None`. Otherwise it runs with `cwd=host_working_dir`, `tools=["Read", "Grep", "Glob"]` and `setting_sources=[]`, so it loads no settings or hooks from the target repository.
+- **`chat_cli_handler`** passes `environment_handle=None`, so CLI-engine chat raises until 3.8.7.
+- **Every `find_project_root()` working-directory fallback** is deleted, in `cli_executor.py` and `chat_cli_handler.py`.
 
-**Write guard.** `execute_agent` raises `ExecutionEnvironmentError` before the engine branch, and so for every engine, when the agent needs an isolated workspace but has none:
-- **Needs a workspace:** the agent has a non-empty `scope.write`, or its engine is `codex` or `copilot`.
-- **Has none:** there is no effective environment handle, or `host_working_dir is None`.
+Host reads by a read-only `claude_code` session are not confined to the worktree. That risk is accepted and recorded (Phase 2 Risk 7). No catalog agent sets a non-default `engine` today, so none of these rules removes a capability in use.
 
-The guard runs after deps and the handle redirect are resolved. It uses no path containment, so an isolated worktree under the platform repository's `var/worktrees/` is allowed. Platform-tier and system-tier agents always run local without a handle, so they can never write files.
+**Write guard for `pydantic_ai` agents.** In `execute_agent`, after `effective_handle` is computed (`helpers/agent_executor.py:88-90`), an agent with a non-empty `scope.write` raises `ExecutionEnvironmentError` in either of these cases:
+- `effective_handle` is `None`;
+- `effective_handle.host_working_dir is None`.
+
+The guard reads `effective_handle`, not `deps`, and uses no path containment, so an isolated worktree under the platform repository's `var/worktrees/` passes. File tools stay confined by `FileScope` under `host_working_dir`. Platform-tier and system-tier agents have no handle, so they can never write files.
 
 **Effect at the baseline:**
-- **The two write-capable agents** (`security.webapp.scanner` and `security.webapp.reporter`) fail with `ENV_UNAVAILABLE` through the write guard in a local-mode mission, which is the default. In a container-mode mission they fail with `ENV_UNAVAILABLE` when provisioning fails.
-- **Container workflow steps,** for example the `security.webapp-assessment` scan, triage and report steps, need `mission.repo_root` set.
-- **Tool and engine settings:** no catalog agent lists `run_command` or `run_tests` today, and none sets a non-default `engine`.
+- **The two write-capable agents.** `security.webapp.scanner` and `security.webapp.reporter` fail with `ENV_UNAVAILABLE` through the write guard in a local-mode mission, the default. In a container-mode mission they fail with `ENV_UNAVAILABLE` when provisioning fails.
+- **Container workflow steps.** Steps such as `security.webapp-assessment` need `mission.repo_root` set.
 
 #### 3.8.6 Who sees the failure record
 
 | Consumer | What it receives | Step |
 |---|---|---|
-| `tasks` row | `failure_reason = summary`, plus `failure_origin`, `failure_class` and `failure_fingerprint`, written as enum members (stored names). Written by `record`, `mark_cancelled` (`CANCELLED`), `MissionRunService.finalise` (`RUN_ABORTED`, for every task it fails), the reconciler (`ORPHANED`) and 88.4.6 (`BUDGET_EXCEEDED`). `retry_task` clears them | 88.2.4 |
-| `task_executions` row | the same three columns and `failure_json`, one row per recorded attempt; the row survives retries. A cancelled attempt is recorded on `tasks` only | 88.2.4 |
-| Mission event stream | `TaskFailedEvent` with `mission_id`, published at most once per failed attempt that reaches `record`, after it commits. The `task_executions` row is the durable record; the event is for display (rule 014) | 88.2.4 |
-| Workflow | `ExecuteTaskResult.failure_origin`, `failure_class` and `failure_fingerprint` (strings only, P9; never the evidence) | 88.2.4 |
-| Post-run reviewer | `evaluate_post_run` adds `summary["failures"]`: the run's FAILED tasks grouped by `failure_fingerprint` (`origin`, `failure_class`, `summary`, `occurrences`), read from `tasks` by `mission_run_id` and capped at `failure_signatures.supervisor.max_failure_digests`, with the overflow count in `summary["failures_truncated"]` | 88.2.6 |
-| Director's refine turn | `REFINE_PROMPT` lists the wave's `TaskFailureDigest`s, built in the workflow from `ExecuteTaskResult` fields and capped by `RunConfigSnapshot.max_failure_digests` | 88.2.6 |
-| Planning Agent | `materialize_task_states(plan)`: per task `{task_id, status, failure: {origin, failure_class, summary} or None}`. It is passed to the planning call as a separate `task_states` argument, rendered beside `current_plan`, and never seeded into `PlanBuildingSession.tasks`, because `TaskDefinition` forbids extra keys. `materialize_plan_dict` is unchanged | 88.2.3b |
-| Retention | `failure_json` is set to NULL with `output_data` after `task_outputs_days`. The three classification columns are kept permanently, as data for a later incident ledger (3.8.7) | 88.5.x (task-output retention) |
+| `tasks` row | **Columns:** `failure_reason = summary` and `failure_origin`, `failure_class`, `failure_fingerprint`, all written as enum members (stored names).<br>**Single writer:** `TaskRepository.set_failure(task, failure: TaskFailure \| None)` is the only code that writes or clears the four columns; `None` clears all four. Its `task_executions` twin also sets `failure_json`.<br>**Callers:**<br>- `record`;<br>- `mark_cancelled` (`CANCELLED`);<br>- `MissionRunService.finalise`: `orphaned` for the two orphan reasons, otherwise `control(RUN_ABORTED, reason)`. The reconciler fails tasks only through `finalise`;<br>- `WorkflowRunService._fail_remaining_plan_tasks` and `workflow_run_waves._sync_plan_task_states`, from the step's `TaskFailure`, otherwise `control(RUN_ABORTED, error)`;<br>- 88.4.6 (`BUDGET_EXCEEDED`, through the classifier).<br>**Cleared by** `retry_task` and `resolve_failed("skip")`, with `set_failure(task, None)` | 88.2.4 |
+| `task_executions` row | The same three columns and `failure_json`, one row per recorded attempt. The row survives retries. A cancelled attempt is recorded on `tasks` only | 88.2.4 |
+| Mission event stream | `TaskFailedEvent` with `mission_id`, published at most once per failed attempt that reaches `record`, after it commits. The `task_executions` row is the durable record; the event is display only (rule 014) | 88.2.4 |
+| Workflow | `ExecuteTaskResult.failure_origin`, `failure_class` and `failure_fingerprint`: strings only (P9), never the evidence | 88.2.4 |
+| Post-run reviewer | `evaluate_post_run` adds `summary["failures"]` and `summary["failures_truncated"]`. `TaskRepository.failed_tasks_for_run(mission_run_id)` returns the run's FAILED rows ordered by `last_attempt_at, id`, and `MissionRunService` passes them to `digest_failures` (3.3.4) with cap `failures.supervisor.max_failure_digests`. The grouping rule exists once | 88.2.6 |
+| Director's refine turn | `REFINE_PROMPT` lists the wave's `TaskFailureDigest`s, built by the same `digest_failures` over the wave's `ExecuteTaskResult`s with cap `RunConfigSnapshot.max_failure_digests` | 88.2.6 |
+| Planning Agent | `materialize_task_states(plan)`: per task `{task_id, status, failure: {origin, failure_class, summary} or None}`. `_call_planning_agent` passes it as the keyword-only argument `task_states` to `prompt_builder._build_planning_prompt`, which renders it beside `current_plan`. It is never seeded into `PlanBuildingSession.tasks`, because `TaskDefinition` forbids extra keys. `materialize_plan_dict` is unchanged | 88.2.4a |
+| Retention | `failure_json` is set to NULL with `output_data` after `task_outputs_days`. The three classification columns are kept permanently, as data for a later incident ledger (3.8.7) | 88.5.3 |
 
 #### 3.8.7 Out of scope, and the attach point for later work
 
-Plan 88 does not build any of the following:
-- **Repair loops.** No diagnose-and-fix agents, no re-execution oracle, no incident ledger, no cross-mission breaker and no runtime package installation.
-- **Attach point for a repair loop:** `MissionRunWorkflow._after_task`, for a result with `status == "failed"` and `failure_origin == "target"`. It goes behind its own `workflow.patched` id, and needs a new action in the 3.3.6 vocabulary.
-- **Data for an incident ledger:** `task_executions.failure_fingerprint` and its index.
-- **Plan 89 sandbox:** the self-improving-loop experiment uses the same failure contract unchanged. Its `claude_code` builders write files, so the write guard (3.8.5) requires them to run with an `EnvironmentHandle` whose `host_working_dir` is their staging directory.
+Deferred to the repair-loop plan, which needs them and can justify their surface:
+- **Target attribution.** This covers `TARGET` origin and its classes, command evidence captured from tool calls, config signature rules, and a platform-run `tests_pass` check as the only trusted source of target evidence. A repair loop must reproduce a `TARGET` failure in a clean checkout before it acts.
+- **Container-run CLI engines.** Until then, write-capable CLI agents stay blocked (3.8.5).
+- **Repair machinery.** This covers diagnose-and-fix agents, a re-execution oracle, an incident ledger, a cross-mission breaker and runtime package installation.
+
+Two hooks are left in place for that plan:
+- **Attach point:** `MissionRunWorkflow._after_task`, for a result with `status == "failed"`, behind its own `workflow.patched` id, with a new action in the 3.3.6 vocabulary.
+- **Ledger data:** `task_executions.failure_fingerprint` and its index.
+
+**Plan 89 sandbox.** The sandbox uses this failure contract unchanged. Its builder agents need either the container-run CLI engines above or the `pydantic_ai` engine with file tools under a handle.

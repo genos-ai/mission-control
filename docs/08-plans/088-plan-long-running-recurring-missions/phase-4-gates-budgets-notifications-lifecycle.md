@@ -564,7 +564,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
      - **Result.** It returns `ExecuteTaskResult(status="failed", failure_reason="budget_exceeded", failure_origin="control", failure_class="budget_exceeded", ...)`.
      - **No retry.** Nothing is raised, so Temporal never retries the task.
 
-     The workflow's chunk check keeps comparing `failure_reason == "budget_exceeded"`, which `control()` guarantees verbatim.
+     The workflow's chunk check compares `failure_class == "budget_exceeded"`. `failure_reason` is redacted in committed replay histories (88.2.9), so no workflow branch reads it (contracts 3.8.1 item 5).
 4. **Workflow budget points, patch id `p88-budget-caps`.** `self._headroom_usd: float | None = None` is set in `__init__` (it is not handler-owned).
    ```python
    async def _budget_point(self) -> str | None:
@@ -587,7 +587,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
    ```
    - **Checkpoints.** `_layer_boundary()` calls `_budget_point()` after `_pause_point()` and the duration check, so it runs before the first layer and before each chunk.
    - **Headroom split.** Each chunk of n tasks passes `budget_headroom_usd = None if self._headroom_usd is None else self._headroom_usd / n`.
-   - **After a chunk.** When `workflow.patched("p88-budget-caps")` and any result has `failure_reason == "budget_exceeded"`, run `check_run_budget` once and return `await self._budget_stop(check.breach or "budget_run_cap")`. The chunk's other futures have already resolved, and no new task starts.
+   - **After a chunk.** When `workflow.patched("p88-budget-caps")` and any result has `failure_class == "budget_exceeded"`, run `check_run_budget` once and return `await self._budget_stop(check.breach or "budget_run_cap")`. The chunk's other futures have already resolved, and no new task starts.
    - **`_notify`** exists since 88.4.5.
    - **`finalise`.** For status `BUDGET_STOPPED`, `MissionRunService.finalise` emits `MissionRunBudgetBreachedEvent(cap=reason, spent_usd=…, cap_usd=…)`, taking the spend and cap that match the reason from `BudgetService.get_status`. `_end_run` (88.3.8) already writes a deterministic digest for `BUDGET_STOPPED`.
    - Follow the patch rule: add `p88-budget-caps` to `PATCH_IDS`, record `p88-budget-caps.json` from a run stopped by a run cap, and add it to `REQUIRED`.
