@@ -4,7 +4,9 @@ Owns the mission run lifecycle: start (insert PENDING, then start the
 workflow), begin (session, ExecutionRecord, backlog adoption), plan, task
 graph, transitions and finalise. Snapshots come from temporal/config_snapshots;
 workflows are started only through TemporalWorkflowGateway. Every stored
-exception text goes through redact_secrets.
+exception text goes through redact_secrets. The workflow-activity methods
+(begin, plan, approve_proposed, task_graph, finalise) live in
+mission_run_lifecycle.py and are mixed in via MissionRunLifecycleMixin.
 """
 
 import dataclasses
@@ -16,9 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import (
     ConflictError,
     ExternalServiceError,
-    MissionRunStateError,
     NotFoundError,
-    RunStartRejectedError,
     ValidationError,
 )
 from modules.backend.core.protocols import EventBusProtocol
@@ -40,9 +40,7 @@ from modules.backend.models.mission_run import (
     MissionRunStatusReason,
     MissionRunTrigger,
 )
-from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.execution_record import ExecutionRecordRepository
-from modules.backend.repositories.llm_ledger import LlmLedgerRepository
 from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_context import MissionContextRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
@@ -50,7 +48,6 @@ from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.mission_run_digest import MissionRunDigestRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.repositories.user import UserRepository
-from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.mission_run import (
     MissionRunDetailResponse,
@@ -58,37 +55,24 @@ from modules.backend.schemas.mission_run import (
     MissionRunResponse,
     TaskSummary,
 )
-from modules.backend.schemas.session import SessionCreate
-from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.base import BaseService
 from modules.backend.services.mission_plan import MissionPlanService
-from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-from modules.backend.services.session import SessionService
-from modules.backend.services.workflow_run import WorkflowRunService
-from modules.backend.services.workflow_task_mapping import steps_to_task_definitions
+from modules.backend.services.mission_run_lifecycle import MissionRunLifecycleMixin
 from modules.backend.temporal.config_snapshots import build_run_config_snapshot
 from modules.backend.temporal.mission_run_models import (
-    BeginRunResult,
-    FinaliseRunResult,
     MissionRunWorkflowInput,
-    NotificationRequest,
-    PlanRunResult,
-    RunTaskGraph,
     TasksApprovedSignal,
 )
-from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
+from modules.backend.temporal.workflow_gateway import (
+    TemporalWorkflowGateway,
+    WorkflowState,
+)
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _SOURCE = "mission_run_service"
 # Page size of list_runs when the caller sends no limit; replaced by cli.yaml in 88.1.13.
 DEFAULT_RUN_LIST_LIMIT = 50
 _ONE_ACTIVE_CONSTRAINT = "uq_mission_runs_one_active"
-_RUNNABLE_GATE_MODES = frozenset({GateMode.MANUAL, GateMode.AI_ASSISTED, GateMode.AUTONOMOUS})
-_OWNER_NOT_USER = "owner not a platform user"
-# NotificationKind values (contract 3.6.2); the enum arrives in 88.4.3.
-RUN_SUCCEEDED = "run_succeeded"
-RUN_FAILED = "run_failed"
-BUDGET_PAUSED = "budget_paused"
 
 _RECORD_STATUS: dict[MissionRunStatus, ExecutionRecordStatus] = {
     MissionRunStatus.SUCCEEDED: ExecutionRecordStatus.COMPLETED,
@@ -111,22 +95,7 @@ def _is_uuid(value: str | None) -> bool:
     return True
 
 
-def _notification_kind(
-    status: MissionRunStatus, reason: MissionRunStatusReason | None
-) -> str | None:
-    """Run-end notification kind (contract 3.6.2); None when nothing is sent."""
-    if status == MissionRunStatus.SUCCEEDED:
-        return RUN_SUCCEEDED
-    if status == MissionRunStatus.BUDGET_STOPPED:
-        return BUDGET_PAUSED
-    if status == MissionRunStatus.FAILED:
-        return RUN_FAILED
-    if status == MissionRunStatus.CANCELLED and reason != MissionRunStatusReason.CANCELLED_BY_USER:
-        return RUN_FAILED
-    return None
-
-
-class MissionRunService(BaseService):
+class MissionRunService(MissionRunLifecycleMixin, BaseService):
     """Start, drive and end mission runs."""
 
     def __init__(self, session: AsyncSession, event_bus: EventBusProtocol) -> None:
@@ -413,295 +382,3 @@ class MissionRunService(BaseService):
         await self._session.commit()
         await self._session.refresh(run)
         return run
-
-    # ── Workflow activities ──────────────────────────────────────────────
-
-    async def begin(self, run_id: str) -> BeginRunResult:
-        """PENDING to RUNNING with a session, one ExecutionRecord and adopted backlog.
-
-        Idempotent: a RUNNING run returns its stored values.
-        """
-        run = await self._runs.get_by_id(run_id)
-        if run.status == MissionRunStatus.RUNNING:
-            record = await self._records.get_by_mission_run(run_id)
-            return BeginRunResult(
-                session_id=run.session_id,
-                execution_record_id=record.id,
-                context_version_start=run.context_version_start,
-                gate_mode=GateMode(run.gate_mode).value,
-                previous_run_id=run.previous_run_id,
-            )
-        if run.status != MissionRunStatus.PENDING:
-            raise MissionRunStateError(
-                f"run {run_id} is {MissionRunStatus(run.status).value}, not pending"
-            )
-        mission_id = run.mission_id
-        mission = await self._missions.get_by_id(mission_id)
-        plan = await self._plans.get_by_id(run.plan_id)
-        owner_id = mission.owner_id
-
-        if not await self._is_platform_user(owner_id):
-            await self.transition(
-                run_id,
-                MissionRunStatus.FAILED,
-                MissionRunStatusReason.START_FAILED,
-                _OWNER_NOT_USER,
-            )
-            raise RunStartRejectedError(f"run {run_id}: {_OWNER_NOT_USER}")
-        gate_mode = GateMode(plan.gate_mode)
-        if gate_mode not in _RUNNABLE_GATE_MODES:
-            detail = f"gate mode {gate_mode.value} cannot run"
-            await self.transition(
-                run_id, MissionRunStatus.FAILED, MissionRunStatusReason.INVALID_GATE_MODE, detail
-            )
-            raise RunStartRejectedError(f"run {run_id}: {detail}")
-
-        if run.session_id is None:
-            session = await SessionService(self._session).create_session(
-                SessionCreate(
-                    mission_id=mission_id,
-                    agent_id="mission.supervisor.agent",
-                    goal=f"Mission run #{run.sequence}",
-                ),
-                user_id=owner_id,
-            )
-            run.session_id = session.id
-        session_id = run.session_id
-
-        record = await self._records.create(
-            session_id=session_id,
-            mission_id=mission_id,
-            mission_run_id=run_id,
-            status=ExecutionRecordStatus.RUNNING,
-            temporal_workflow_id=mission_run_workflow_id(run_id),
-            objective_statement=run.objective or "Approved backlog",
-            task_params={"mission_run_id": run_id},
-            started_at=utc_now(),
-        )
-        record_id = record.id
-
-        if await self._workflow_runs.list_active_for_mission(mission_id):
-            self._logger.info(
-                "Backlog not adopted: a workflow run is active",
-                extra={"mission_id": mission_id, "mission_run_id": run_id},
-            )
-        else:
-            await self._tasks.adopt_backlog(run.plan_id, run_id, [TaskStatus.APPROVED])
-
-        previous = await self._runs.get_latest_with_digest(mission_id)
-        previous_run_id = previous.id if previous is not None else None
-        context_version_start = await self._context_version(mission_id)
-
-        run.gate_mode = gate_mode
-        run.previous_run_id = previous_run_id
-        run.context_version_start = context_version_start
-        await self.transition(run_id, MissionRunStatus.RUNNING, None, None)
-        return BeginRunResult(
-            session_id=session_id,
-            execution_record_id=record_id,
-            context_version_start=context_version_start,
-            gate_mode=gate_mode.value,
-            previous_run_id=previous_run_id,
-        )
-
-    async def plan(self, run_id: str, session_id: str) -> PlanRunResult:
-        """Plan the run's tasks: backlog dispatch, objective refine or workflow definition.
-
-        ValidationError returns "failed"; any other exception propagates.
-        """
-        run = await self._runs.get_by_id(run_id)
-        mission = await self._missions.get_by_id(run.mission_id)
-        plan = await self._plans.get_by_id(run.plan_id)
-        mission_id = run.mission_id
-        plan_id = plan.id
-        owner_id = mission.owner_id
-        objective = run.objective
-        definition_id = run.workflow_definition_id
-        parameters = dict(run.workflow_parameters or {})
-        gate_mode = GateMode(run.gate_mode)
-        orchestrator = MissionPlanOrchestrator(self._session, event_bus=self._event_bus)
-
-        try:
-            if objective is None and definition_id is None:
-                waiting = await self._tasks.list_by_run(run_id)
-                ready = any(t.status in (TaskStatus.APPROVED, TaskStatus.PROPOSED) for t in waiting)
-                status = "planned" if ready else "empty"
-            elif objective is not None:
-                await orchestrator.refine(plan_id, objective, owner_id, mission_run_id=run_id)
-                status = "planned"
-            else:
-                definition = await WorkflowDefinitionRepository(self._session).get_by_id(
-                    definition_id
-                )
-                workflow = WorkflowRunService._definition_to_schema(definition)
-                task_plan = TaskPlan(
-                    version="1.0.0",
-                    mission_id=mission_id,
-                    summary=workflow.description,
-                    estimated_cost_usd=workflow.budget.max_cost_usd,
-                    estimated_duration_seconds=0,
-                    tasks=steps_to_task_definitions(workflow, parameters),
-                )
-                await orchestrator._persist_plan(
-                    plan, task_plan, source="mission_schedule", mission_run_id=run_id
-                )
-                status = "planned"
-
-            if gate_mode == GateMode.AUTONOMOUS:
-                for task in await self._tasks.list_by_run(run_id, status=TaskStatus.PROPOSED):
-                    await self._plan_svc.approve_task(plan_id, task.id, owner_id)
-            task_ids = [t.id for t in await self._tasks.list_by_run(run_id)]
-            await self._session.commit()
-        except ValidationError as err:
-            await self._session.rollback()
-            detail = redact_secrets(str(err))
-            self._logger.info(
-                "Mission run planning failed",
-                extra={"mission_run_id": run_id, "session_id": session_id, "detail": detail},
-            )
-            return PlanRunResult(task_ids=[], status="failed", detail=detail)
-        return PlanRunResult(task_ids=task_ids, status=status, detail=None)
-
-    async def approve_proposed(self, run_id: str) -> int:
-        """Approve the run's PROPOSED tasks as the mission owner when the run is AUTONOMOUS.
-
-        Returns the number of tasks approved; 0 in any other gate mode. Commits.
-        """
-        run = await self._runs.get_by_id(run_id)
-        if run.gate_mode is None or GateMode(run.gate_mode) != GateMode.AUTONOMOUS:
-            return 0
-        mission = await self._missions.get_by_id(run.mission_id)
-        owner_id = mission.owner_id
-        plan_id = run.plan_id
-        approved: set[str] = set()
-        for task in await self._tasks.list_by_run(run_id, status=TaskStatus.PROPOSED):
-            transitioned = await self._plan_svc.approve_task(plan_id, task.id, owner_id)
-            approved.update(t.id for t in transitioned)
-        await self._session.commit()
-        return len(approved)
-
-    async def task_graph(self, run_id: str) -> RunTaskGraph:
-        """Kahn layers over the run's APPROVED tasks, ignoring COMPLETED dependencies."""
-        run = await self._runs.get_by_id(run_id)
-        tasks = await self._tasks.list_by_run(run_id)
-        status_by_id = {t.id: t.status for t in await self._tasks.get_by_plan_id(run.plan_id)}
-        approved = [t for t in tasks if t.status == TaskStatus.APPROVED]
-        approved_ids = {t.id for t in approved}
-
-        pending: dict[str, set[str]] = {}
-        for task in approved:
-            deps = {d.depends_on_id for d in task.dependencies}
-            blocked = any(
-                d not in approved_ids and status_by_id.get(d) != TaskStatus.COMPLETED for d in deps
-            )
-            if not blocked:
-                pending[task.id] = deps & approved_ids
-        layers: list[list[str]] = []
-        while True:
-            layer = [tid for tid, deps in pending.items() if not deps]
-            if not layer:
-                break
-            layers.append(layer)
-            for tid in layer:
-                del pending[tid]
-            for deps in pending.values():
-                deps.difference_update(layer)
-
-        return RunTaskGraph(
-            layers=layers,
-            proposed=sum(1 for t in tasks if t.status == TaskStatus.PROPOSED),
-            approved=len(approved),
-            running=sum(1 for t in tasks if t.status in (TaskStatus.QUEUED, TaskStatus.RUNNING)),
-        )
-
-    async def finalise(
-        self,
-        run_id: str,
-        status: MissionRunStatus,
-        reason: MissionRunStatusReason | None,
-        detail: str | None,
-    ) -> FinaliseRunResult:
-        """End the run: fail in-flight tasks, release the rest, record counts and cost.
-
-        After commit, a raced approval on an AUTONOMOUS plan starts the next run.
-        """
-        run = await self._runs.get_by_id(run_id)
-        mission = await self._missions.get_by_id(run.mission_id)
-        plan = await self._plans.get_by_id(run.plan_id)
-        owner_id = mission.owner_id
-        mission_id = run.mission_id
-        plan_id = plan.id
-        gate_mode = GateMode(plan.gate_mode)
-        sequence = run.sequence
-
-        if status == MissionRunStatus.CANCELLED and run.cancel_reason is not None:
-            reason = MissionRunStatusReason(run.cancel_reason)
-
-        failure_reason = reason.value if reason is not None else status.value
-        for task in await self._tasks.list_by_run(run_id):
-            if task.status in (TaskStatus.QUEUED, TaskStatus.RUNNING):
-                task.transition_status(TaskStatus.FAILED)
-                task.failure_reason = failure_reason
-        await self._session.flush()
-        await self._tasks.release_to_backlog(run_id, [TaskStatus.PROPOSED, TaskStatus.APPROVED])
-
-        tasks = await self._tasks.list_by_run(run_id)
-        run.task_count = len(tasks)
-        run.completed_task_count = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
-        run.failed_task_count = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
-        if run.context_version_end is None:
-            run.context_version_end = await self._context_version(mission_id)
-        cost = await LlmLedgerRepository(self._session).sum_cost(
-            mission_id, since=None, until=None, mission_run_id=run_id
-        )
-        run.cost_usd = cost
-        await self.transition(run_id, status, reason, detail)
-
-        await self._start_for_raced_approvals(mission_id, plan_id, gate_mode, owner_id)
-
-        kind = _notification_kind(status, reason)
-        notification = None
-        if kind is not None:
-            notification = NotificationRequest(
-                kind=kind,
-                mission_id=mission_id,
-                mission_run_id=run_id,
-                gate_request_id=None,
-                subject_id=run_id,
-                payload={
-                    "sequence": sequence,
-                    "status": status.value,
-                    "reason": reason.value if reason is not None else None,
-                    "detail": detail,
-                    "cost_usd": cost,
-                },
-            )
-        return FinaliseRunResult(cost_usd=cost, notification=notification)
-
-    async def _start_for_raced_approvals(
-        self, mission_id: str, plan_id: str, gate_mode: GateMode, owner_id: str
-    ) -> None:
-        """Start the next run when APPROVED backlog arrived while this run was ending."""
-        approved = await self._tasks.get_by_plan_id(plan_id, status=TaskStatus.APPROVED)
-        if not any(t.mission_run_id is None for t in approved):
-            return
-        if gate_mode != GateMode.AUTONOMOUS:
-            return
-        mission = await self._missions.get_by_id(mission_id)
-        if MissionStatus(mission.status) != MissionStatus.ACTIVE:
-            return
-        if await self._workflow_runs.list_active_for_mission(mission_id):
-            return
-        try:
-            await self.start_run(
-                mission_id,
-                trigger=MissionRunTrigger.MANUAL,
-                objective=None,
-                user_id=owner_id,
-                session_id=None,
-            )
-        except ConflictError as err:
-            self._logger.info(
-                "Next run not started after finalise",
-                extra={"mission_id": mission_id, "reason": str(err)},
-            )

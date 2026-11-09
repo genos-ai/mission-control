@@ -35,7 +35,8 @@ from modules.backend.schemas.execution_outcome import ExecutionOutcome, Executio
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-from modules.backend.services.mission_run import RUN_SUCCEEDED, MissionRunService
+from modules.backend.services.mission_run import MissionRunService
+from modules.backend.services.mission_run_lifecycle import RUN_SUCCEEDED
 from modules.backend.temporal.mission_run_models import TasksApprovedSignal
 from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id

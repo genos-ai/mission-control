@@ -614,6 +614,7 @@ Other repositories:
   - `temporal/workflow_ids.py` (exists since 88.0.3), `temporal/workflow_gateway.py` (exists since 88.0.3);
   - `temporal/activities.py` (`persist_mission_outcome`), `events/types.py`, `core/exceptions.py`;
   - `agents/mission_control/mission_dispatch.py` (`handle_mission`) and every `handle_mission(` call site (`grep -rn "handle_mission(" modules`).
+- **Deviation (Phase 1 verification):** `mission_run.py` reached 707 lines against the 500-line limit in Verification item 2. `begin`, `plan`, `approve_proposed`, `task_graph`, `finalise` and `_start_for_raced_approvals`, with `_notification_kind` and the `RUN_*` kinds, moved verbatim to `services/mission_run_lifecycle.py` as `MissionRunLifecycleMixin`, mixed into `MissionRunService` (the `WorkflowRunWavesMixin` pattern). The public API is unchanged; `RUN_SUCCEEDED` is now imported from `mission_run_lifecycle`.
 - Delete: `services/mission_plan_supervisor.py`, `scripts/verify_budget_enforcement.py`.
 
 **Current state:**
