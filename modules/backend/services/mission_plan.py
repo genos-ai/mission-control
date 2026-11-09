@@ -41,6 +41,15 @@ from modules.backend.services.base import BaseService
 # States a task can transition *out of* when the user approves it.
 _APPROVABLE_FROM = frozenset({TaskStatus.PROPOSED})
 
+# Gate decision vocabularies (Plan 80g). post_run gates use the autonomy-loop
+# actions; every other gate type uses the standard actions.
+_STANDARD_GATE_ACTIONS: frozenset[str] = frozenset(
+    {"continue", "skip", "retry", "abort"},
+)
+_POST_RUN_GATE_ACTIONS: frozenset[str] = frozenset(
+    {"wait", "advance_approved", "advance_refine", "propose_complete", "escalate"},
+)
+
 # States a task can be rejected *out of*.
 _REJECTABLE_FROM = frozenset(
     {
@@ -260,6 +269,13 @@ class MissionPlanService(BaseService):
 
     # ── Manual gate requests (Plan 80g) ─────────────────────────────────
 
+    @staticmethod
+    def allowed_gate_actions(gate_type: str) -> list[str]:
+        """Return the decision actions valid for a gate of this type, sorted."""
+        if gate_type == "post_run":
+            return sorted(_POST_RUN_GATE_ACTIONS)
+        return sorted(_STANDARD_GATE_ACTIONS)
+
     async def list_pending_gate_requests(self, mission_ids: list[str]) -> list[GateRequest]:
         """Return the PENDING gate requests of the given missions, oldest first."""
         result = await self._session.execute(
@@ -323,7 +339,7 @@ class MissionPlanService(BaseService):
         """Persist a reviewer decision on a gate request.
 
         Marks the row DECIDED with the decision payload and timestamp.
-        Caller commits, then fires the dispatcher's asyncio.Event.
+        Caller commits; the waiting reviewer polls the row and sees DECIDED.
         """
         await self._session.execute(
             update(GateRequest)
@@ -352,8 +368,8 @@ class MissionPlanService(BaseService):
     ) -> None:
         """Persist a new PENDING gate request row.
 
-        Used by ManualGateReviewer to open a pause point before blocking
-        on the dispatcher's in-process Event. Caller commits.
+        Used by ManualGateReviewer to open a pause point before polling
+        the row for a decision. Caller commits.
         """
         row = GateRequest(
             id=request_id,

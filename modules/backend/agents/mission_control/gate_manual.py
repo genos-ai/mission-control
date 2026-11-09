@@ -1,23 +1,19 @@
 """Manual gate reviewer — human-in-the-loop step-by-step approval via HTTP.
 
-Persists a GateRequest row, blocks on an asyncio.Event keyed by request_id,
-unblocks when a client POSTs a decision via the HTTP API. The mode is named
-for *who* decides (a human, manually, one step at a time) — the HTTP-backed
-plumbing is implementation detail.
+Persists a GateRequest row, then polls that row until a client records a
+decision via the HTTP API. The mode is named for *who* decides (a human,
+manually, one step at a time) — the HTTP-backed plumbing is implementation
+detail.
 
 Use case: a human approves / rejects / skips / retries each gate point via
-CLI (`mc gate approve <id>`), TUI, or any other client of the gate API.
+CLI (`mc gate approve <id>`), TUI, web, or any other client of the gate API.
 Distinct from `interactive` mode (Rich CLI prompt, TTY-bound) — manual mode
-works from any client and survives backend restart-of-non-dispatcher
-processes (the row persists; only the in-process Event is lost).
+works from any client.
 
-Design:
-- Process-local in-memory registry of asyncio.Events keyed by GateRequest id.
-- The endpoint that records the decision fires the Event so this coroutine
-  can read it back and return.
-- Single-process by design — Mission Control runs as one backend process.
-  If multi-process is ever needed, swap the registry for a Redis pub-sub
-  channel; the rest of the design is unchanged.
+Design (Plan 88.0.13): the waiter runs in the Temporal worker process while
+the decision arrives in the API process, so the reviewer polls the
+``gate_requests`` row every ``poll_interval_seconds`` until it is DECIDED.
+The database row is the only coupling between the two processes.
 
 Timeout policy: if no decision arrives within ``timeout_seconds``, the row
 is marked TIMED_OUT and the reviewer returns ``GateDecision(action=ABORT)``
@@ -33,39 +29,12 @@ from typing import Any
 
 from modules.backend.agents.mission_control.gate_models import GateAction, GateContext, GateDecision
 from modules.backend.core.logging import get_logger
-from modules.backend.services.mission_plan import MissionPlanService
+from modules.backend.services.mission_plan import (
+    GateRequestStatus,
+    MissionPlanService,
+)
 
 logger = get_logger(__name__)
-
-
-# Process-local registry: gate_request_id (str) -> asyncio.Event.
-# Populated when a GateRequest is opened, fired when /decide arrives,
-# popped when the awaiter returns. Single-process; see module docstring.
-_PENDING: dict[str, asyncio.Event] = {}
-_LOCK = asyncio.Lock()
-
-
-async def fire_decision(request_id: str) -> None:
-    """Called by the /decide endpoint to unblock the waiting reviewer.
-
-    If the Event isn't in this process's registry, the decision-receiving
-    worker is NOT the dispatcher worker — manual mode is single-process
-    by design (see module docstring). Log loud so the next caller knows
-    why the gate never released.
-    """
-    async with _LOCK:
-        event = _PENDING.get(request_id)
-    if event is None:
-        logger.error(
-            "Manual gate decision arrived in a worker that doesn't own the "
-            "pending Event — single-process invariant violated. The "
-            "dispatcher will time out. Run uvicorn with one worker.",
-            # mission_id unknown here by definition: this process never
-            # registered the gate, so only the request_id is available.
-            extra={"request_id": request_id, "mission_id": None},
-        )
-        return
-    event.set()
 
 
 class ManualGateReviewer:
@@ -75,111 +44,117 @@ class ManualGateReviewer:
         self,
         *,
         session_factory,  # callable returning an AsyncSession context manager
-        timeout_seconds: int = 1800,
+        timeout_seconds: int,
+        poll_interval_seconds: int,
         event_bus: Any = None,  # optional SessionEventBus; emits GateRequestOpenedEvent
     ):
         """session_factory yields ``AsyncSession`` instances. The reviewer
-        opens short-lived sessions for the create-row and read-back steps
-        so it doesn't hold a connection while waiting on the asyncio.Event.
+        opens short-lived sessions for the create-row, poll and read-back
+        steps so it doesn't hold a connection while waiting for a decision.
         """
         self._session_factory = session_factory
         self._timeout_seconds = timeout_seconds
+        self._poll_interval_seconds = poll_interval_seconds
         self._event_bus = event_bus
 
     async def review(self, context: GateContext) -> GateDecision:
         request_id = str(uuid.uuid4())
-        event = asyncio.Event()
 
-        async with _LOCK:
-            _PENDING[request_id] = event
+        await self._persist_pending(request_id, context)
+        await self._emit_opened(request_id, context)
+        logger.info(
+            "Manual gate paused — awaiting decision",
+            extra={
+                "request_id": request_id,
+                "gate_type": context.gate_type,
+                "mission_id": context.mission_id,
+                "timeout_seconds": self._timeout_seconds,
+            },
+        )
 
         try:
-            await self._persist_pending(request_id, context)
-            await self._emit_opened(request_id, context)
-            logger.info(
-                "Manual gate paused — awaiting decision",
+            await self._wait_for_decision(request_id, context.mission_id)
+        except asyncio.TimeoutError:
+            await self._persist_timeout(request_id)
+            logger.warning(
+                "Manual gate timed out — aborting for safety",
                 extra={
                     "request_id": request_id,
                     "gate_type": context.gate_type,
                     "mission_id": context.mission_id,
-                    "timeout_seconds": self._timeout_seconds,
                 },
             )
+            if self._event_bus is not None:
+                from modules.backend.events.types import SystemEvent
 
-            try:
-                await asyncio.wait_for(event.wait(), timeout=self._timeout_seconds)
-            except asyncio.TimeoutError:
-                await self._persist_timeout(request_id)
-                logger.warning(
-                    "Manual gate timed out — aborting for safety",
-                    extra={
-                        "request_id": request_id,
-                        "gate_type": context.gate_type,
-                        "mission_id": context.mission_id,
-                    },
-                )
-                if self._event_bus is not None:
-                    from modules.backend.events.types import SystemEvent
-
-                    try:
-                        await self._event_bus.publish(
-                            SystemEvent(
-                                session_id=context.session_id or context.mission_id,
-                                source=f"manual_gate:{request_id}",
-                                level="error",
-                                message=(
-                                    f"Manual gate timed out after "
-                                    f"{self._timeout_seconds}s — mission aborted for safety."
-                                ),
-                                mission_id=context.mission_id,
-                            )
+                try:
+                    await self._event_bus.publish(
+                        SystemEvent(
+                            session_id=context.session_id or context.mission_id,
+                            source=f"manual_gate:{request_id}",
+                            level="error",
+                            message=(
+                                f"Manual gate timed out after "
+                                f"{self._timeout_seconds}s — mission aborted for safety."
+                            ),
+                            mission_id=context.mission_id,
                         )
-                    except Exception:
-                        logger.warning(
-                            "Failed to emit gate-timeout SystemEvent",
-                            exc_info=True,
-                            extra={"request_id": request_id, "mission_id": context.mission_id},
-                        )
-                return GateDecision(
-                    action=GateAction.ABORT,
-                    reason=f"manual gate timeout after {self._timeout_seconds}s",
-                    reviewer=f"manual:timeout:{request_id}",
-                )
-            except asyncio.CancelledError:
-                # Dispatcher coroutine was cancelled (mission abort, backend
-                # shutdown, Temporal activity cancel). Mark the row CANCELLED
-                # before re-raising so it doesn't sit PENDING forever.
-                # best-effort — this re-raises; the caller (mission abort,
-                # shutdown, or Temporal cancellation) owns visibility for
-                # its own cancellation path.
-                await self._persist_cancelled(request_id)
-                logger.warning(
-                    "Manual gate cancelled mid-wait",
-                    extra={
-                        "request_id": request_id,
-                        "gate_type": context.gate_type,
-                        "mission_id": context.mission_id,
-                    },
-                )
-                raise
-
-            decision = await self._read_decision(request_id, mission_id=context.mission_id)
-            logger.info(
-                "Manual gate decision received",
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to emit gate-timeout SystemEvent",
+                        exc_info=True,
+                        extra={"request_id": request_id, "mission_id": context.mission_id},
+                    )
+            return GateDecision(
+                action=GateAction.ABORT,
+                reason=f"manual gate timeout after {self._timeout_seconds}s",
+                reviewer=f"manual:timeout:{request_id}",
+            )
+        except asyncio.CancelledError:
+            # Dispatcher coroutine was cancelled (mission abort, backend
+            # shutdown, Temporal activity cancel). Mark the row CANCELLED
+            # before re-raising so it doesn't sit PENDING forever.
+            # best-effort — this re-raises; the caller (mission abort,
+            # shutdown, or Temporal cancellation) owns visibility for
+            # its own cancellation path.
+            await self._persist_cancelled(request_id)
+            logger.warning(
+                "Manual gate cancelled mid-wait",
                 extra={
                     "request_id": request_id,
                     "gate_type": context.gate_type,
-                    "action": (
-                        decision.action.value
-                        if hasattr(decision.action, "value")
-                        else str(decision.action)
-                    ),
+                    "mission_id": context.mission_id,
                 },
             )
-            return decision
-        finally:
-            async with _LOCK:
-                _PENDING.pop(request_id, None)
+            raise
+
+        decision = await self._read_decision(request_id, mission_id=context.mission_id)
+        logger.info(
+            "Manual gate decision received",
+            extra={
+                "request_id": request_id,
+                "gate_type": context.gate_type,
+                "action": (
+                    decision.action.value
+                    if hasattr(decision.action, "value")
+                    else str(decision.action)
+                ),
+            },
+        )
+        return decision
+
+    async def _wait_for_decision(self, request_id: str, mission_id: str) -> None:
+        """Poll the gate row until DECIDED; raise asyncio.TimeoutError at the deadline."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._timeout_seconds
+        while loop.time() < deadline:
+            await asyncio.sleep(self._poll_interval_seconds)
+            async with self._session_factory() as session:
+                row = await MissionPlanService(session).get_gate_request(mission_id, request_id)
+            if row.status == GateRequestStatus.DECIDED:
+                return
+        raise asyncio.TimeoutError
 
     async def _persist_pending(
         self,
@@ -241,8 +216,8 @@ class ManualGateReviewer:
             except NotFoundError:
                 row = None
             if row is None or row.decision_json is None:
-                # Should not happen — the Event was fired so the row should be
-                # populated. Fail loud rather than silently continue.
+                # Should not happen — the row was DECIDED so the decision should
+                # be populated. Fail loud rather than silently continue.
                 raise RuntimeError(
                     f"Gate API decision unexpectedly missing for request {request_id}",
                 )

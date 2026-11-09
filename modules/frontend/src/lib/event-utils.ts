@@ -43,7 +43,7 @@ const EVENT_STYLES: Record<string, EventStyle> = {
   'agent.response.complete': { icon: CheckCircle, tone: 'success' },
   'agent.tool.called': { icon: Wrench, tone: 'info' },
   'agent.tool.returned': { icon: Wrench, tone: 'info' },
-  'agent.approval.requested': { icon: XCircle, tone: 'warning' },
+  'gate.request.opened': { icon: XCircle, tone: 'warning' },
   // Execution history events
   'execution.record': { icon: Play, tone: 'info' },
   'task.completed': { icon: CheckCircle, tone: 'success' },

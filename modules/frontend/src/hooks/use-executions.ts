@@ -135,24 +135,3 @@ export function useCancelExecution() {
     },
   })
 }
-
-export function useSubmitApproval() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (params: {
-      executionId: string
-      decision: 'approve' | 'reject' | 'retry'
-      reason?: string
-    }) => {
-      const qs = new URLSearchParams({
-        decision: params.decision,
-        responder_id: 'user:web',
-      })
-      if (params.reason) qs.set('reason', params.reason)
-      return api.post(`/executions/${params.executionId}/submit-approval?${qs}`)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['executions'] })
-    },
-  })
-}

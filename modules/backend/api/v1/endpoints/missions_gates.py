@@ -2,9 +2,9 @@
 
 When a mission runs with `gate_mode=manual`, every gate point (pre_dispatch,
 pre_layer, post_task, verification_failed, post_layer) parks a row in
-`gate_requests` and blocks the dispatcher on an asyncio.Event. These
-endpoints let an external client (CLI / TUI / script) list pending gates,
-inspect their context, and POST a decision that unblocks the dispatcher.
+`gate_requests` and the dispatcher polls that row for a decision. These
+endpoints let an external client (CLI / TUI / web / script) list pending
+gates, inspect their context, and POST a decision that unblocks the dispatcher.
 
 Endpoints:
     GET  /missions/{mid}/gates/pending           — list pending gate requests
@@ -19,13 +19,13 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from modules.backend.agents.mission_control.gate_manual import fire_decision
 from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
     RequestId,
     get_event_bus,
     require_mission_access,
+    require_mission_operator,
 )
 from modules.backend.events.bus import SessionEventBus
 from modules.backend.events.types import GateRequestDecidedEvent
@@ -99,6 +99,7 @@ class GateRequestDetail(GateRequestSummary):
     context_json: dict[str, Any]
     decision_json: dict[str, Any] | None = None
     timed_out_at: str | None = None
+    allowed_actions: list[str]
 
 
 # =============================================================================
@@ -165,6 +166,7 @@ async def get_gate_request(
         timed_out_at=row.timed_out_at.isoformat() if row.timed_out_at else None,
         context_json=row.context_json,
         decision_json=row.decision_json,
+        allowed_actions=MissionPlanService.allowed_gate_actions(row.gate_type),
     )
     return ApiResponse(
         success=True,
@@ -187,13 +189,12 @@ async def decide_gate(
     request_id: RequestId,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Record the decision and fire the asyncio.Event that unblocks the dispatcher.
+    """Record the decision; the waiting reviewer polls the row and wakes on DECIDED.
 
     Fails with 409 if the request is not PENDING (already decided / timed out
-    / cancelled). The dispatcher's `await event.wait()` was scoped before the
-    DB row was written; firing the event here is what wakes it up.
+    / cancelled). Requires the mission owner or a maintainer.
     """
-    await require_mission_access(db, mission_id, current_user)
+    await require_mission_operator(db, mission_id, current_user)
     service = MissionPlanService(db)
     row = await service.get_pending_gate_request(mission_id, request_id_path)
 
@@ -216,9 +217,6 @@ async def decide_gate(
         decided_by_user_id=current_user.id,
     )
     await db.commit()
-
-    # Wake the waiting dispatcher (process-local asyncio.Event).
-    await fire_decision(request_id_path)
 
     # Emit lifecycle event so watchers (TUI / console) see the resolution.
     try:
@@ -257,14 +255,6 @@ async def decide_gate(
 # =============================================================================
 
 
-_STANDARD_ACTIONS: frozenset[str] = frozenset(
-    {"continue", "skip", "retry", "abort"},
-)
-_POST_RUN_ACTIONS: frozenset[str] = frozenset(
-    {"wait", "advance_approved", "advance_refine", "propose_complete", "escalate"},
-)
-
-
 def _validate_action_for_gate_type(gate_type: str, action: str) -> None:
     """Reject actions that don't belong to the gate's vocabulary.
 
@@ -273,15 +263,12 @@ def _validate_action_for_gate_type(gate_type: str, action: str) -> None:
     consumer of the decision wouldn't know what to do. Fail loud at the
     boundary instead.
     """
-    if gate_type == "post_run":
-        valid = _POST_RUN_ACTIONS
-    else:
-        valid = _STANDARD_ACTIONS
+    valid = MissionPlanService.allowed_gate_actions(gate_type)
     if action not in valid:
         raise HTTPException(
             status_code=422,
             detail=(
                 f"Action {action!r} is not valid for gate_type {gate_type!r}. "
-                f"Valid actions: {sorted(valid)}."
+                f"Valid actions: {valid}."
             ),
         )

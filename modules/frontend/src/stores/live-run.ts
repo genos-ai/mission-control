@@ -9,9 +9,10 @@ export interface TaskResult {
   summary: string
 }
 
-interface PendingApproval {
-  executionId: string
-  message: string
+interface PendingGate {
+  missionId: string
+  requestId: string
+  gateType: string
 }
 
 interface SseEvent {
@@ -45,7 +46,7 @@ interface LiveRunState {
   startedAt: number | null
 
   // Gate
-  pendingApproval: PendingApproval | null
+  pendingGate: PendingGate | null
 
   // Internal cross-reference maps
   _stepAgents: Map<string, string>
@@ -74,7 +75,7 @@ const INITIAL_STATE = {
   totalTasks: 0,
   completedTasks: 0,
   startedAt: null as number | null,
-  pendingApproval: null as PendingApproval | null,
+  pendingGate: null as PendingGate | null,
   _stepAgents: new Map<string, string>(),
   _agentCosts: new Map<string, number>(),
   _agentStart: new Map<string, number>(),
@@ -257,20 +258,22 @@ export const useLiveRunStore = create<LiveRunState>((set, get) => ({
         return
       }
 
-      case 'agent.approval.requested': {
+      case 'gate.request.opened': {
         set({
-          pendingApproval: {
-            executionId: state.executionId ?? '',
-            message: String(d.message ?? 'Approval required'),
+          pendingGate: {
+            missionId: String(d.mission_id ?? ''),
+            requestId: String(d.request_id ?? ''),
+            gateType: String(d.gate_type ?? ''),
           },
           eventLog: [...state.eventLog, event].slice(-100),
         })
         return
       }
 
-      case 'agent.approval.response': {
+      case 'gate.request.decided': {
         set({
-          pendingApproval: null,
+          pendingGate:
+            state.pendingGate?.requestId === String(d.request_id ?? '') ? null : state.pendingGate,
           eventLog: [...state.eventLog, event].slice(-100),
         })
         return

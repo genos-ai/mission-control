@@ -183,14 +183,12 @@ class ConfigurableGate:
                     "callers to pass the AsyncSession factory.",
                 )
             from modules.backend.agents.mission_control.gate_manual import ManualGateReviewer
+            from modules.backend.core.config import get_app_config
 
             self._manual = ManualGateReviewer(
                 session_factory=self._session_factory,
-                timeout_seconds=(
-                    self._config.manual.timeout_seconds
-                    if hasattr(self._config, "manual") and self._config.manual is not None
-                    else 1800
-                ),
+                timeout_seconds=get_app_config().gate.manual.timeout_seconds,
+                poll_interval_seconds=get_app_config().gate.manual.poll_interval_seconds,
                 event_bus=self._event_bus,
             )
         return self._manual

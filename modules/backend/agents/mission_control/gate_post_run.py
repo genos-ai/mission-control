@@ -99,6 +99,7 @@ class AutonomousPostRunReviewer:
             manual = ManualGateReviewer(
                 session_factory=get_session_factory(),
                 timeout_seconds=get_app_config().gate.manual.timeout_seconds,
+                poll_interval_seconds=get_app_config().gate.manual.poll_interval_seconds,
             )
             return await manual.review(context)
 

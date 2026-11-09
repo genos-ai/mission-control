@@ -22,8 +22,8 @@ export function LiveResultsPanel({ outcome }: { outcome?: Record<string, unknown
   const phase = useLiveRunStore((s) => s.phase)
   const errors = useLiveRunStore((s) => s.errors)
   const taskResults = useLiveRunStore((s) => s.taskResults)
-  const pendingApproval = useLiveRunStore((s) => s.pendingApproval)
-  const clearApproval = () => useLiveRunStore.setState({ pendingApproval: null })
+  const pendingGate = useLiveRunStore((s) => s.pendingGate)
+  const clearGate = () => useLiveRunStore.setState({ pendingGate: null })
   const writing = phase !== 'done'
 
   return (
@@ -49,11 +49,11 @@ export function LiveResultsPanel({ outcome }: { outcome?: Record<string, unknown
           </div>
         )}
 
-        {pendingApproval && (
+        {pendingGate && (
           <GateApproval
-            executionId={pendingApproval.executionId}
-            gateMessage={pendingApproval.message}
-            onResolved={clearApproval}
+            missionId={pendingGate.missionId}
+            requestId={pendingGate.requestId}
+            onResolved={clearGate}
           />
         )}
 
@@ -84,7 +84,7 @@ export function LiveResultsPanel({ outcome }: { outcome?: Record<string, unknown
           )
         })}
 
-        {taskResults.length === 0 && !pendingApproval && errors.length === 0 && (
+        {taskResults.length === 0 && !pendingGate && errors.length === 0 && (
           !writing && outcome && Object.keys(outcome).length > 0 ? (
             <OutputPreviewContent content={outcome} />
           ) : (

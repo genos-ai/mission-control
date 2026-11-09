@@ -20,16 +20,26 @@ interface ActiveRunCardProps {
 export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
   const { events, connected } = useRunStream(execution.session_id)
   const { open: openDrawer } = useDrawerStore()
-  const [gateResolved, setGateResolved] = useState(false)
+  const [resolvedGateId, setResolvedGateId] = useState<string | null>(null)
   const agentStatuses = useWorkspaceStore((s) => s.agentStatuses)
   const now = useNow(true)
 
-  // Detect gate approval requests from SSE events
-  const latestGate = [...events].reverse().find(
-    (e: { event_type: string }) => e.event_type === 'agent.approval.requested',
-  )
+  // The latest manual gate opened on this run with no later decision for the same request.
+  let latestGateIndex = -1
+  events.forEach((e, i) => {
+    if (e.event_type === 'gate.request.opened') latestGateIndex = i
+  })
+  const latestGate = latestGateIndex >= 0 ? events[latestGateIndex] : undefined
+  const latestGateRequestId = String(latestGate?.data.request_id ?? '')
+  const gateDecided = events
+    .slice(latestGateIndex + 1)
+    .some(
+      (e) =>
+        e.event_type === 'gate.request.decided' &&
+        String(e.data.request_id ?? '') === latestGateRequestId,
+    )
 
-  const showGate = latestGate && !gateResolved
+  const showGate = latestGate && !gateDecided && resolvedGateId !== latestGateRequestId
   const working = Object.values(agentStatuses).filter(
     (a) => a.status === 'running' || a.status === 'thinking',
   )
@@ -101,9 +111,9 @@ export function ActiveRunCard({ execution, onClick }: ActiveRunCardProps) {
       {showGate && (
         <div onClick={(e) => e.stopPropagation()}>
           <GateApproval
-            executionId={execution.id}
-            gateMessage={String(latestGate.data.message ?? '')}
-            onResolved={() => setGateResolved(true)}
+            missionId={String(latestGate.data.mission_id ?? '')}
+            requestId={latestGateRequestId}
+            onResolved={() => setResolvedGateId(latestGateRequestId)}
           />
         </div>
       )}
