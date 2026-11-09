@@ -4,7 +4,12 @@ import dataclasses
 from dataclasses import dataclass
 
 from modules.backend.core.config import get_app_config
-from modules.backend.temporal.config_snapshots import config_hash, policy_snapshot
+from modules.backend.temporal.config_snapshots import (
+    build_run_config_snapshot,
+    build_tick_config_snapshot,
+    config_hash,
+    policy_snapshot,
+)
 
 
 @dataclass(frozen=True)
@@ -34,3 +39,13 @@ def test_config_hash_changes_with_field() -> None:
     a = _Snapshot(config_hash="", orphan_grace_seconds=600)
     b = dataclasses.replace(a, orphan_grace_seconds=900)
     assert config_hash(a) != config_hash(b)
+
+
+def test_build_run_config_snapshot_hash_matches() -> None:
+    snap = build_run_config_snapshot()
+    assert snap.config_hash == config_hash(snap)
+
+
+def test_build_tick_config_snapshot_hash_matches() -> None:
+    snap = build_tick_config_snapshot()
+    assert snap.config_hash == config_hash(snap)
