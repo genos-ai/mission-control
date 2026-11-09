@@ -33,7 +33,6 @@ knowledge:
     dimensions: 1536
     version: 1                          # bumps trigger backfill
     backfill_batch_size: 50
-    backfill_schedule_cron: "15 4 * * *"  # daily 04:15 UTC
     default_search_mode: hybrid
     fail_open: true                     # provider outage → structured-only fallback
 
@@ -56,6 +55,16 @@ knowledge:
     summary_max_tokens: 8000
 
   officer:
-    schedule_cron: "0 4 * * *"          # daily 04:00 UTC
     budget_usd_per_run: 0.10
     model: haiku
+
+# =============================================================================
+# Recurring missions (Plan 88)
+# =============================================================================
+recurrence:
+  enabled: true                             # false: schedule create rejected; sync pauses every mission schedule
+  default_catch_up_window_seconds: 21600    # 6h
+  max_catch_up_window_seconds: 604800
+  min_interval_seconds: 300                 # cron firing more often than this is rejected
+  max_schedules_per_mission: 5
+  objective_template_max_chars: 4000

@@ -23,9 +23,6 @@ class TestTemporalSchema:
         assert config.server_url is None
         assert config.namespace == "default"
         assert config.task_queue == "agent-missions"
-        assert config.workflow_execution_timeout_days == 30
-        assert config.activity_start_to_close_seconds == 600
-        assert config.activity_retry_max_attempts == 3
         assert config.approval_timeout_seconds == 14400
         assert config.escalation_timeout_seconds == 86400
         assert config.notification_timeout_seconds == 30

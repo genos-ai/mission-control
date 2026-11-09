@@ -403,9 +403,6 @@ class TemporalSchema(_StrictBase):
     server_url: str | None = None
     namespace: str = "default"
     task_queue: str = "agent-missions"
-    workflow_execution_timeout_days: int = 30
-    activity_start_to_close_seconds: int = 600
-    activity_retry_max_attempts: int = 3
     approval_timeout_seconds: int = 14400
     escalation_timeout_seconds: int = 86400
     notification_timeout_seconds: int = 30
@@ -420,7 +417,6 @@ class TemporalSchema(_StrictBase):
     # Polling intervals (seconds)
     dispatch_check_interval_seconds: int = 1
     wait_action_sleep_seconds: int = 1
-    refine_poll_interval_seconds: int = 1
     refine_poll_max_seconds: int = 60
     max_supervisor_iterations: int = 25
     mission_run: MissionRunSchema = Field(...)
@@ -505,7 +501,6 @@ class KnowledgeEmbeddingSchema(_StrictBase):
     dimensions: int = 1536
     version: int = 1  # bumps trigger backfill
     backfill_batch_size: int = 50
-    backfill_schedule_cron: str = "15 4 * * *"
     default_search_mode: str = "hybrid"
     fail_open: bool = True
 
@@ -540,7 +535,6 @@ class KnowledgeSessionMemorySchema(_StrictBase):
 class KnowledgeOfficerSchema(_StrictBase):
     """Knowledge Officer agent configuration."""
 
-    schedule_cron: str = "0 4 * * *"
     budget_usd_per_run: float = 0.10
     model: str = "haiku"
 
@@ -558,6 +552,26 @@ class KnowledgeSchema(_StrictBase):
     officer: KnowledgeOfficerSchema = Field(default_factory=KnowledgeOfficerSchema)
 
 
+class RecurrenceSchema(_StrictBase):
+    """Recurring mission schedule limits (Plan 88)."""
+
+    enabled: bool = Field(...)
+    default_catch_up_window_seconds: int = Field(..., ge=60)
+    max_catch_up_window_seconds: int = Field(..., ge=60)
+    min_interval_seconds: int = Field(..., ge=60)
+    max_schedules_per_mission: int = Field(..., ge=1)
+    objective_template_max_chars: int = Field(..., ge=100)
+
+    @model_validator(mode="after")
+    def _default_window_within_max(self) -> "RecurrenceSchema":
+        if self.default_catch_up_window_seconds > self.max_catch_up_window_seconds:
+            raise ValueError(
+                "missions.recurrence.default_catch_up_window_seconds must not exceed "
+                "max_catch_up_window_seconds"
+            )
+        return self
+
+
 class MissionsSchema(_StrictBase):
     """Mission system configuration."""
 
@@ -570,6 +584,7 @@ class MissionsSchema(_StrictBase):
     history_summarize_after_days: int = 30
     enable_context_assembly: bool = True
     knowledge: KnowledgeSchema = Field(default_factory=KnowledgeSchema)
+    recurrence: RecurrenceSchema = Field(...)
 
 
 # =============================================================================

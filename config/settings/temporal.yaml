@@ -5,9 +5,6 @@ enabled: true
 server_url: "127.0.0.1:7233"   # Explicit — validator rejects default "localhost:7233" as safety
 namespace: "default"
 task_queue: "agent-missions"
-workflow_execution_timeout_days: 30
-activity_start_to_close_seconds: 600
-activity_retry_max_attempts: 3
 approval_timeout_seconds: 14400
 escalation_timeout_seconds: 86400
 notification_timeout_seconds: 30
@@ -22,7 +19,6 @@ execution_retry_max_interval_seconds: 60
 # Polling intervals (seconds)
 dispatch_check_interval_seconds: 1           # ScheduledMissionCheckWorkflow trigger frequency
 wait_action_sleep_seconds: 1                 # MissionRunWorkflow WAIT action sleep between checks
-refine_poll_interval_seconds: 1              # advance_refine: poll interval for new tasks
 refine_poll_max_seconds: 60                  # advance_refine: max wait for Director to produce tasks
 max_supervisor_iterations: 25                # MissionRunWorkflow hard cap on loop iterations
 
