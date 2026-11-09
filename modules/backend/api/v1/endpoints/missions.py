@@ -14,6 +14,8 @@ from modules.backend.api.v1.endpoints import (
     missions_costs,
     missions_gates,
     missions_plan,
+    missions_runs,
+    missions_schedules,
     missions_team,
     missions_workflows,
 )
@@ -28,6 +30,8 @@ router = APIRouter()
 # Include sub-routers (preserves existing URL structure)
 router.include_router(missions_team.router)
 router.include_router(missions_workflows.router)
+router.include_router(missions_schedules.router)
+router.include_router(missions_runs.router)
 router.include_router(missions_context.router)
 router.include_router(missions_plan.router)
 router.include_router(missions_artifacts.router)

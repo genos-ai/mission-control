@@ -11,7 +11,7 @@ Protected by admin role (X-API-Key header). Provides:
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
@@ -882,6 +882,55 @@ async def admin_reconcile_run(
             get_app_config().temporal.reconciler.orphan_grace_seconds
         )
         await db.commit()
+    finally:
+        await redis.aclose()
+    return ApiResponse(success=True, data=asdict(stats), metadata={"request_id": request_id})
+
+
+# ---- Mission schedule sync (Plan 88 step 88.1.12) ----
+
+
+class ScheduleSyncRequest(BaseModel):
+    """POST /admin/schedules/sync body; without mission_id every schedule is synced."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mission_id: str | None = None
+
+
+@router.post(
+    "/schedules/sync",
+    response_model=ApiResponse,
+    summary="Sync mission schedules to Temporal now",
+)
+async def admin_schedules_sync(
+    db: DbSession,
+    request_id: RequestId,
+    _role: AdminRole,
+    data: ScheduleSyncRequest | None = None,
+) -> ApiResponse:
+    """Mirror one mission's schedules, or all of them, to Temporal.
+
+    For the web; ``admin schedules sync`` calls the service in-process.
+    """
+    from dataclasses import asdict
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.services.mission_schedule import MissionScheduleService
+    from modules.backend.temporal.schedule_gateway import TemporalScheduleGateway
+
+    mission_id = data.mission_id if data is not None else None
+    gateway = await TemporalScheduleGateway.create()
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        svc = MissionScheduleService(db, gateway, SessionEventBus(redis))
+        if mission_id is None:
+            stats = await svc.sync_all()
+        else:
+            stats = await svc.sync_mission(mission_id)
     finally:
         await redis.aclose()
     return ApiResponse(success=True, data=asdict(stats), metadata={"request_id": request_id})

@@ -47,10 +47,17 @@ from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_context import MissionContextRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.mission_run import MissionRunRepository
+from modules.backend.repositories.mission_run_digest import MissionRunDigestRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.repositories.user import UserRepository
 from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
+from modules.backend.schemas.mission_run import (
+    MissionRunDetailResponse,
+    MissionRunDigestResponse,
+    MissionRunResponse,
+    TaskSummary,
+)
 from modules.backend.schemas.session import SessionCreate
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.base import BaseService
@@ -73,6 +80,8 @@ from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, W
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _SOURCE = "mission_run_service"
+# Page size of list_runs when the caller sends no limit; replaced by cli.yaml in 88.1.13.
+DEFAULT_RUN_LIST_LIMIT = 50
 _ONE_ACTIVE_CONSTRAINT = "uq_mission_runs_one_active"
 _RUNNABLE_GATE_MODES = frozenset({GateMode.MANUAL, GateMode.AI_ASSISTED, GateMode.AUTONOMOUS})
 _OWNER_NOT_USER = "owner not a platform user"
@@ -124,6 +133,7 @@ class MissionRunService(BaseService):
         super().__init__(session)
         self._event_bus = event_bus
         self._runs = MissionRunRepository(session)
+        self._digests = MissionRunDigestRepository(session)
         self._missions = MissionRepository(session)
         self._plans = MissionPlanRepository(session)
         self._tasks = TaskRepository(session)
@@ -169,6 +179,19 @@ class MissionRunService(BaseService):
         if run is None:
             raise NotFoundError(f"Run {run_id_or_sequence} not found in mission {mission_id}")
         return run
+
+    async def get_run_detail(
+        self, mission_id: str, run_id_or_sequence: str
+    ) -> MissionRunDetailResponse:
+        """The run with its digest and owned tasks, within the mission (88.4.8 adds gates)."""
+        run = await self.get_run(mission_id, run_id_or_sequence)
+        digest = await self._digests.get_by_run(run.id)
+        tasks = await self._tasks.list_by_run(run.id)
+        return MissionRunDetailResponse(
+            run=MissionRunResponse.model_validate(run),
+            digest=MissionRunDigestResponse.model_validate(digest) if digest else None,
+            tasks=[TaskSummary.model_validate(task) for task in tasks],
+        )
 
     async def list_runs(
         self,

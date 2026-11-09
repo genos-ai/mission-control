@@ -13,7 +13,7 @@ creates a fresh one.
 Gates (scored PASS/FAIL):
     SETUP  — Mission exists, correct agents, gate mode, budget
     CLI    — mc run creates plan, tracks task states, records cost
-    API    — POST /plan/run-objective, async dispatch, supervisor fires
+    API    — POST /missions/{id}/runs, async dispatch, supervisor fires
     LOOP   — Multi-wave: supervisor advances, plan version bumps
     PARITY — Plan infrastructure used, no legacy path
 
@@ -397,26 +397,23 @@ async def test_cli(mission_id: str, verbose: bool) -> Section:
 
 
 async def test_api(token: str, mission_id: str, verbose: bool) -> Section:
-    section = Section("API (POST /plan/run-objective)")
+    section = Section("API (POST /missions/{id}/runs)")
 
     print("  Running objective via API (async)...")
     resp = await api_post(
         token,
-        f"/missions/{mission_id}/plan/run-objective",
-        {
-            "objective": API_OBJECTIVE,
-            "async_dispatch": True,
-        },
+        f"/missions/{mission_id}/runs",
+        {"objective": API_OBJECTIVE},
     )
     data = resp.get("data") or {}
     error = resp.get("error") or {}
-    outcome = data.get("outcome_status", error.get("message", "unknown"))
+    outcome = data.get("status", error.get("message", "unknown"))
     if verbose:
         print(f"    {json.dumps(data, indent=2, default=str)}")
 
-    section.check("B1", "outcome_status = dispatching", outcome == "dispatching", f"got={outcome}")
+    section.check("B1", "run status = pending", outcome == "pending", f"got={outcome}")
 
-    if outcome == "dispatching":
+    if outcome == "pending":
         print("  Waiting for dispatch...")
         idle = await wait_plan_idle(mission_id)
         section.check("B2", "Plan reaches idle", idle)

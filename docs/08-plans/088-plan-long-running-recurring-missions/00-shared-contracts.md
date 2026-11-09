@@ -1647,6 +1647,10 @@ class MissionRunService(BaseService):
 #   fire_supervisor_followups returns None (3.3.5). SupervisorFollowupInput lives in temporal/mission_run_models.py.
 # schemas/mission_run.py (88.1.7): TaskSummary{id, agent, description, status: TaskStatus, failure_reason,
 #   cost_usd, created_at}; MissionRunDigestResponse carries every mission_run_digests column except updated_at.
+# 88.1.12: MissionRunService.get_run_detail(mission_id, run_id_or_sequence) -> MissionRunDetailResponse
+#   (get_run, then MissionRunDigestRepository.get_by_run and TaskRepository.list_by_run; 88.4.8 adds gates).
+#   services/mission_run.DEFAULT_RUN_LIST_LIMIT = 50 is the GET /runs page size when no limit is sent,
+#   until 88.1.13's cli.yaml; next_before_sequence is the last run's sequence when the page is full.
 
 # temporal/config_snapshots.py  (the ONLY place snapshots are built; 88.0.2, 88.1.5, 88.2.2)
 def policy_snapshot(schema: ActivityPolicySchema) -> ActivityPolicySnapshot      # 88.0.2

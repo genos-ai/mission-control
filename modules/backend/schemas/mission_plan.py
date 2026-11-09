@@ -143,30 +143,6 @@ class MissionPlanResponse(BaseModel):
 # ── Task-level transitions ───────────────────────────────────────────────
 
 
-class RunObjectiveRequest(BaseModel):
-    """POST /missions/:id/plan/run-objective body (Plan 62)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    objective: str = Field(
-        ...,
-        min_length=5,
-        description="Natural-language objective for the Planning Agent",
-    )
-    gate_mode: GateMode | None = Field(None)
-    budget_ceiling_usd: float | None = Field(None, ge=0.01)
-
-
-class RunObjectiveResponse(BaseModel):
-    """Result of POST /missions/:id/plan/run-objective."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    plan_id: str
-    outcome_status: str
-    workflow_id: str | None = None
-
-
 class TaskTransitionResponse(BaseModel):
     """Result of an approve / reject / retry call."""
 
