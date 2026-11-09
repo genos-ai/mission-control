@@ -42,16 +42,17 @@ async def trace_workflow(
     if desc.close_time:
         console.print(f"[bold]Closed:[/bold] {desc.close_time}")
 
-    # Query loop status if available
+    # Query run state if available
     try:
-        loop_status = await handle.query("get_loop_status")
+        run_state = await handle.query("get_run_state")
         console.print(
-            f"[bold]Loop:[/bold] iteration={loop_status.get('iteration')}, "
-            f"cost=${loop_status.get('total_cost', 0):.4f}, "
-            f"last_action={loop_status.get('last_action', '')}"
+            f"[bold]Run:[/bold] iteration={run_state.get('iteration')}, "
+            f"phase={run_state.get('phase')}, "
+            f"pending_gate_id={run_state.get('pending_gate_id')}, "
+            f"last_supervisor_action={run_state.get('last_supervisor_action')}"
         )
     except Exception:
-        logger.debug("get_loop_status query not available for %s", workflow_id, exc_info=True)
+        logger.debug("get_run_state query not available for %s", workflow_id, exc_info=True)
 
     console.print()
     console.print("[bold underline]Activity Timeline[/bold underline]")

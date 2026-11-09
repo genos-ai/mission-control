@@ -49,20 +49,27 @@ from modules.backend.temporal.maintenance_workflow import (
     MetricsAggregationWorkflow,
     WeeklyReportWorkflow,
 )
+from modules.backend.temporal.mission_run_activities import (
+    begin_mission_run,
+    fetch_run_task_graph,
+    finalise_mission_run,
+    plan_mission_run,
+    set_mission_run_status,
+)
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
+from modules.backend.temporal.mission_schedule_activities import (
+    claim_occurrence,
+    sync_mission_schedules,
+)
+from modules.backend.temporal.mission_schedule_tick_workflow import MissionScheduleTickWorkflow
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 from modules.backend.temporal.reconciler_activities import reconcile_mission_runs
 from modules.backend.temporal.reconciler_workflow import ReconcilerWorkflow
-from modules.backend.temporal.run_objective_activities import execute_run_objective
-from modules.backend.temporal.run_objective_workflow import RunObjectiveWorkflow
-from modules.backend.temporal.scheduled_activities import find_ready_plans
-from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
 from modules.backend.temporal.supervisor_activities import (
-    approve_proposed_tasks,
+    approve_run_proposed_tasks,
     check_plan_active,
     evaluate_post_run,
-    fetch_plan_task_counts,
     fire_supervisor_followups,
     start_director_turn,
 )
@@ -91,7 +98,7 @@ async def start_worker() -> None:
             AgentMissionWorkflow,
             ChatTurnWorkflow,
             MissionRunWorkflow,
-            ScheduledMissionCheckWorkflow,
+            MissionScheduleTickWorkflow,
             DesignWorkflowWorkflow,
             RunWorkflowWorkflow,
             # Human input (Plan 45 Phase 4)
@@ -102,7 +109,6 @@ async def start_worker() -> None:
             EmbeddingBackfillWorkflow,
             # Plan endpoints (async-only)
             PlanRefineWorkflow,
-            RunObjectiveWorkflow,
             # Maintenance (Plan 56 Phase C — replaces TaskIQ cron)
             DailyCleanupWorkflow,
             HourlyHealthCheckWorkflow,
@@ -120,18 +126,23 @@ async def start_worker() -> None:
             # Chat turn (Plan 52 Phase B)
             persist_user_message,
             execute_chat_turn,
+            # Mission runs (Plan 88 step 88.1.8)
+            begin_mission_run,
+            plan_mission_run,
+            fetch_run_task_graph,
+            set_mission_run_status,
+            finalise_mission_run,
+            # Mission schedules (Plan 88 step 88.1.8)
+            claim_occurrence,
+            sync_mission_schedules,
             # Supervisor loop (Plan 52 Phase C)
             evaluate_post_run,
-            approve_proposed_tasks,
-            fetch_plan_task_counts,
+            approve_run_proposed_tasks,
             start_director_turn,
             check_plan_active,
             fire_supervisor_followups,
-            # Scheduled dispatch (Plan 52 Phase D)
-            find_ready_plans,
             # Plan endpoints (async-only)
             execute_plan_refine,
-            execute_run_objective,
             # Tool fork (Plan 56 Phase B)
             execute_design_workflow,
             execute_run_workflow,

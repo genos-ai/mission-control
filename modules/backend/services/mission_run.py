@@ -485,6 +485,24 @@ class MissionRunService(BaseService):
             return PlanRunResult(task_ids=[], status="failed", detail=detail)
         return PlanRunResult(task_ids=task_ids, status=status, detail=None)
 
+    async def approve_proposed(self, run_id: str) -> int:
+        """Approve the run's PROPOSED tasks as the mission owner when the run is AUTONOMOUS.
+
+        Returns the number of tasks approved; 0 in any other gate mode. Commits.
+        """
+        run = await self._runs.get_by_id(run_id)
+        if run.gate_mode is None or GateMode(run.gate_mode) != GateMode.AUTONOMOUS:
+            return 0
+        mission = await self._missions.get_by_id(run.mission_id)
+        owner_id = mission.owner_id
+        plan_id = run.plan_id
+        approved: set[str] = set()
+        for task in await self._tasks.list_by_run(run_id, status=TaskStatus.PROPOSED):
+            transitioned = await self._plan_svc.approve_task(plan_id, task.id, owner_id)
+            approved.update(t.id for t in transitioned)
+        await self._session.commit()
+        return len(approved)
+
     async def task_graph(self, run_id: str) -> RunTaskGraph:
         """Kahn layers over the run's APPROVED tasks, ignoring COMPLETED dependencies."""
         run = await self._runs.get_by_id(run_id)

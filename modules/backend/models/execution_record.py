@@ -186,7 +186,7 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
 
     # Denormalised task counts (Plan 51 Phase C) — populated at
     # write-back time from outcome.task_results so the stall breaker
-    # and MissionPlanRunCompletedEvent don't need to re-aggregate.
+    # does not need to re-aggregate.
     completed_task_count: Mapped[int] = mapped_column(
         Integer,
         default=0,

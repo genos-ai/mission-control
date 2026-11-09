@@ -47,17 +47,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         },
     )
 
-    # Register Temporal schedule for autonomous plan dispatch.
-    # Replaces MissionPlanDaemon — Temporal handles timing, dedup,
-    # and worker coordination. Idempotent: silently skips if the
-    # schedule already exists from a prior boot.
+    # Register Temporal maintenance and knowledge schedules (88.1.10 moves
+    # them into the worker). Idempotent: silently skips if a schedule
+    # already exists from a prior boot.
     try:
-        from datetime import timedelta as _td
-
         from temporalio.client import (
             Schedule,
             ScheduleActionStartWorkflow,
-            ScheduleIntervalSpec,
             ScheduleOverlapPolicy,
             SchedulePolicy,
             ScheduleSpec,
@@ -71,7 +67,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             MetricsAggregationWorkflow,
             WeeklyReportWorkflow,
         )
-        from modules.backend.temporal.scheduled_workflow import ScheduledMissionCheckWorkflow
 
         temporal_client = await get_temporal_client()
         temporal_config = app_config.temporal
@@ -114,20 +109,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     "Temporal schedule already exists — normal on restart",
                     extra={"schedule_id": sid},
                 )
-
-        # Plan dispatch — configurable interval
-        await _register_schedule(
-            "mission-plan-dispatch-schedule",
-            ScheduledMissionCheckWorkflow.run,
-            "scheduled-mission-check",
-            intervals=[
-                ScheduleIntervalSpec(
-                    every=_td(
-                        seconds=temporal_config.dispatch_check_interval_seconds,
-                    )
-                )
-            ],
-        )
 
         # Plan 56 Phase C: Maintenance schedules (replaces TaskIQ cron)
         await _register_schedule(

@@ -48,9 +48,12 @@ class TestMissionWorkflowInput:
 
 
 class TestPostRunEvalInput:
-    def test_post_run_eval_input_gate_mode_required(self):
+    def test_post_run_eval_input_has_no_defaults(self):
         with pytest.raises(TypeError):
-            PostRunEvalInput(mission_id="m", plan_id="p", execution_record_id="e")
+            PostRunEvalInput(mission_id="m", mission_run_id="r", execution_record_id="e")
+
+    def test_post_run_eval_input_reads_gate_mode_from_the_run(self):
+        assert "gate_mode" not in {f.name for f in fields(PostRunEvalInput)}
 
 
 class TestMissionExecutionResult:

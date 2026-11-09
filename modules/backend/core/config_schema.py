@@ -416,9 +416,6 @@ class TemporalSchema(_StrictBase):
     execution_retry_max_interval_seconds: int = 60
     # Polling intervals (seconds)
     dispatch_check_interval_seconds: int = 1
-    wait_action_sleep_seconds: int = 1
-    refine_poll_max_seconds: int = 60
-    max_supervisor_iterations: int = 25
     mission_run: MissionRunSchema = Field(...)
     reconciler: ReconcilerSchema = Field(...)
     system_schedules: dict[str, SystemScheduleSchema] = Field(...)

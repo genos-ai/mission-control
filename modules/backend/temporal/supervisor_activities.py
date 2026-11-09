@@ -4,9 +4,9 @@ Supervisor loop activities (Plan 52 Phase C).
 Activities for the MissionRunWorkflow's post-run supervisor loop:
 
 1. evaluate_post_run — runs AutonomousPostRunReviewer with own DB session
-2. approve_proposed_tasks — flips proposed → approved (idempotent)
-3. fetch_plan_task_counts — returns counts by status for workflow decisions
-4. start_director_turn — starts a ChatTurnWorkflow for the Director
+2. approve_run_proposed_tasks — flips the run's proposed → approved when
+   the run's gate mode is AUTONOMOUS (idempotent)
+3. start_director_turn — starts a ChatTurnWorkflow for the Director
    (used by ADVANCE_REFINE, PROPOSE_COMPLETE, ESCALATE paths)
 
 Each activity opens its own DB session and commits independently.
@@ -18,6 +18,7 @@ from temporalio import activity
 
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.gate import GateContext
+from modules.backend.temporal.mission_run_models import DirectorTurnInput, SupervisorFollowupInput
 
 logger = get_logger(__name__)
 
@@ -34,15 +35,10 @@ class PostRunEvalInput:
     """Input for the evaluate_post_run activity."""
 
     mission_id: str
-    plan_id: str
+    mission_run_id: str
     execution_record_id: str
-    gate_mode: str
-    supervisor_iteration_count: int = 0
-    max_supervisor_iterations: int = 20
-    budget_usd_ceiling: float = 0.0
-    total_spent_usd: float = 0.0
-    mission_brief: str = ""
-    session_id: str | None = None
+    supervisor_iteration_count: int
+    session_id: str
 
 
 @dataclass
@@ -54,18 +50,6 @@ class PostRunEvalResult:
     reviewer: str = "config:rule_engine"
     confidence: float | None = None
     cost_usd: float = 0.0
-
-
-@dataclass
-class PlanTaskCounts:
-    """Task counts by status for workflow decisions."""
-
-    approved: int = 0
-    proposed: int = 0
-    running: int = 0
-    completed: int = 0
-    failed: int = 0
-    queued: int = 0
 
 
 @activity.defn
@@ -82,9 +66,8 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     activity.logger.info(
         "Evaluating post-run",
         extra={
-            "plan_id": input.plan_id,
+            "mission_run_id": input.mission_run_id,
             "execution_record_id": input.execution_record_id,
-            "gate_mode": input.gate_mode,
         },
     )
 
@@ -101,7 +84,7 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         activity.logger.error(
             "evaluate_post_run failed",
             extra={
-                "plan_id": input.plan_id,
+                "mission_run_id": input.mission_run_id,
                 "error": clean_msg,
                 "error_type": type(e).__name__,
                 "mission_id": input.mission_id,
@@ -116,60 +99,80 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 
 
 async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
-    """Inner logic for evaluate_post_run — separated for error wrapping."""
+    """Inner logic for evaluate_post_run — separated for error wrapping.
+
+    The gate mode comes from the run; the brief, iteration cap, budget and
+    spend from the mission and its plan (Phase 4 moves the last three).
+    """
+    from redis.asyncio import Redis as AsyncRedis
+
     from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
     from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
+    from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
+    from modules.backend.events.bus import SessionEventBus
     from modules.backend.models.mission_plan import GateMode
     from modules.backend.models.task import TaskStatus
+    from modules.backend.services.mission import MissionService
+    from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
+    from modules.backend.services.mission_run import MissionRunService
 
-    async with get_async_session() as db:
-        recent = await get_recent_run_outcomes(
-            db,
-            mission_id=input.mission_id,
-            limit=5,
-        )
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        async with get_async_session() as db:
+            run = await MissionRunService(db, SessionEventBus(redis)).get_run(
+                input.mission_id, input.mission_run_id
+            )
+            gate_mode = GateMode(run.gate_mode)
+            mission = await MissionService(db).get_mission(input.mission_id)
+            recent = await get_recent_run_outcomes(
+                db,
+                mission_id=input.mission_id,
+                limit=5,
+            )
 
-        # Build task summary from the DB
-        from modules.backend.services.mission_plan import MissionPlanService
+            # Build task summary from the DB
+            svc = MissionPlanService(db)
+            plan = await svc.get_or_create_plan(input.mission_id)
+            task_states = await svc.get_tasks(plan.id)
+            total_spent_usd = plan.total_spent_usd
+            budget_usd = total_spent_usd + remaining_plan_budget_usd(plan)
 
-        svc = MissionPlanService(db)
-        plan = await svc.get_or_create_plan(input.mission_id)
-        task_states = await svc.get_tasks(plan.id)
+            summary = {
+                "approved": sum(1 for s in task_states if s.status == TaskStatus.APPROVED),
+                "proposed": sum(1 for s in task_states if s.status == TaskStatus.PROPOSED),
+                "running": sum(1 for s in task_states if s.status == TaskStatus.RUNNING),
+                "completed": sum(1 for s in task_states if s.status == TaskStatus.COMPLETED),
+                "failed": sum(1 for s in task_states if s.status == TaskStatus.FAILED),
+                "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
+                "execution_record_id": input.execution_record_id,
+                "max_supervisor_iterations": plan.max_supervisor_iterations,
+            }
 
-        summary = {
-            "approved": sum(1 for s in task_states if s.status == TaskStatus.APPROVED),
-            "proposed": sum(1 for s in task_states if s.status == TaskStatus.PROPOSED),
-            "running": sum(1 for s in task_states if s.status == TaskStatus.RUNNING),
-            "completed": sum(1 for s in task_states if s.status in (TaskStatus.COMPLETED,)),
-            "failed": sum(1 for s in task_states if s.status == TaskStatus.FAILED),
-            "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
-            "execution_record_id": input.execution_record_id,
-            "max_supervisor_iterations": input.max_supervisor_iterations,
-        }
+            context = GateContext(
+                gate_type="post_run",
+                mission_id=input.mission_id,
+                session_id=input.session_id,
+                total_cost_usd=total_spent_usd,
+                budget_usd=budget_usd,
+                recent_run_outcomes=recent,
+                plan_task_summary=summary,
+                mission_brief=mission.brief or "",
+                supervisor_iteration_count=input.supervisor_iteration_count,
+            )
 
-        context = GateContext(
-            gate_type="post_run",
-            mission_id=input.mission_id,
-            session_id=input.session_id,
-            total_cost_usd=input.total_spent_usd,
-            budget_usd=input.budget_usd_ceiling,
-            recent_run_outcomes=recent,
-            plan_task_summary=summary,
-            mission_brief=input.mission_brief,
-            supervisor_iteration_count=input.supervisor_iteration_count,
-        )
+            reviewer = AutonomousPostRunReviewer(
+                session=db,
+                gate_mode=gate_mode,
+            )
+            decision = await reviewer.review(context)
 
-        reviewer = AutonomousPostRunReviewer(
-            session=db,
-            gate_mode=GateMode(input.gate_mode),
-        )
-        decision = await reviewer.review(context)
-
-        # Increment supervisor iteration counter
-        plan.supervisor_iteration_count += 1
-        await db.flush()
-        await db.commit()
+            # Increment supervisor iteration counter
+            plan.supervisor_iteration_count += 1
+            await db.flush()
+            await db.commit()
+    finally:
+        await redis.aclose()
 
     # Extract confidence from model_metadata if present
     confidence = None
@@ -186,69 +189,32 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 
 
 @activity.defn
-async def approve_proposed_tasks(mission_id: str) -> int:
-    """Flip all proposed tasks to approved. Returns count approved.
+async def approve_run_proposed_tasks(mission_run_id: str) -> int:
+    """Approve the run's proposed tasks when its gate mode is AUTONOMOUS; else return 0.
 
-    Idempotent — checks status before approving. If tasks are already
-    approved (from a replay), returns 0 without error.
+    Idempotent — tasks already approved (from a replay) are left untouched.
     """
+    from redis.asyncio import Redis as AsyncRedis
+
+    from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.events.bus import SessionEventBus
+    from modules.backend.services.mission_run import MissionRunService
 
-    activity.logger.info("Approving proposed tasks", extra={"mission_id": mission_id})
-
-    async with get_async_session() as db:
-        svc = MissionPlanService(db)
-        plan = await svc.get_or_create_plan(mission_id)
-
-        # Use mission owner as the approving user — approved_by_user_id
-        # is a UUID FK to users.id, not a free-form string.
-        from modules.backend.services.mission import MissionService
-
-        mission = await MissionService(db).get_mission(mission_id)
-        acting_user_id = mission.owner_id
-
-        approved_ids = await svc.approve_all_proposed(plan.id, acting_user_id)
-        approved_count = len(approved_ids)
-
-        await db.commit()
+    redis = AsyncRedis.from_url(get_redis_url())
+    try:
+        async with get_async_session() as db:
+            count = await MissionRunService(db, SessionEventBus(redis)).approve_proposed(
+                mission_run_id
+            )
+    finally:
+        await redis.aclose()
 
     activity.logger.info(
-        "Approved proposed tasks",
-        extra={"mission_id": mission_id, "count": approved_count},
+        "Approved run proposed tasks",
+        extra={"mission_run_id": mission_run_id, "count": count},
     )
-    return approved_count
-
-
-@activity.defn
-async def fetch_plan_task_counts(mission_id: str) -> PlanTaskCounts:
-    """Return task counts by status for workflow decisions."""
-    from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_plan import MissionPlanService
-
-    async with get_async_session() as db:
-        svc = MissionPlanService(db)
-        plan = await svc.get_or_create_plan(mission_id)
-        task_states = await svc.get_tasks(plan.id)
-
-    from modules.backend.models.task import TaskStatus
-
-    counts = PlanTaskCounts()
-    for s in task_states:
-        if s.status == TaskStatus.APPROVED:
-            counts.approved += 1
-        elif s.status == TaskStatus.PROPOSED:
-            counts.proposed += 1
-        elif s.status == TaskStatus.RUNNING:
-            counts.running += 1
-        elif s.status == TaskStatus.COMPLETED:
-            counts.completed += 1
-        elif s.status == TaskStatus.FAILED:
-            counts.failed += 1
-        elif s.status == TaskStatus.QUEUED:
-            counts.queued += 1
-
-    return counts
+    return count
 
 
 @activity.defn
@@ -270,25 +236,11 @@ async def check_plan_active(mission_id: str) -> bool:
 
 
 @activity.defn
-async def fire_supervisor_followups(
-    mission_id: str,
-    plan_id: str,
-    execution_record_id: str,
-    action: str,
-    reason: str,
-    reviewer: str,
-    run_status: str,
-    run_cost_usd: float,
-    total_spent_usd: float,
-    failure_reason: str = "",
-) -> int:
+async def fire_supervisor_followups(input: SupervisorFollowupInput) -> None:
     """Fire session followups after a supervisor decision.
 
-    Emits MissionPlanRunCompletedEvent and SupervisorDecisionEmittedEvent,
-    then fires matching session followups so the Director wakes up and
-    reports to the user.
-
-    Returns the number of followups fired.
+    Emits SupervisorDecisionEmittedEvent, then fires matching session
+    followups so the Director wakes up and reports to the user.
     """
     import uuid as _uuid
 
@@ -297,41 +249,22 @@ async def fire_supervisor_followups(
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
-    from modules.backend.events.types import (
-        MissionPlanRunCompletedEvent,
-        SupervisorDecisionEmittedEvent,
-    )
+    from modules.backend.events.types import SupervisorDecisionEmittedEvent
     from modules.backend.services.session_followup import SessionFollowupService
 
+    mission_id = input.mission_id
     redis = AsyncRedis.from_url(get_redis_url())
     try:
         event_bus = SessionEventBus(redis, mission_id=mission_id)
-        sid = _uuid.uuid4()
 
-        # Emit run completed event
-        run_event = MissionPlanRunCompletedEvent(
-            session_id=sid,
-            source="temporal_supervisor",
-            mission_id=mission_id,
-            plan_id=plan_id,
-            execution_record_id=execution_record_id,
-            run_status=run_status,
-            run_cost_usd=run_cost_usd,
-            total_spent_usd=total_spent_usd,
-            failure_reason=failure_reason,
-        )
-        await event_bus.publish_to_mission(mission_id, run_event)
-
-        # Emit supervisor decision event
         decision_event = SupervisorDecisionEmittedEvent(
-            session_id=sid,
+            session_id=_uuid.uuid4(),
             source="temporal_supervisor",
             mission_id=mission_id,
-            plan_id=plan_id,
-            execution_record_id=execution_record_id,
-            action=action,
-            reason=reason[:500],
-            reviewer=reviewer,
+            execution_record_id=input.execution_record_id,
+            action=input.action,
+            reason=input.reason[:500],
+            reviewer=input.reviewer,
         )
         await event_bus.publish_to_mission(mission_id, decision_event)
 
@@ -345,39 +278,37 @@ async def fire_supervisor_followups(
                 # fires to consume the row and emit the audit event.
                 pass
 
-            fired = []
-            for event in (run_event, decision_event):
-                result = await followup_svc.fire_matching(
-                    event,
-                    agent_turn_runner=_noop_runner,
-                )
-                fired.extend(result)
+            fired = await followup_svc.fire_matching(
+                decision_event,
+                agent_turn_runner=_noop_runner,
+            )
             await db.commit()
 
         activity.logger.info(
             "Supervisor followups fired",
-            extra={"mission_id": mission_id, "fired_count": len(fired)},
+            extra={
+                "mission_id": mission_id,
+                "mission_run_id": input.mission_run_id,
+                "wave_status": input.wave_status,
+                "wave_cost_usd": input.wave_cost_usd,
+                "failure_reason": input.failure_reason,
+                "fired_count": len(fired),
+            },
         )
-        return len(fired)
     finally:
         await redis.aclose()
 
 
 @activity.defn
-async def start_director_turn(
-    mission_id: str,
-    session_id: str,
-    prompt: str,
-    parent_workflow_id: str | None = None,
-) -> str:
+async def start_director_turn(input: DirectorTurnInput) -> str:
     """Start a ChatTurnWorkflow for the Director.
 
     Used by ADVANCE_REFINE, PROPOSE_COMPLETE, and ESCALATE paths
     to wake the Director with a system-generated prompt. Returns
     the workflow ID.
 
-    When parent_workflow_id is set (advance_refine path), it is passed
-    to ChatTurnWorkflow so it can signal the parent when done — replacing
+    When signal_workflow_id is set (advance_refine path), it is passed
+    to ChatTurnWorkflow so it can signal that workflow when done — replacing
     polling with an instant wake-up.
     """
     import uuid
@@ -391,16 +322,16 @@ async def start_director_turn(
     config = get_app_config().temporal
 
     input_data = ChatTurnInput(
-        session_id=session_id,
-        mission_id=mission_id,
-        message=prompt,
+        session_id=input.session_id,
+        mission_id=input.mission_id,
+        message=input.prompt,
         sender_id="mission.supervisor.agent",
         agent_id="mission.director.agent",
         channel="followup",
-        parent_workflow_id=parent_workflow_id,
+        parent_workflow_id=input.signal_workflow_id,
     )
 
-    workflow_id = f"director-followup-{mission_id[:12]}-{uuid.uuid4().hex[:8]}"
+    workflow_id = f"director-followup-{input.mission_id[:12]}-{uuid.uuid4().hex[:8]}"
 
     await client.start_workflow(
         ChatTurnWorkflow.run,
@@ -413,8 +344,9 @@ async def start_director_turn(
         "Director turn started",
         extra={
             "workflow_id": workflow_id,
-            "mission_id": mission_id,
-            "prompt_preview": prompt[:100],
+            "mission_id": input.mission_id,
+            "mission_run_id": input.mission_run_id,
+            "prompt_preview": input.prompt[:100],
         },
     )
 

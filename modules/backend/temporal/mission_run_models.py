@@ -175,6 +175,21 @@ class NotificationRequest:
 
 
 @dataclass
+class SupervisorFollowupInput:
+    """fire_supervisor_followups input (88.1.8)."""
+
+    mission_id: str
+    mission_run_id: str
+    execution_record_id: str
+    action: str
+    reason: str
+    reviewer: str
+    wave_status: str
+    wave_cost_usd: float
+    failure_reason: str | None
+
+
+@dataclass
 class MissionRunWorkflowStatus:
     mission_run_id: str
     iteration: int

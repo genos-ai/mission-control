@@ -629,6 +629,7 @@ class MissionRunWorkflow:
 - **Start rejection.** `begin_mission_run` transitions the run to `FAILED/INVALID_GATE_MODE` or `FAILED/START_FAILED` (owner not a platform user) itself, commits, and raises `RunStartRejectedError` (non-retryable, 88.1.7). From 88.4.5 a run with `cancel_requested_at` set is transitioned to `CANCELLED` and raises the same error. The workflow catches `ActivityError` with `_cause_type(e) == "RunStartRejectedError"` and returns `"failed"` without calling `_end_run`. A run that is no longer PENDING raises `MissionRunStateError`, which is non-retryable and fails the workflow.
 - **Layer boundary.** 88.2.6 adds `async def _layer_boundary(self) -> str | None`, called before each layer; it holds the `max_run_duration_seconds` check and returns the stop reason or `None`. Phase 4 hooks the pause check (88.4.5) and the budget check (88.4.6) into it.
 - **Approval wake-up.** Before calling `fetch_run_task_graph`, the loop records `seen = self._approved_seq`. When the graph has nothing approved and something proposed, it waits on `workflow.wait_condition(lambda: self._approved_seq > seen)`. A signal delivered while the graph activity runs is therefore never lost (test `test_signal_during_graph_fetch_not_lost`). The counter is carried across continue-as-new.
+- **Cancellation (88.1.8).** Workflow cancellation reaches an awaited activity as `ActivityError` whose cause is a Temporal `CancelledError`, not as `asyncio.CancelledError`. Every `except ActivityError` in the loop therefore re-raises when `temporalio.exceptions.is_cancelled_exception(e)`, and the outer handler catches `(asyncio.CancelledError, ActivityError)`, re-raising anything that is not a cancellation before `_end_run("cancelled", None, None)` (test `test_cancel_finalises_cancelled`).
 - **Supervisor-driven approval.** After `advance_refine`, the workflow calls `await _exec(sup.approve_run_proposed_tasks, inp.mission_run_id, c.persistence)` unconditionally. The activity approves only when `run.gate_mode == AUTONOMOUS` and returns `0` otherwise.
 - **Phase 1 loop bound.** Phase 1 has no continue-as-new and no workflow iteration cap. The loop is bounded by the supervisor's existing breaker on `mission_plans.max_supervisor_iterations` (`agents/mission_control/gate_post_run.py:131-139`), which `evaluate_post_run` reads from the DB and which escalates. 88.2.6 deletes the breaker (item 8); 88.2.7 adds continue-as-new.
 
@@ -1071,7 +1072,7 @@ def activity_kwargs(p: ActivityPolicySnapshot) -> dict:
 | `run_retention_policy` | `temporal/retention_activities.py` | `RetentionPolicyInput{policy: str, batch_size: int}` → `RetentionResult{policy, rows_affected, rows_aggregated, complete: bool, duration_seconds: float}` | `retention.activity` (heartbeat) | 88.5.4 |
 
 **Deleted (P3):**
-- 88.1.8: `fetch_plan_task_counts` and `PlanTaskCounts`; `find_ready_plans`; `execute_run_objective`; the `send_notification` stub (`temporal/activities.py:323-339`) and both workflow calls to it.
+- 88.1.8: `fetch_plan_task_counts` and `PlanTaskCounts`; `find_ready_plans`; `execute_run_objective`; both `MissionRunWorkflow` calls to the `send_notification` stub. The stub itself (`temporal/activities.py`) stays registered until 88.2.6, because `AgentMissionWorkflow` still calls it.
 - `check_plan_active`: 88.4.2 rewrites `check_plan_active` to read `missions.status`; 88.4.5 stops calling it under `p88-lifecycle-signals`, and the activity stays registered for executions on the old branch. It is deleted in 88.4.5 only when no caller remains. `MissionPlanStatus` goes with `plan88_005` (88.4.2).
 - 88.1.3: `run_evaluate_workflow_schedules`.
 - 88.2.6: `execute_mission` (`temporal/activities.py:49`) and `persist_mission_outcome` (`:214-215`), with `MissionWorkflowInput`, its interim `gate_mode` field, and `ExecuteWaveInput`.
@@ -1640,6 +1641,9 @@ class MissionRunService(BaseService):
 #   workflow_task_mapping.map_workflow_steps(workflow, parameters) maps every node type; steps_to_task_definitions
 #     rejects non-agent steps, then calls it. WorkflowRunService._persist_workflow_as_plan calls map_workflow_steps,
 #     so a manual WorkflowRun keeps its Kanban tasks and approval waits (3.7 item 2: manual execution unchanged).
+# 88.1.8: MissionRunService.approve_proposed(run_id) -> int approves the run's PROPOSED tasks as mission.owner_id
+#   only when run.gate_mode == AUTONOMOUS (else returns 0) and commits; approve_run_proposed_tasks calls it.
+#   fire_supervisor_followups returns None (3.3.5). SupervisorFollowupInput lives in temporal/mission_run_models.py.
 # schemas/mission_run.py (88.1.7): TaskSummary{id, agent, description, status: TaskStatus, failure_reason,
 #   cost_usd, created_at}; MissionRunDigestResponse carries every mission_run_digests column except updated_at.
 

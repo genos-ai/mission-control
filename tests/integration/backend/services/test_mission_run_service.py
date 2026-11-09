@@ -462,6 +462,33 @@ async def test_cancel_pending_unstarted_run_is_immediate(
     gateway.cancel.assert_not_awaited()
 
 
+# ── supervisor approval (88.1.8) ──────────────────────────────────────────
+
+
+async def test_approve_proposed_only_when_autonomous(db_session_factory, gateway, owner) -> None:
+    user, mission, plan = await owner()
+    manual = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, manual.id)
+    held = await _task(db_session_factory, plan, TaskStatus.PROPOSED, manual.id)
+
+    async with db_session_factory() as session:
+        assert await _svc(session).approve_proposed(manual.id) == 0
+    (left,) = await _tasks(db_session_factory, held)
+    assert left.status == TaskStatus.PROPOSED
+
+    await _end(db_session_factory, manual.id)
+    await _set_gate_mode(db_session_factory, plan, "AUTONOMOUS")
+    autonomous = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, autonomous.id)
+    proposed = await _task(db_session_factory, plan, TaskStatus.PROPOSED, autonomous.id)
+
+    async with db_session_factory() as session:
+        assert await _svc(session).approve_proposed(autonomous.id) == 1
+    (approved,) = await _tasks(db_session_factory, proposed)
+    assert approved.status == TaskStatus.APPROVED
+    assert approved.approved_by_user_id == mission.owner_id
+
+
 # ── finalise ──────────────────────────────────────────────────────────────
 
 

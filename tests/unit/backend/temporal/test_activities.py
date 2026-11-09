@@ -1,7 +1,6 @@
 """Tests for Temporal Activities.
 
-send_notification is tested live (it's a stub that logs).
-execute_mission mocks handle_mission (LLM calls — not infra we operate).
+execute_mission mocks dispatch_approved (LLM calls — not infra we operate).
 """
 
 import asyncio
@@ -9,42 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from modules.backend.temporal.models import MissionWorkflowInput, NotificationPayload
-
-
-class TestSendNotification:
-    @pytest.mark.asyncio
-    async def test_returns_true(self):
-        """send_notification is a logging stub — test it live."""
-        from modules.backend.temporal.activities import send_notification
-
-        result = await send_notification(
-            NotificationPayload(
-                channel="webhook",
-                recipient="admin",
-                title="Test",
-                body="Test body",
-                action_url="/test",
-            ),
-        )
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_handles_all_urgency_levels(self):
-        from modules.backend.temporal.activities import send_notification
-
-        for urgency in ("low", "normal", "high", "critical"):
-            result = await send_notification(
-                NotificationPayload(
-                    channel="slack",
-                    recipient="team",
-                    title="Alert",
-                    body="Body",
-                    action_url="/url",
-                    urgency=urgency,
-                ),
-            )
-            assert result is True
+from modules.backend.temporal.mission_run_models import ExecuteWaveInput
 
 
 def _mock_db_session_ctx(mock_session):
@@ -87,6 +51,9 @@ class TestExecuteMission:
         patches["mission_svc"] = patch(
             "modules.backend.services.mission.MissionService",
         )
+        patches["run_repo"] = patch(
+            "modules.backend.repositories.mission_run.MissionRunRepository",
+        )
         patches["orchestrator"] = patch(
             "modules.backend.services.mission_plan_orchestrator.MissionPlanOrchestrator",
         )
@@ -94,7 +61,7 @@ class TestExecuteMission:
             "modules.backend.events.bus.SessionEventBus",
         )
         patches["heartbeat"] = patch(
-            "modules.backend.temporal.activities.activity.heartbeat",
+            "modules.backend.temporal.activity_helpers.activity.heartbeat",
         )
         patches["activity_info"] = patch(
             "modules.backend.temporal.activities.activity.info",
@@ -108,6 +75,11 @@ class TestExecuteMission:
                 entered = {}
                 for name, p in patches.items():
                     entered[name] = self_ctx._stack.enter_context(p)
+
+                # MissionRunRepository().get_by_id() returns the run
+                mock_run = MagicMock()
+                mock_run.mission_id = "00000000-0000-0000-0000-000000000001"
+                entered["run_repo"].return_value.get_by_id = AsyncMock(return_value=mock_run)
 
                 # MissionService().get_mission() returns mock_mission
                 entered["mission_svc"].return_value.get_mission = AsyncMock(
@@ -145,11 +117,10 @@ class TestExecuteMission:
 
         async with self._patch_infra(dispatch_return=dispatch_result):
             result = await execute_mission(
-                MissionWorkflowInput(
+                ExecuteWaveInput(
                     mission_run_id="test-1",
                     session_id="5714117c-eaed-5ce3-9c56-73949f03aa3d",
-                    mission_brief="Test mission",
-                    mission_id="00000000-0000-0000-0000-000000000001",
+                    execution_record_id="00000000-0000-0000-0000-0000000000e1",
                 ),
             )
 
@@ -171,11 +142,10 @@ class TestExecuteMission:
 
         async with self._patch_infra(dispatch_return=dispatch_result):
             result = await execute_mission(
-                MissionWorkflowInput(
+                ExecuteWaveInput(
                     mission_run_id="test-2",
                     session_id="bac9134a-a913-50f4-adec-9725086b8998",
-                    mission_brief="Partial mission",
-                    mission_id="00000000-0000-0000-0000-000000000002",
+                    execution_record_id="00000000-0000-0000-0000-0000000000e1",
                 ),
             )
 
@@ -190,11 +160,10 @@ class TestExecuteMission:
         async with self._patch_infra(dispatch_side_effect=asyncio.CancelledError()):
             with pytest.raises(asyncio.CancelledError):
                 await execute_mission(
-                    MissionWorkflowInput(
+                    ExecuteWaveInput(
                         mission_run_id="test-3",
                         session_id="80d00060-470d-5db0-aa70-5adc526200ea",
-                        mission_brief="Cancelled mission",
-                        mission_id="00000000-0000-0000-0000-000000000003",
+                        execution_record_id="00000000-0000-0000-0000-0000000000e1",
                     ),
                 )
 
@@ -208,11 +177,10 @@ class TestExecuteMission:
             entered["event_bus"].return_value.publish_to_mission = publish
             with pytest.raises(RuntimeError, match="boom"):
                 await execute_mission(
-                    MissionWorkflowInput(
+                    ExecuteWaveInput(
                         mission_run_id="test-4",
                         session_id="80d00060-470d-5db0-aa70-5adc526200ea",
-                        mission_brief="Failing mission",
-                        mission_id="00000000-0000-0000-0000-000000000004",
+                        execution_record_id="00000000-0000-0000-0000-0000000000e1",
                     ),
                 )
 
@@ -238,18 +206,17 @@ class TestExecuteMission:
                 return_value=app_config,
             ):
                 await execute_mission(
-                    MissionWorkflowInput(
+                    ExecuteWaveInput(
                         mission_run_id="test-5",
                         session_id="80d00060-470d-5db0-aa70-5adc526200ea",
-                        mission_brief="Slow mission",
-                        mission_id="00000000-0000-0000-0000-000000000005",
+                        execution_record_id="00000000-0000-0000-0000-0000000000e1",
                     ),
                 )
 
             heartbeat = entered["heartbeat"]
             assert heartbeat.call_count >= 3
             for call in heartbeat.call_args_list:
-                assert call.args == ({"phase": "dispatch"},)
+                assert call.args == ({"phase": "executing"},)
 
 
 class TestPersistMissionOutcome:

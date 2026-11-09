@@ -21,8 +21,9 @@ Four circuit breakers (§4.6) fire before any rule evaluation:
 
 Idempotency (§4.6a): the reviewer queries ``execution_decisions``
 for an existing ``post_run_supervisor`` row matching the current
-execution_record_id. If present, returns a cached decision without
-re-evaluating.
+execution_record_id and supervisor iteration (Plan 88 step 88.1.8: one
+ExecutionRecord spans every iteration of a run). If present, returns a
+cached decision without re-evaluating.
 """
 
 from __future__ import annotations
@@ -85,6 +86,7 @@ class AutonomousPostRunReviewer:
     async def review(self, context: GateContext) -> GateDecision:
         """Evaluate the 8-branch decision matrix. First match wins."""
         self._mission_id = context.mission_id
+        self._iteration = context.supervisor_iteration_count
 
         # ── Manual gate mode (Plan 80g) ─────────────────────────────
         # When the mission's gate_mode is GateMode.MANUAL, defer the supervisor
@@ -107,7 +109,9 @@ class AutonomousPostRunReviewer:
 
         # ── §4.6a Idempotency check ─────────────────────────────────
         if execution_record_id:
-            cached = await self._get_cached_decision(execution_record_id)
+            cached = await self._get_cached_decision(
+                execution_record_id, context.supervisor_iteration_count
+            )
             if cached is not None:
                 logger.info(
                     "Post-run reviewer: returning cached decision",
@@ -253,6 +257,7 @@ class AutonomousPostRunReviewer:
                 "reviewer": "config:rule_engine",
                 "rule": rule,
                 "model_metadata": None,
+                "iteration": self._iteration,
             },
         )
 
@@ -316,8 +321,9 @@ class AutonomousPostRunReviewer:
     async def _get_cached_decision(
         self,
         execution_record_id: str,
+        iteration: int,
     ) -> GateDecision | None:
-        """Check for an existing post_run_supervisor decision.
+        """Check for an existing post_run_supervisor decision for this iteration.
 
         If found, reconstruct the GateDecision from the audit row's
         reasoning field (see ``decision_reasoning`` for the format).
@@ -325,6 +331,7 @@ class AutonomousPostRunReviewer:
         row = await ExecutionPersistenceService(self._session).get_cached_decision_by_type(
             execution_record_id,
             "post_run_supervisor",
+            iteration=iteration,
         )
         if row is None:
             return None
@@ -437,6 +444,7 @@ class AutonomousPostRunReviewer:
                     "reviewer": f"ai:{model_name}",
                     "rule": 8,
                     "model_metadata": model_metadata,
+                    "iteration": context.supervisor_iteration_count,
                 },
             )
 

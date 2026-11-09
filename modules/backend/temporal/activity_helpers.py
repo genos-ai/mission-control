@@ -5,9 +5,35 @@ Keeps activity modules thin by extracting common patterns
 (error emission, session creation, etc.) into one place.
 """
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from temporalio import activity
+
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def heartbeat_every(interval_seconds: int, phase: str) -> AsyncIterator[None]:
+    """Heartbeat {"phase": phase} every interval_seconds while the block runs.
+
+    Callers read the interval from
+    temporal.mission_run.task_heartbeat_interval_seconds; workflows never read config.
+    """
+
+    async def _beat() -> None:
+        while True:
+            activity.heartbeat({"phase": phase})
+            await asyncio.sleep(interval_seconds)
+
+    beat = asyncio.create_task(_beat())
+    try:
+        yield
+    finally:
+        beat.cancel()
 
 
 async def emit_activity_error(

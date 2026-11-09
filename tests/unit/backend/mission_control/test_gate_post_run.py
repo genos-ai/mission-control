@@ -398,7 +398,7 @@ class TestCachedDecision:
     @pytest.mark.asyncio
     async def test_no_cached_row_returns_none(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        result = await reviewer._get_cached_decision("00000000-0000-0000-0000-000000000000")
+        result = await reviewer._get_cached_decision("00000000-0000-0000-0000-000000000000", 0)
         assert result is None
 
     @pytest.mark.asyncio
@@ -444,6 +444,7 @@ class TestCachedDecision:
                 "reviewer": "config:rule_engine",
                 "rule": 5,
                 "model_metadata": None,
+                "iteration": 0,
             }
         )
         row = ExecutionDecision(
@@ -456,7 +457,7 @@ class TestCachedDecision:
         await db_session.flush()
 
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        cached = await reviewer._get_cached_decision(record_id)
+        cached = await reviewer._get_cached_decision(record_id, 0)
 
         assert cached is not None
         assert cached.action == GateAction.ADVANCE_APPROVED
@@ -466,7 +467,7 @@ class TestCachedDecision:
         assert cached.rule == 5
 
     @pytest.mark.asyncio
-    async def test_malformed_meta_falls_back_to_escalate(
+    async def test_unknown_action_falls_back_to_escalate(
         self,
         db_session: AsyncSession,
     ):
@@ -504,17 +505,66 @@ class TestCachedDecision:
             execution_record_id=record_id,
             decision_type=DecisionType.POST_RUN_SUPERVISOR.value,
             task_id=None,
-            reasoning="Some reason\n__META__{invalid json!!!}",
+            reasoning='Some reason\n__META__{"action": "not-an-action", "iteration": 0}',
         )
         db_session.add(row)
         await db_session.flush()
 
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        cached = await reviewer._get_cached_decision(record_id)
+        cached = await reviewer._get_cached_decision(record_id, 0)
 
         assert cached is not None
         assert cached.action == GateAction.ESCALATE
         assert cached.reason == "Some reason"
+
+    @pytest.mark.asyncio
+    async def test_cache_scoped_to_iteration(self, db_session: AsyncSession):
+        """One ExecutionRecord spans a run: iteration 1's decision is not replayed for 2."""
+        from modules.backend.core.utils import utc_now
+        from modules.backend.models.execution_record import (
+            ExecutionRecord,
+            ExecutionRecordStatus,
+        )
+        from modules.backend.models.session import Session, SessionStatus
+
+        session = Session(
+            status=SessionStatus.ACTIVE.value,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cost_usd=0.0,
+            last_activity_at=utc_now(),
+            session_metadata={},
+        )
+        db_session.add(session)
+        await db_session.flush()
+        record_id = str(uuid.uuid4())
+        db_session.add(
+            ExecutionRecord(
+                id=record_id,
+                session_id=session.id,
+                status=ExecutionRecordStatus.RUNNING.value,
+            )
+        )
+        await db_session.flush()
+
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
+        first = await reviewer.review(
+            _context(proposed=2, supervisor_iteration_count=1, execution_record_id=record_id)
+        )
+        await db_session.flush()
+        assert first.action == GateAction.ADVANCE_APPROVED
+
+        assert await reviewer._get_cached_decision(record_id, 1) is not None
+        assert await reviewer._get_cached_decision(record_id, 2) is None
+
+        second = await reviewer.review(
+            _context(
+                supervisor_iteration_count=2,
+                max_supervisor_iterations=2,
+                execution_record_id=record_id,
+            )
+        )
+        assert (second.action, second.rule) == (GateAction.ESCALATE, 2)
 
 
 # ---------------------------------------------------------------------------

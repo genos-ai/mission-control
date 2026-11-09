@@ -26,7 +26,7 @@ Checks:
   [J] Budget headroom breaker: insufficient headroom → ESCALATE
   [K] Idempotency: second call returns cached decision
   [L] Gate mode interaction: interactive never auto-advances
-  [M] Event types: MissionPlanRunCompletedEvent + SupervisorDecisionEmittedEvent registered
+  [M] Event types: SupervisorDecisionEmittedEvent registered
   [N] Schema: execution_records has completed_task_count + failed_task_count
   [O] Schema: mission_plans has supervisor_iteration_count + max_supervisor_iterations
 
@@ -409,7 +409,6 @@ class AutonomyLoopVerifier:
 
         missing = []
         for evt in [
-            "mission_plan.run.completed",
             "mission_plan.supervisor_decision",
             "session.followup.fired",
         ]:
@@ -418,9 +417,7 @@ class AutonomyLoopVerifier:
         if missing:
             self._fail("Event types registered", f"missing: {missing}")
             return
-        self._pass(
-            "Event types: run.completed + supervisor_decision + followup.fired all registered"
-        )
+        self._pass("Event types: supervisor_decision + followup.fired registered")
 
     async def check_schema_execution_records(self) -> None:
         """[N] execution_records has completed_task_count + failed_task_count columns."""

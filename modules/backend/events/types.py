@@ -558,31 +558,6 @@ class SystemSessionCreatedEvent(SessionEvent):
     goal: str = ""
 
 
-class MissionPlanRunCompletedEvent(SessionEvent):
-    """A plan-dispatched run just completed (Plan 51 Phase C).
-
-    Emitted by ``MissionPlanService.dispatch_approved`` after write-back
-    and cost update. Carries the counts needed by the stall breaker and
-    the ``session_id`` needed by the followup service to identify which
-    session to wake the Director into.
-
-    This is the trigger event the supervisor's ``session_followups`` row
-    subscribes to — ``SessionFollowupService.fire_matching(event)`` is
-    called in-process immediately after emission.
-    """
-
-    event_type: str = "mission_plan.run.completed"
-    mission_id: str = ""
-    plan_id: str = ""
-    execution_record_id: str = ""
-    run_status: str = ""
-    run_cost_usd: float = 0.0
-    completed_task_count: int = 0
-    failure_reason: str = ""
-    failed_task_count: int = 0
-    total_spent_usd: float = 0.0
-
-
 class SupervisorDecisionEmittedEvent(SessionEvent):
     """The post-run supervisor just made a decision (Plan 51 Phase E).
 
@@ -838,7 +813,6 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "system.execution.completed": SystemExecutionCompletedEvent,
     "system.budget.warning": SystemBudgetWarningEvent,
     "system.session.created": SystemSessionCreatedEvent,
-    "mission_plan.run.completed": MissionPlanRunCompletedEvent,
     "mission_plan.supervisor_decision": SupervisorDecisionEmittedEvent,
     "knowledge.intent.revised": MissionIntentRevisedEvent,
     "knowledge.learning.extracted": MissionLearningExtractedEvent,

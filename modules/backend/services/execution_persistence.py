@@ -420,16 +420,21 @@ class ExecutionPersistenceService(BaseService):
         self,
         execution_record_id: str,
         decision_type: str,
+        *,
+        iteration: int,
     ) -> ExecutionDecision | None:
-        """Return the first decision of a given type for an execution, if any.
+        """Return the first decision of a given type recorded for this iteration, if any.
 
-        Used by idempotency checks (e.g. the post-run gate reviewer) that
-        need to know whether a decision of a specific type was already
-        recorded for this execution.
+        Used by idempotency checks (e.g. the post-run gate reviewer). One
+        ExecutionRecord spans every iteration of a mission run, so a decision
+        matches only when its decoded reasoning meta has iteration == iteration.
         """
         decisions = await self.get_decisions(execution_record_id)
         for decision in decisions:
-            if decision.decision_type == DecisionType(decision_type):
+            if decision.decision_type != DecisionType(decision_type):
+                continue
+            _, meta = decode_decision_reasoning(decision.reasoning or "")
+            if meta.get("iteration") == iteration:
                 return decision
         return None
 

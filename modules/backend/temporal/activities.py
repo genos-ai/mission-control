@@ -12,11 +12,9 @@ from temporalio import activity
 
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.execution_outcome import ExecutionOutcome
-from modules.backend.temporal.models import (
-    MissionExecutionResult,
-    MissionWorkflowInput,
-    NotificationPayload,
-)
+from modules.backend.temporal.activity_helpers import heartbeat_every
+from modules.backend.temporal.mission_run_models import ExecuteWaveInput
+from modules.backend.temporal.models import MissionExecutionResult, NotificationPayload
 
 logger = get_logger(__name__)
 
@@ -47,85 +45,53 @@ def _format_activity_error(exc: Exception) -> str:
 
 
 @activity.defn
-async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult:
-    """Execute approved plan tasks via dispatch_approved().
+async def execute_mission(input: ExecuteWaveInput) -> MissionExecutionResult:
+    """Execute the run's approved tasks as one wave via dispatch_approved().
 
-    Uses MissionPlanService.dispatch_approved() which:
-    1. Collects approved task_ids from plan_task_states
-    2. Derives the subset TaskPlan
-    3. Marks tasks as queued
-    4. Calls handle_mission(precomputed_plan=...)
-    5. Writes back task states (completed/failed) after execution
-    6. Updates plan cost totals
-
-    This ensures plan_task_states stay in sync with execution results.
+    MissionPlanOrchestrator.dispatch_approved() marks the run's approved
+    tasks queued, dispatches them through handle_mission(precomputed_plan=...),
+    writes back task states and updates plan cost totals. begin_mission_run
+    owns the session and the run's ExecutionRecord.
     """
     from redis.asyncio import Redis as AsyncRedis
 
     from modules.backend.core.config import get_app_config, get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
+    from modules.backend.repositories.mission_run import MissionRunRepository
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 
     interval = get_app_config().temporal.mission_run.task_heartbeat_interval_seconds
-
-    async def _beat() -> None:
-        while True:
-            activity.heartbeat({"phase": "dispatch"})
-            await asyncio.sleep(interval)
+    mission_id = ""
 
     activity.logger.info(
         "execute_mission started",
-        extra={
-            "mission_run_id": input.mission_run_id,
-            "mission_id": input.mission_id,
-            "budget": input.mission_budget_usd,
-        },
+        extra={"mission_run_id": input.mission_run_id},
     )
 
     redis = AsyncRedis.from_url(get_redis_url())
-    event_bus = SessionEventBus(redis, mission_id=input.mission_id)
+    event_bus = SessionEventBus(redis)
 
     async with get_async_session() as db:
-        beat = asyncio.create_task(_beat())
         try:
+            run = await MissionRunRepository(db).get_by_id(input.mission_run_id)
+            mission_id = run.mission_id
             # Look up mission owner for audit trail
-            mission = await MissionService(db).get_mission(input.mission_id)
-
-            # Every execution needs a real session (P15). When the daemon
-            # path starts a workflow, session_id is empty — create one here
-            # inside the activity (idempotent on Temporal retry).
-            session_id = input.session_id
-            if not session_id:
-                from modules.backend.schemas.session import SessionCreate
-                from modules.backend.services.session import SessionService
-
-                session_svc = SessionService(db)
-                session = await session_svc.create_session(
-                    SessionCreate(
-                        mission_id=input.mission_id,
-                        agent_id="mission.supervisor.agent",
-                        goal=f"Autonomous dispatch: plan {input.mission_run_id[:12]}",
-                    ),
-                    user_id=mission.owner_id,
-                )
-                session_id = session.id
-                await db.flush()
+            mission = await MissionService(db).get_mission(mission_id)
 
             svc = MissionPlanOrchestrator(db, event_bus=event_bus)
             activity.logger.info(
                 "execute_mission dispatching",
-                extra={"plan_id": input.mission_run_id, "owner": str(mission.owner_id)},
+                extra={"mission_run_id": input.mission_run_id, "owner": str(mission.owner_id)},
             )
-            # Plan 88: no workflow reaches this between 88.1.7 and 88.1.8.
-            # 88.1.8 gives the activity ExecuteWaveInput, which carries the
-            # run's execution_record_id from begin_mission_run.
-            result = await svc.dispatch_approved(
-                input.mission_run_id,
-                mission.owner_id,
-                session_id=session_id,
-            )
+            async with heartbeat_every(interval, "executing"):
+                result = await svc.dispatch_approved(
+                    input.mission_run_id,
+                    mission.owner_id,
+                    session_id=input.session_id,
+                    execution_record_id=input.execution_record_id,
+                )
             await db.commit()
 
             return MissionExecutionResult(
@@ -136,7 +102,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 success_count=len(result.get("updated_task_ids", [])),
                 failed_count=0,
                 execution_record_id=result.get("execution_record_id"),
-                session_id=session_id,
+                session_id=input.session_id,
                 # Use the full serialized ExecutionOutcome if dispatch_approved
                 # provided it; otherwise fall back to the summary dict (older
                 # code paths that don't include the full outcome).
@@ -150,7 +116,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
             # then re-raise so Temporal sees the cancellation.
             activity.logger.warning(
                 "Mission execution cancelled",
-                extra={"mission_run_id": input.mission_run_id, "mission_id": input.mission_id},
+                extra={"mission_run_id": input.mission_run_id, "mission_id": mission_id},
             )
             # Emit error event so it surfaces in the Console
             try:
@@ -159,13 +125,13 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 from modules.backend.events.types import SystemEvent
 
                 await event_bus.publish_to_mission(
-                    input.mission_id,
+                    mission_id,
                     SystemEvent(
                         session_id=uuid.uuid4(),
                         source="mission_execution",
                         level="error",
                         message=f"Mission execution cancelled: {type(e).__name__}",
-                        mission_id=input.mission_id,
+                        mission_id=mission_id,
                     ),
                 )
             except Exception:
@@ -184,7 +150,7 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                     "mission_run_id": input.mission_run_id,
                     "error": clean_msg,
                     "error_type": type(e).__name__,
-                    "mission_id": input.mission_id,
+                    "mission_id": mission_id,
                 },
                 exc_info=True,
             )
@@ -195,13 +161,13 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 from modules.backend.events.types import SystemEvent
 
                 await event_bus.publish_to_mission(
-                    input.mission_id,
+                    mission_id,
                     SystemEvent(
                         session_id=uuid.uuid4(),
                         source="mission_execution",
                         level="error",
                         message=clean_msg,
-                        mission_id=input.mission_id,
+                        mission_id=mission_id,
                     ),
                 )
             except Exception:
@@ -210,7 +176,6 @@ async def execute_mission(input: MissionWorkflowInput) -> MissionExecutionResult
                 )
             raise
         finally:
-            beat.cancel()
             await redis.aclose()
 
 

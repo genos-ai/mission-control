@@ -219,8 +219,9 @@ async def _run_adhoc(
 ) -> None:
     """Execute an ad-hoc objective via the plan path.
 
-    The endpoint starts a RunObjectiveWorkflow via Temporal and returns
-    immediately. Progress is streamed via SSE with polling fallback.
+    Posts to plan/run-objective, which Plan 88 step 88.1.8 deleted; 88.1.13
+    moves this to POST /missions/{id}/runs. Progress is streamed via SSE with
+    polling fallback.
     """
     console = get_console()
 
