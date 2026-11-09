@@ -76,8 +76,8 @@ class TestAuthMiddleware:
         handler.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_allows_all_when_no_authorized_users(self):
-        """Test that all users are allowed when no whitelist is configured."""
+    async def test_empty_allowlist_denies(self):
+        """An empty allowlist denies every user (fail closed, P8)."""
         from modules.clients.telegram.middlewares.auth import AuthMiddleware
 
         middleware = AuthMiddleware()
@@ -94,8 +94,8 @@ class TestAuthMiddleware:
         ):
             result = await middleware(handler, event, {})
 
-        assert result == "result"
-        handler.assert_called_once()
+        assert result is None
+        handler.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_explicit_role_mapping_from_config(self):

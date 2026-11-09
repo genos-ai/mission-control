@@ -74,13 +74,11 @@ class AuthMiddleware(BaseMiddleware):
         authorized_users = app_config.application.telegram.authorized_users
 
         if not authorized_users:
-            logger.debug(
-                "No authorized users configured, allowing all",
+            logger.warning(
+                "Telegram access denied: no authorized users configured (fail closed)",
                 extra={"user_id": user_id},
             )
-            data["user_role"] = "admin"
-            data["telegram_user"] = user
-            return await handler(event, data)
+            return None
 
         if user_id not in authorized_users:
             logger.warning(

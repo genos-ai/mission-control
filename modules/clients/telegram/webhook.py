@@ -46,6 +46,10 @@ def get_webhook_router(bot: "Bot", dp: "Dispatcher") -> APIRouter:
 
     webhook_path = app_config.application.telegram.webhook_path
     webhook_secret = settings.telegram_webhook_secret
+    if not webhook_secret:
+        raise RuntimeError(
+            "TELEGRAM_WEBHOOK_SECRET is required when channel_telegram_enabled is true"
+        )
 
     @router.post(webhook_path)
     async def telegram_webhook(request: Request) -> Response:
@@ -55,14 +59,13 @@ def get_webhook_router(bot: "Bot", dp: "Dispatcher") -> APIRouter:
         Validates the secret token header and processes the update.
         """
         # Validate webhook secret token
-        if webhook_secret:
-            secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-            if not secret_header or not hmac.compare_digest(secret_header, webhook_secret):
-                logger.warning(
-                    "Invalid webhook secret token",
-                    extra={"client_ip": request.client.host if request.client else None},
-                )
-                return Response(status_code=403)
+        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not secret_header or not hmac.compare_digest(secret_header, webhook_secret):
+            logger.warning(
+                "Invalid webhook secret token",
+                extra={"client_ip": request.client.host if request.client else None},
+            )
+            return Response(status_code=403)
 
         try:
             # Parse and process the update
