@@ -29,8 +29,13 @@ class MissionScheduleRepository(BaseRepository[MissionSchedule]):
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def lock(self, schedule_id: str) -> MissionSchedule | None:
-        """SELECT ... FOR UPDATE on the schedule row."""
-        stmt = select(MissionSchedule).where(MissionSchedule.id == schedule_id).with_for_update()
+        """SELECT ... FOR UPDATE on the schedule row, overwriting any stale loaded copy."""
+        stmt = (
+            select(MissionSchedule)
+            .where(MissionSchedule.id == schedule_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def list_by_mission(
@@ -66,3 +71,8 @@ class MissionScheduleRepository(BaseRepository[MissionSchedule]):
             )
         )
         return (await self.session.execute(stmt)).scalar_one()
+
+    async def list_temporal_schedule_ids(self) -> set[str]:
+        """Every row's temporal_schedule_id, archived rows included (orphan sweep)."""
+        stmt = select(MissionSchedule.temporal_schedule_id)
+        return set((await self.session.execute(stmt)).scalars().all())

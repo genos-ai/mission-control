@@ -13,32 +13,20 @@ for type-safe deserialization.
 """
 
 import uuid
-from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from modules.backend.core.logging import get_logger
-from modules.backend.core.utils import utc_now
+from modules.backend.events.base import SessionEvent
+from modules.backend.events.mission_run_types import (
+    MissionRunCreatedEvent,
+    MissionRunOccurrenceRecordedEvent,
+    MissionRunStatusChangedEvent,
+    MissionScheduleChangedEvent,
+    MissionScheduleSyncFailedEvent,
+)
 
 logger = get_logger(__name__)
-
-
-# =============================================================================
-# Base
-# =============================================================================
-
-
-class SessionEvent(BaseModel):
-    """Base class for all session lifecycle events."""
-
-    event_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    event_type: str
-    session_id: uuid.UUID
-    timestamp: datetime = Field(default_factory=utc_now)
-    source: str
-    correlation_id: str | None = None
-    trace_id: str | None = None
-    metadata: dict = Field(default_factory=dict)
 
 
 # =============================================================================
@@ -882,6 +870,12 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "research.synthesizing": ResearchSynthesizingEvent,
     "research.completed": ResearchCompletedEvent,
     "research.failed": ResearchFailedEvent,
+    # Mission runs and schedules (Plan 88)
+    "mission_run.created": MissionRunCreatedEvent,
+    "mission_run.status_changed": MissionRunStatusChangedEvent,
+    "mission_run.occurrence_recorded": MissionRunOccurrenceRecordedEvent,
+    "mission_schedule.changed": MissionScheduleChangedEvent,
+    "mission_schedule.sync_failed": MissionScheduleSyncFailedEvent,
 }
 
 

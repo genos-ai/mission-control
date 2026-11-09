@@ -1,4 +1,4 @@
-"""Fixtures for repository integration tests: committed missions for multi-session tests."""
+"""Backend integration fixtures: committed missions for multi-session tests."""
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from uuid import uuid7
@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from modules.backend.core import security
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
+from modules.backend.models.mission_run import MissionRun
+from modules.backend.models.mission_schedule import MissionSchedule
 from modules.backend.models.user import User
+from modules.backend.models.workflow_definition import WorkflowDefinition
 
 
 @pytest.fixture
@@ -57,6 +60,9 @@ async def committed_owner(
 
     async with db_session_factory() as session:
         if missions:
+            # Runs and schedules hold RESTRICT FKs to workflow definitions; remove them first.
+            for model in (MissionRun, MissionSchedule, WorkflowDefinition):
+                await session.execute(delete(model).where(model.mission_id.in_(missions)))
             await session.execute(delete(Mission).where(Mission.id.in_(missions)))
         if users:
             await session.execute(delete(User).where(User.id.in_(users)))

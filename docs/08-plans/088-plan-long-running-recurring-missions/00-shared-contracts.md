@@ -1519,7 +1519,13 @@ run_tests_timeout_seconds: 900   # wall-clock limit for one run_tests call insid
 
 ```text
 # services/mission_schedule.py  (88.1.6; replaces services/workflow_schedule.py)
+# Validation and the Temporal spec/Schedule builders live in services/mission_schedule_checks.py,
+# claim_occurrence in services/mission_schedule_claim.py (88.1.6; each file at most 500 lines).
 class MissionScheduleService(BaseService):
+    def __init__(self, session: AsyncSession, gateway: TemporalScheduleGateway, event_bus: EventBusProtocol)
+        # 88.1.6: both required, the RunReconciliationService pattern; callers build them
+        # (TemporalScheduleGateway.create(), SessionEventBus). Later steps that write
+        # MissionScheduleService(session) pass all three.
     async def create_schedule(self, mission_id: str, data: MissionScheduleCreate, user_id: str) -> MissionSchedule
         # step 0, before any DB access: gateway.validate_spec(spec, window=timedelta(days=8));
         # loads workflow_definition_id scoped to mission_id (closes the create IDOR at missions_workflows.py:648-681)
@@ -1537,6 +1543,16 @@ class MissionScheduleService(BaseService):
     async def sync_mission(self, mission_id: str) -> ScheduleSyncStats
     async def sync_all(self) -> ScheduleSyncStats            # reconciler; completes END_DATE_REACHED from 88.4.7
     async def claim_occurrence(self, schedule_id: str, scheduled_for: datetime) -> OccurrenceClaim   # 3.3.2
+        # commits its own transaction, then emits events (88.1.6)
+
+# schemas/mission_schedule.py  (88.1.6)
+@dataclass
+class OccurrenceClaim:
+    outcome: str                                  # "run", "skipped", "missed" or "duplicate"
+    run: MissionRun | None                        # this slot's row; the existing row for "duplicate"
+    run_input: MissionRunWorkflowInput | None     # RUN, or "duplicate" whose row is still PENDING
+    notifications: list[NotificationRequest]      # RUN_MISSED (payload count), RUN_SKIPPED (payload reason)
+    recorded: list[MissionRun]                    # every SKIPPED or MISSED row this claim inserted
 
 # temporal/schedule_gateway.py  (88.1.5; the only module, besides temporal/system_schedules.py, that touches Temporal Schedule APIs)
 class TemporalScheduleGateway:
@@ -1800,7 +1816,7 @@ def build_retention_input(config: AppConfig) -> RetentionInput   # the only plac
 | Repository | Required methods beyond `BaseRepository` | Step |
 |---|---|---|
 | `MissionRunRepository` | `get_active_for_mission(mission_id)`, `get_latest_with_digest(mission_id)`, `get_by_sequence(mission_id, seq)`, `get_for_mission(mission_id, run_id)`, `get_by_slot(schedule_id, scheduled_for)`, `insert_occurrence(...)` (ON CONFLICT on the slot DO NOTHING RETURNING), `list_active_older_than(cutoff)` | 88.1.4 |
-| `MissionScheduleRepository` | `get_for_mission(mission_id, schedule_id)`, `lock(schedule_id)`, `list_by_mission(mission_id, include_archived)`, `list_syncable()` | 88.1.4 |
+| `MissionScheduleRepository` | `get_for_mission(mission_id, schedule_id)`, `lock(schedule_id)` (with `populate_existing`, 88.1.6), `list_by_mission(mission_id, include_archived)`, `list_syncable()`; 88.1.6 adds `list_temporal_schedule_ids() -> set[str]` for the orphan sweep | 88.1.4, 88.1.6 |
 | `MissionRunDigestRepository` | `get_by_run(run_id)` | 88.1.4 |
 | `UserChannelIdentityRepository` | `get_by_external(channel, external_id, *, verified_only: bool)`, `get_by_user(user_id, channel, *, verified_only: bool)`, `list_by_user(user_id)` | 88.4.3 |
 | `ActionTokenRepository` | `consume(token_hash, ref, now)`, `consume_siblings(gate_request_id, now)` | 88.4.3 |
