@@ -168,7 +168,7 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
   - per-task routing into four forks: convergence loop `:260-286`, research loop `:288-325`, `workflow:` tasks `:327-344` and standard agents `:346-391`;
   - upstream resolution through `resolve_upstream_inputs`;
   - context injection through `_inject_context` (`:762-794`);
-  - the in-process approval wait `wait_until_approved` (`:406-416`);
+  - the approval wait `wait_until_approved`, which polls the task row (88.0.13a);
   - parallel execution with `asyncio.gather` (`:418`);
   - MCD write-back through `context_curator.apply_task_updates` (`:437-451`);
   - the `post_layer` gate (`:458-482`).

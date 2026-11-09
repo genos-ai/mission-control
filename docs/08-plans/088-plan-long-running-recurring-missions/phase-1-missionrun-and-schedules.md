@@ -1068,8 +1068,8 @@ Other repositories:
 
 | # | Where | Today | Change |
 |---|---|---|---|
-| 1 | `POST /missions/{id}/plan/tasks/{task_id}/approve` (`missions_plan.py:352-397`) | approves, then `notify_approved` | after `notify_approved`: `await MissionRunService(db, event_bus).on_tasks_approved(mission_id, [t.id for t in transitioned], current_user.id)` |
-| 2 | `POST /missions/{id}/plan/tasks/{task_id}/retry` (`missions_plan.py:435-475`) | FAILED to APPROVED, then `notify_approved` | after `notify_approved`: `on_tasks_approved(mission_id, [task.id], current_user.id)` |
+| 1 | `POST /missions/{id}/plan/tasks/{task_id}/approve` (`missions_plan.py:352-397`) | approves (a waiting dispatcher polls the task row, 88.0.13a) | after the approval commits: `await MissionRunService(db, event_bus).on_tasks_approved(mission_id, [t.id for t in transitioned], current_user.id)` |
+| 2 | `POST /missions/{id}/plan/tasks/{task_id}/retry` (`missions_plan.py:435-475`) | FAILED to APPROVED | after the retry commits: `on_tasks_approved(mission_id, [task.id], current_user.id)` |
 | 3 | Director tool `approve_plan_tasks` (`approve_plan_tasks.py:144-156`) | `_approve_each`, then commit | after the commit at `:156`: `on_tasks_approved(mission_id, _dedupe_preserving_order(transitioned), mission.owner_id)` |
 | 4 | `execute_plan_refine` activity (`plan_refine_activities.py:62-80`) | auto-approves when `refined.gate_mode == GateMode.AUTONOMOUS` (88.0.5, 88.1.0), then commits | after `db.commit()`, when `approved_ids` is not empty: `on_tasks_approved(input.mission_id, approved_ids, mission.owner_id)` |
 | 5 | `POST /missions/{id}/plan/dispatch` (`missions_plan.py:269-307`) | `dispatch_autonomous` | `run = await MissionRunService(db, event_bus).start_run(mission_id, trigger=MissionRunTrigger.MANUAL, objective=None, user_id=current_user.id, session_id=None)`; response `MissionRunResponse`; auth `require_mission_operator`. Delete `DispatchApprovedResponse` from `schemas/mission_plan.py` |

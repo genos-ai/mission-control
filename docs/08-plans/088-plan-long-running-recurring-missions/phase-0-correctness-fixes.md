@@ -1050,6 +1050,8 @@ Auto-approval after refine is AUTONOMOUS-only at `plan_refine_activities.py` and
 
 ### 88.0.12 Cron evaluation without croniter raises instead of firing hourly
 
+**Skipped by owner decision 2026-11-08:** Phase 1 step 88.1.3 deletes this code.
+
 **Files**
 - modify `modules/backend/services/workflow_schedule.py`
 - modify `tests/unit/backend/services/test_workflow_schedule.py`
@@ -1139,7 +1141,13 @@ Do **not** add croniter as a dependency, because Phase 1 (88.1.3) deletes this p
   - `test_review_returns_decision_written_by_another_session`: a concurrent task records the decision through a separate session after 1s; `review` returns that action.
   - `test_review_times_out_to_abort`.
 
-**Done when:** `npm run build` and `npm run lint` in `modules/frontend` pass, `grep -rn --exclude-dir=migrations "fire_decision\|_PENDING" modules/backend` is empty, and the tests pass.
+**Done when:** `npm run build` and `npm run lint` in `modules/frontend` pass, `grep -rn --exclude-dir=migrations "fire_decision\|_PENDING\|notify_approved" modules/backend` is empty, and the tests pass.
+
+---
+
+### 88.0.13a Task approval wait polls the task row across processes
+
+Added by owner decision 2026-11-09 (commit `81a1c2e3`). `task_approval.py` had the same process-local `asyncio.Event` registry that 88.0.13 removed from `gate_manual.py`, so an approval posted to the API never woke a task waiting in the worker. `wait_until_approved` now polls the task row every `gate.manual.poll_interval_seconds` up to `gate.manual.timeout_seconds` (now a required schema field), and raises `TaskApprovalCancelled` if the task is cancelled mid-wait. `_PENDING`, `_LOCK` and `notify_approved` are deleted, with their calls in the approve and retry endpoints.
 
 ---
 
@@ -1215,7 +1223,7 @@ grep -rnE --exclude-dir=migrations 'or "autonomous"|gate_mode or |defaulting to 
 grep -rn "submit-approval\|agent.approval.requested" modules/frontend/src
 grep -rn --exclude-dir=migrations "workflows/missions" modules
 grep -n "hours=1" modules/backend/services/workflow_schedule.py
-grep -rn --exclude-dir=migrations "fire_decision\|_PENDING" modules/backend
+grep -rn --exclude-dir=migrations "fire_decision\|_PENDING\|notify_approved" modules/backend
 grep -n "allowing all" modules/clients/telegram/middlewares/auth.py
 
 # 4. CLI surfaces still introspect
