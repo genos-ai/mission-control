@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.services.mission_team import MissionTeamService
 from tests.conftest import TEST_USER_ID
@@ -22,6 +23,7 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
     )
     db_session.add(mission)
     await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
 
     member = MissionMember(
         mission_id=mission.id,

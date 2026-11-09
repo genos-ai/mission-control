@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
 from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
 from tests.conftest import TEST_MISSION_ID, TEST_USER_ID, TEST_USER_ID_2
 
@@ -79,6 +80,8 @@ async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
     )
     mission = await db_session.merge(mission)
     await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    await db_session.flush()
     return mission
 
 
@@ -96,5 +99,7 @@ async def archived_mission(db_session: AsyncSession, regular_user: User) -> Miss
         status=MissionStatus.ARCHIVED,
     )
     mission = await db_session.merge(mission)
+    await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
     await db_session.flush()
     return mission

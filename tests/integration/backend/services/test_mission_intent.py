@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
 from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
 from modules.backend.services.mission_intent import MissionIntentService
 
@@ -46,6 +47,8 @@ async def mission(db_session: AsyncSession, user: User) -> Mission:
         status=MissionStatus.ACTIVE,
     )
     db_session.add(m)
+    await db_session.flush()
+    db_session.add(MissionPlan(mission_id=m.id, gate_mode=GateMode.MANUAL))
     await db_session.flush()
     return m
 

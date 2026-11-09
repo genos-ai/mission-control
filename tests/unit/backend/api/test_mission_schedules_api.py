@@ -26,6 +26,7 @@ from modules.backend.core import security
 from modules.backend.core.exception_handlers import register_exception_handlers
 from modules.backend.core.exceptions import AuthorizationError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.models.workflow_schedule import WorkflowSchedule
@@ -238,6 +239,7 @@ async def _mission_with_schedule(db_session, owner: User) -> tuple[Mission, Work
     )
     db_session.add(mission)
     await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
     wf = WorkflowDefinition(
         mission_id=mission.id,
         name="p88-sched-workflow",

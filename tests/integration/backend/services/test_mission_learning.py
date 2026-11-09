@@ -21,6 +21,7 @@ from modules.backend.models.execution_record import (
 )
 from modules.backend.models.mission import Mission, MissionStatus
 from modules.backend.models.mission_learning import LearningKind
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.session import Session
 from modules.backend.models.user import User
 from modules.backend.services.mission_learning import (
@@ -64,6 +65,8 @@ async def mission(db_session: AsyncSession, user: User) -> Mission:
         status=MissionStatus.ACTIVE,
     )
     db_session.add(m)
+    await db_session.flush()
+    db_session.add(MissionPlan(mission_id=m.id, gate_mode=GateMode.MANUAL))
     await db_session.flush()
     return m
 

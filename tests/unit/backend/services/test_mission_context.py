@@ -54,6 +54,7 @@ _MISSION_TAGS = [
 async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Mission rows that MissionContext.mission_id FKs to."""
     from modules.backend.models.mission import Mission
+    from modules.backend.models.mission_plan import GateMode, MissionPlan
 
     for tag in _MISSION_TAGS:
         db_session.add(
@@ -64,6 +65,9 @@ async def _ensure_parent_rows(test_user, db_session: AsyncSession):
                 owner_id=TEST_USER_ID,
             )
         )
+    await db_session.flush()
+    for tag in _MISSION_TAGS:
+        db_session.add(MissionPlan(mission_id=_MID(tag), gate_mode=GateMode.MANUAL))
     await db_session.flush()
 
 

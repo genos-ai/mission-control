@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.services.context_curator import ContextCurator
 from modules.backend.services.mission_context import MissionContextManager, _cache
 from tests.conftest import TEST_USER_ID
@@ -59,6 +60,9 @@ async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     """Create Mission rows that MissionContext.mission_id FKs to."""
     for mid in _MISSION_SLUGS:
         db_session.add(Mission(id=mid, name=mid, description="test", owner_id=TEST_USER_ID))
+    await db_session.flush()
+    for mid in _MISSION_SLUGS:
+        db_session.add(MissionPlan(mission_id=mid, gate_mode=GateMode.MANUAL))
     await db_session.flush()
 
 

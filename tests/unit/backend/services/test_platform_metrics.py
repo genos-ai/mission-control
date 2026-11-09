@@ -12,6 +12,7 @@ from modules.backend.models.execution_record import (
     TaskExecutionStatus,
 )
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.session import Session, SessionStatus
 from modules.backend.services.platform_metrics import PlatformMetricsService
 from tests.conftest import TEST_USER_ID
@@ -37,6 +38,7 @@ async def _seed_mission(db: AsyncSession) -> Mission:
     )
     db.add(m)
     await db.flush()
+    db.add(MissionPlan(mission_id=m.id, gate_mode=GateMode.MANUAL))
     member = MissionMember(
         mission_id=m.id,
         user_id=TEST_USER_ID,

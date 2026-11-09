@@ -199,6 +199,7 @@ class TestCancelExecutionOperatorRule:
             MissionMemberRole,
             MissionStatus,
         )
+        from modules.backend.models.mission_plan import GateMode, MissionPlan
         from modules.backend.models.user import User
 
         viewer = User(
@@ -218,6 +219,7 @@ class TestCancelExecutionOperatorRule:
         )
         db_session.add_all([viewer, mission])
         await db_session.flush()
+        db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
         record = ExecutionRecord(mission_id=mission.id, status=ExecutionRecordStatus.RUNNING)
         db_session.add_all(
             [

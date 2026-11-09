@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.exceptions import ExternalServiceError, NotFoundError
 from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
 from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.services.execution_cancellation import ExecutionCancellationService
 from modules.backend.temporal.workflow_gateway import WorkflowState
@@ -34,6 +35,8 @@ async def _mission(db_session: AsyncSession, owner_id: str) -> Mission:
         status=MissionStatus.ACTIVE,
     )
     db_session.add(mission)
+    await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
     await db_session.flush()
     return mission
 

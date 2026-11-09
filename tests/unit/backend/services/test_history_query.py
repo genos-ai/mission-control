@@ -21,6 +21,7 @@ from modules.backend.models.execution_record import (
     TaskExecutionStatus,
 )
 from modules.backend.models.mission import Mission
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.session import Session, SessionStatus
 from modules.backend.services.history_query import HistoryQueryService
 from tests.conftest import TEST_USER_ID
@@ -77,6 +78,9 @@ async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     db_session.add(Session(id=_SESS_HIST, status=SessionStatus.ACTIVE))
     for slug in _MISSION_SLUGS:
         db_session.add(Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID))
+    await db_session.flush()
+    for slug in _MISSION_SLUGS:
+        db_session.add(MissionPlan(mission_id=_MID(slug), gate_mode=GateMode.MANUAL))
     await db_session.flush()
 
 

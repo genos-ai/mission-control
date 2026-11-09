@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config_schema import WorkflowsSchema
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.services.workflow_schedule import WorkflowScheduleService, _validate_cron
 from tests.conftest import TEST_USER_ID
@@ -32,6 +33,7 @@ async def _seed_mission(db_session: AsyncSession, name: str = "schedule-test") -
     )
     db_session.add(mission)
     await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
 
     member = MissionMember(
         mission_id=mission.id,

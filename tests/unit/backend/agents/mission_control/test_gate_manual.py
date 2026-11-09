@@ -23,6 +23,7 @@ from modules.backend.agents.mission_control.gate_manual import ManualGateReviewe
 from modules.backend.core import security
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
 from modules.backend.schemas.gate import GateAction, GateContext
 from modules.backend.services.mission_plan import MissionPlanService
@@ -136,6 +137,8 @@ async def committed_mission(db_session_factory):
         session.add(user)
         await session.flush()
         session.add(mission)
+        await session.flush()
+        session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
         await session.commit()
     yield mission.id, user.id
     async with db_session_factory() as session:

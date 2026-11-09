@@ -24,6 +24,7 @@ from modules.backend.core.exception_handlers import register_exception_handlers
 from modules.backend.core.utils import utc_now
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.user import User
 
 _FRONTEND_SRC = find_project_root() / "modules" / "frontend" / "src"
@@ -89,6 +90,7 @@ async def _mission_with_gate(
     )
     db_session.add(mission)
     await db_session.flush()
+    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
     gate = GateRequest(
         id=str(uuid4()),
         mission_id=mission.id,

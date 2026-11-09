@@ -19,6 +19,7 @@ from modules.backend.models.execution_record import (
 )
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_history import DecisionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.session import Session, SessionStatus
 from modules.backend.repositories.mission_history import (
     MilestoneSummaryRepository,
@@ -93,6 +94,9 @@ async def _ensure_parent_rows(test_user, db_session: AsyncSession):
     db_session.add(Session(id=_SESS_SUMM, status=SessionStatus.ACTIVE))
     for slug in _MISSION_SLUGS:
         db_session.add(Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID))
+    await db_session.flush()
+    for slug in _MISSION_SLUGS:
+        db_session.add(MissionPlan(mission_id=_MID(slug), gate_mode=GateMode.MANUAL))
     await db_session.flush()
 
 
