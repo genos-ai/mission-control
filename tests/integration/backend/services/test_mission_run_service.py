@@ -36,7 +36,8 @@ from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.mission_run import RUN_SUCCEEDED, MissionRunService
-from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+from modules.backend.temporal.mission_run_models import TasksApprovedSignal
+from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 from tests.integration.backend.services.test_mission_schedule_service import RecordingBus
 
@@ -576,3 +577,83 @@ async def test_approval_racing_finalise_starts_next_run(db_session_factory, gate
     assert following.sequence == run.sequence + 1
     assert following.status == MissionRunStatus.PENDING
     assert following.objective is None
+
+
+# ── on_tasks_approved (88.1.9) ────────────────────────────────────────────
+
+
+async def _runs(factory: Factory, mission: Mission) -> list[MissionRun]:
+    async with factory() as session:
+        result = await session.scalars(
+            select(MissionRun).where(MissionRun.mission_id == mission.id)
+        )
+        return list(result)
+
+
+async def test_on_tasks_approved_signals_active_run(db_session_factory, gateway, owner) -> None:
+    user, mission, plan = await owner()
+    run = await _start(db_session_factory, mission, user)
+    task_id = await _task(db_session_factory, plan, TaskStatus.APPROVED)
+    gateway.signal.return_value = WorkflowState.RUNNING
+
+    async with db_session_factory() as session:
+        await _svc(session).on_tasks_approved(mission.id, [task_id], user.id)
+
+    gateway.signal.assert_awaited_once_with(
+        run.temporal_workflow_id, "tasks_approved", TasksApprovedSignal(task_ids=[task_id])
+    )
+    gateway.start_mission_run.assert_awaited_once()
+
+
+async def test_on_tasks_approved_starts_run_when_autonomous_and_idle(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, plan = await owner()
+    await _set_gate_mode(db_session_factory, plan, "AUTONOMOUS")
+    task_id = await _task(db_session_factory, plan, TaskStatus.APPROVED)
+
+    async with db_session_factory() as session:
+        await _svc(session).on_tasks_approved(mission.id, [task_id], user.id)
+
+    gateway.signal.assert_not_awaited()
+    gateway.start_mission_run.assert_awaited_once()
+    (inp,) = gateway.start_mission_run.await_args.args
+    started = await _run(db_session_factory, inp.mission_run_id)
+    assert started.mission_id == mission.id
+    assert started.trigger == MissionRunTrigger.MANUAL
+    assert started.triggered_by_user_id == user.id
+    assert started.objective is None
+
+
+async def test_on_tasks_approved_noop_when_manual_and_idle(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, plan = await owner()
+    task_id = await _task(db_session_factory, plan, TaskStatus.APPROVED)
+
+    async with db_session_factory() as session:
+        await _svc(session).on_tasks_approved(mission.id, [task_id], user.id)
+
+    gateway.signal.assert_not_awaited()
+    gateway.start_mission_run.assert_not_awaited()
+    assert await _runs(db_session_factory, mission) == []
+
+
+async def test_on_tasks_approved_signal_not_found_logs_and_returns(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, plan = await owner()
+    await _set_gate_mode(db_session_factory, plan, "AUTONOMOUS")
+    run = await _start(db_session_factory, mission, user)
+    task_id = await _task(db_session_factory, plan, TaskStatus.APPROVED)
+    gateway.signal.return_value = WorkflowState.NOT_FOUND
+
+    async with db_session_factory() as session:
+        svc = _svc(session)
+        svc._logger = MagicMock()
+        await svc.on_tasks_approved(mission.id, [task_id], user.id)
+
+    svc._logger.warning.assert_called_once()
+    assert svc._logger.warning.call_args.kwargs["extra"]["run_id"] == run.id
+    gateway.start_mission_run.assert_awaited_once()
+    assert [r.id for r in await _runs(db_session_factory, mission)] == [run.id]

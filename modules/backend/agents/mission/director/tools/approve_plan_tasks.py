@@ -8,7 +8,7 @@ gate mode permits it.
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import RunContext
 
@@ -111,6 +111,7 @@ async def approve_plan_tasks(
     session_id: str | None,
     task_ids: list[str],
     reason: str,
+    event_bus: Any,
 ) -> dict:
     """Approve plan tasks on the mission owner's behalf.
 
@@ -120,6 +121,7 @@ async def approve_plan_tasks(
         session_id: Transport session, used to schedule the followup (P15).
         task_ids: Tasks to approve. Unknown or non-proposed ids are skipped.
         reason: Why these tasks are being approved. 1 to 500 characters.
+        event_bus: Event bus for the run that the approval starts or wakes.
 
     Returns:
         The plan id, gate mode, requested and transitioned task ids, and a
@@ -131,6 +133,7 @@ async def approve_plan_tasks(
     """
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.services.mission_run import MissionRunService
 
     _validate_reason(reason)
 
@@ -155,9 +158,13 @@ async def approve_plan_tasks(
     # attributes and any later access raises MissingGreenlet.
     plan_id = plan.id
     gate_mode = plan.gate_mode.value
+    owner_id = mission.owner_id
     await db_session.commit()
 
     unique_transitioned = _dedupe_preserving_order(transitioned)
+    await MissionRunService(db_session, event_bus).on_tasks_approved(
+        mission_id, unique_transitioned, owner_id
+    )
 
     logger.info(
         "Director auto-approved plan tasks",
@@ -251,6 +258,7 @@ def register(agent) -> None:
                 ctx.deps.session_id,
                 task_ids,
                 reason,
+                ctx.deps.event_bus,
             ),
             rollback_on_error=True,
         )

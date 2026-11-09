@@ -78,6 +78,19 @@ class TemporalWorkflowGateway:
             )
         return current
 
+    async def signal(self, workflow_id: str, signal: str, arg: object) -> WorkflowState:
+        """Signal the workflow; NOT_FOUND when it is missing or closed, RUNNING once delivered."""
+        try:
+            await self._handle(workflow_id).signal(signal, arg)
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                return WorkflowState.NOT_FOUND
+            raise ExternalServiceError(
+                f"Temporal signal {signal} failed for workflow {workflow_id}: {exc}"
+            ) from exc
+        logger.info("Workflow signalled", extra={"workflow_id": workflow_id, "signal": signal})
+        return WorkflowState.RUNNING
+
     async def start_mission_run(self, inp: MissionRunWorkflowInput) -> None:
         """Start the run's MissionRunWorkflow; a second start for the same run is rejected."""
         workflow_id = mission_run_workflow_id(inp.mission_run_id)

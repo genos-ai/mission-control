@@ -299,11 +299,14 @@ async def approve_task(
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     transitioned = await service.approve_task(plan.id, task_id, current_user.id)
-    # A dispatcher blocked on these tasks polls the task rows (Plan 88.0.13a).
+    transitioned_ids = [t.id for t in transitioned]
+    await MissionRunService(db, event_bus).on_tasks_approved(
+        mission_id, transitioned_ids, current_user.id
+    )
 
     response = TaskTransitionResponse(
         target_task_id=task_id,
-        transitioned_task_ids=[t.id for t in transitioned],
+        transitioned_task_ids=transitioned_ids,
         new_status=TaskStatus.APPROVED,
     )
     return ApiResponse(
@@ -373,10 +376,14 @@ async def retry_task(
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
     task = await service.retry_task(plan.id, task_id, current_user.id)
+    retried_id = task.id
+    await MissionRunService(db, event_bus).on_tasks_approved(
+        mission_id, [retried_id], current_user.id
+    )
 
     response = TaskTransitionResponse(
         target_task_id=task_id,
-        transitioned_task_ids=[task.id],
+        transitioned_task_ids=[retried_id],
         new_status=TaskStatus.APPROVED,
     )
     return ApiResponse(

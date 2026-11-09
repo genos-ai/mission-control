@@ -1598,6 +1598,7 @@ class MissionRunService(BaseService):
     async def on_tasks_approved(self, mission_id: str, task_ids: list[str], user_id: str) -> None   # 88.1.9
         # 88.1.9: active run -> gateway.signal tasks_approved; none, plan.gate_mode == AUTONOMOUS and
         # mission ACTIVE -> start_run(MANUAL, objective=None)
+        # Commits first; empty task_ids -> no-op; a ConflictError from a racing start is logged, not raised.
     async def get_run(self, mission_id: str, run_id_or_sequence: str) -> MissionRun
     async def list_runs(self, mission_id: str, *, statuses: list[MissionRunStatus] | None,
                         limit: int, before_sequence: int | None) -> list[MissionRun]

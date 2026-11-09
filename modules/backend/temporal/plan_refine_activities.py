@@ -61,23 +61,34 @@ async def execute_plan_refine(input: PlanRefineInput) -> PlanRefineResult:
             from modules.backend.models.mission_plan import GateMode
             from modules.backend.services.mission import MissionService
             from modules.backend.services.mission_plan import MissionPlanService
+            from modules.backend.services.mission_run import MissionRunService
 
-            approved_count = 0
+            approved_ids: list[str] = []
+            owner_id: str | None = None
             if refined.gate_mode == GateMode.AUTONOMOUS:
                 mission = await MissionService(db).get_mission(input.mission_id)
+                owner_id = mission.owner_id
                 plan_svc = MissionPlanService(db, event_bus=event_bus)
                 approved_ids = await plan_svc.approve_all_proposed(
                     input.plan_id,
-                    mission.owner_id,
+                    owner_id,
                 )
-                approved_count = len(approved_ids)
+            approved_count = len(approved_ids)
+            version = refined.version
+            task_count = len(refined.tasks)
 
             await db.commit()
 
+            # The poller is gone: approved work starts or wakes a run here (88.1.9).
+            if approved_ids:
+                await MissionRunService(db, event_bus).on_tasks_approved(
+                    input.mission_id, approved_ids, owner_id
+                )
+
             return PlanRefineResult(
                 plan_id=input.plan_id,
-                version=refined.version,
-                task_count=len(refined.tasks),
+                version=version,
+                task_count=task_count,
                 approved_count=approved_count,
             )
     except Exception as exc:

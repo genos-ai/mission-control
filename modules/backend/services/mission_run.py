@@ -67,8 +67,9 @@ from modules.backend.temporal.mission_run_models import (
     NotificationRequest,
     PlanRunResult,
     RunTaskGraph,
+    TasksApprovedSignal,
 )
-from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _SOURCE = "mission_run_service"
@@ -296,6 +297,57 @@ class MissionRunService(BaseService):
         gateway = await TemporalWorkflowGateway.connect()
         await gateway.cancel(workflow_id)
         return await self._runs.get_by_id(run_id)
+
+    async def on_tasks_approved(self, mission_id: str, task_ids: list[str], user_id: str) -> None:
+        """Commit the approval, then wake the active run or start one for an idle mission.
+
+        A run starts only when the plan is AUTONOMOUS and the mission ACTIVE.
+
+        A run whose workflow is gone (NOT_FOUND) is left to finalise or the
+        reconciler. A workflow run owns its own materialised tasks, so no run
+        starts while one is active.
+        """
+        await self._session.commit()
+        if not task_ids:
+            return
+        active = await self._runs.get_active_for_mission(mission_id)
+        if active is not None:
+            workflow_id = active.temporal_workflow_id
+            gateway = await TemporalWorkflowGateway.connect()
+            state = await gateway.signal(
+                workflow_id, "tasks_approved", TasksApprovedSignal(task_ids=list(task_ids))
+            )
+            if state == WorkflowState.NOT_FOUND:
+                self._logger.warning(
+                    "Approved tasks not signalled: run workflow not found",
+                    extra={
+                        "mission_id": mission_id,
+                        "run_id": active.id,
+                        "workflow_id": workflow_id,
+                    },
+                )
+            return
+        plan = await self._plan_svc.get_or_create_plan(mission_id)
+        if plan.gate_mode != GateMode.AUTONOMOUS:
+            return
+        mission = await self._missions.get_by_id(mission_id)
+        if MissionStatus(mission.status) != MissionStatus.ACTIVE:
+            return
+        if await self._workflow_runs.list_active_for_mission(mission_id):
+            return
+        try:
+            await self.start_run(
+                mission_id,
+                trigger=MissionRunTrigger.MANUAL,
+                objective=None,
+                user_id=user_id,
+                session_id=None,
+            )
+        except ConflictError as err:
+            self._logger.info(
+                "Run not started for approved tasks",
+                extra={"mission_id": mission_id, "reason": str(err)},
+            )
 
     # ── Transitions ──────────────────────────────────────────────────────
 
