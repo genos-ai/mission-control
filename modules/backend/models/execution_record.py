@@ -13,7 +13,20 @@ are persisted here.
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -77,6 +90,14 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "execution_records"
+    __table_args__ = (
+        Index(
+            "uq_execution_records_run",
+            "mission_run_id",
+            unique=True,
+            postgresql_where=text("mission_run_id IS NOT NULL"),
+        ),
+    )
 
     session_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
@@ -91,6 +112,13 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         ForeignKey("missions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("mission_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="One ExecutionRecord per run, created in begin_mission_run (Plan 88)",
     )
 
     roster_name: Mapped[str | None] = mapped_column(
@@ -154,14 +182,6 @@ class ExecutionRecord(UUIDMixin, TimestampMixin, Base):
         default=False,
         nullable=False,
         comment="True when compressed into a milestone summary by the summarization pipeline",
-    )
-
-    parent_execution_record_id: Mapped[str | None] = mapped_column(
-        PgUUID(as_uuid=False),
-        ForeignKey("execution_records.id"),
-        nullable=True,
-        index=True,
-        comment="If this execution was a re-plan, link to the original",
     )
 
     # Denormalised task counts (Plan 51 Phase C) — populated at
@@ -260,6 +280,9 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "task_executions"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_task_executions_idempotency_key"),
+    )
 
     execution_record_id: Mapped[str] = mapped_column(
         PgUUID(as_uuid=False),
@@ -328,6 +351,19 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
         comment="Globally unique execution ID assigned at dispatch time",
+    )
+
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("mission_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="{mission_run_id}:{task_id}:{task.retry_count} (Plan 88, 3.1.9)",
     )
 
     domain_tags: Mapped[list | None] = mapped_column(

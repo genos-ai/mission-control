@@ -117,12 +117,6 @@ class TestSaveExecution:
 
             assert record.planning_thinking_trace is None
 
-    @pytest.mark.asyncio
-    async def test_parent_execution_link(self, service):
-        parent = await _create_execution(service)
-        child = await _create_execution(service, parent_execution_record_id=parent.id)
-        assert child.parent_execution_record_id == parent.id
-
 
 class TestSaveTaskExecution:
     @pytest.mark.asyncio

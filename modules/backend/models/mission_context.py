@@ -9,7 +9,7 @@ every MCD mutation.
 
 import enum
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -121,6 +121,10 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
     """Audit trail entry for a single MCD mutation."""
 
     __tablename__ = "context_changes"
+    __table_args__ = (
+        # Range reads key on context_id: legacy rows have mission_id IS NULL.
+        Index("ix_context_changes_context_version", "context_id", "version"),
+    )
 
     context_id: Mapped[str] = mapped_column(
         PgUUID(as_uuid=False),
@@ -163,6 +167,12 @@ class ContextChange(UUIDMixin, TimestampMixin, Base):
     )
     execution_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
+        nullable=True,
+        index=True,
+    )
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("mission_runs.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

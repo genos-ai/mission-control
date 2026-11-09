@@ -88,7 +88,6 @@ class ExecutionRecordResponse(BaseModel):
     total_cost_usd: float
     started_at: datetime | None
     completed_at: datetime | None
-    parent_execution_record_id: str | None
     # Plan 46 Phase 2 #3: task_count lets the Runs tab render a
     # run's task count on the always-visible row without a per-row
     # detail fetch. Populated in the endpoint layer from the

@@ -25,6 +25,16 @@ from modules.backend.models.mission_history import MilestoneSummary, MissionDeci
 from modules.backend.models.mission_intent import IntentSource, MissionIntent
 from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
 from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_run import (
+    ACTIVE_RUN_STATUSES,
+    TERMINAL_RUN_STATUSES,
+    VALID_RUN_TRANSITIONS,
+    MissionRun,
+    MissionRunStatus,
+    MissionRunStatusReason,
+    MissionRunTrigger,
+)
+from modules.backend.models.mission_run_digest import DigestGenerator, MissionRunDigest
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.model_pricing import ModelPricing
 from modules.backend.models.prompt_version import PromptVersion
@@ -43,6 +53,7 @@ from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.models.workflow_schedule import WorkflowSchedule
 
 __all__ = [
+    "ACTIVE_RUN_STATUSES",
     "AgentCatalog",
     "ApiKey",
     "ArtifactContentType",
@@ -50,6 +61,7 @@ __all__ = [
     "Base",
     "ContextChange",
     "ContextMilestone",
+    "DigestGenerator",
     "Embedding",
     "ExecutionDecision",
     "ExecutionRecord",
@@ -72,6 +84,11 @@ __all__ = [
     "MissionMember",
     "MissionPlan",
     "MissionPlanStatus",
+    "MissionRun",
+    "MissionRunDigest",
+    "MissionRunStatus",
+    "MissionRunStatusReason",
+    "MissionRunTrigger",
     "MissionTeamMember",
     "ModelPricing",
     "PromptVersion",
@@ -85,10 +102,12 @@ __all__ = [
     "TaskDependency",
     "TaskExecution",
     "TaskStatus",
+    "TERMINAL_RUN_STATUSES",
     "TERMINAL_TASK_STATUSES",
     "User",
     "VALID_ARTIFACT_TYPES",
     "VALID_CONTENT_TYPES",
+    "VALID_RUN_TRANSITIONS",
     "VALID_TASK_TRANSITIONS",
     "WorkflowDefinition",
     "WorkflowRun",

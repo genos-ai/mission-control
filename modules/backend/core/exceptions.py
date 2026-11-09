@@ -84,6 +84,16 @@ class BudgetExceededError(ApplicationError):
         super().__init__(message, code="COST_BUDGET_EXCEEDED")
 
 
+class MissionRunStateError(ApplicationError):
+    """Raised on a MissionRun status transition outside VALID_RUN_TRANSITIONS.
+
+    Non-retryable: the class name is listed in temporal NON_RETRYABLE (Plan 88 3.3.4).
+    """
+
+    def __init__(self, message: str = "Invalid mission run state transition") -> None:
+        super().__init__(message, code="BIZ_INVALID_STATE")
+
+
 class DatabaseError(ApplicationError):
     """Raised when a database operation fails."""
 

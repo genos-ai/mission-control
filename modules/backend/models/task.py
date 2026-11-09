@@ -87,6 +87,7 @@ class Task(UUIDMixin, TimestampMixin, Base):
         Index("ix_tasks_mission_id_status", "mission_id", "status"),
         Index("ix_tasks_plan_id_status", "plan_id", "status"),
         Index("ix_tasks_plan_id_created_at", "plan_id", "created_at"),
+        Index("ix_tasks_run_status", "mission_run_id", "status"),
     )
 
     # ── Scope ──────────────────────────────────────────────────────────────
@@ -107,6 +108,13 @@ class Task(UUIDMixin, TimestampMixin, Base):
         ForeignKey("mission_plans.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("mission_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Run that owns the task; NULL means backlog, not yet dispatched (Plan 88)",
     )
 
     # ── Definition (from TaskDefinition schema) ────────────────────────────

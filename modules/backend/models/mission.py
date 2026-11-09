@@ -10,7 +10,7 @@ agents operate within a single mission at a time.
 import enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -110,6 +110,13 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         default=None,
         comment="Default execution environment for this mission: local, worktree, container. NULL = local.",  # noqa: E501
+    )
+    run_sequence_counter: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="Last mission_runs.sequence issued (Plan 88, 3.1.3)",
     )
 
     # Relationships

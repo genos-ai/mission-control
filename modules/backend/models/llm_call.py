@@ -32,6 +32,17 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
         PgUUID(as_uuid=False),
         nullable=True,
     )
+    # Run and task attribution (Plan 88). No FK, matching the table style.
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        nullable=True,
+        index=True,
+    )
+    task_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        nullable=True,
+        index=True,
+    )
     agent_name: Mapped[str] = mapped_column(
         String(200),
         nullable=False,
@@ -125,3 +136,5 @@ class LlmCall(UUIDMixin, TimestampMixin, Base):
 
 # Timeline queries filter by created_at — TimestampMixin doesn't add an index.
 Index("ix_llm_calls_created_at", LlmCall.created_at)
+# Created by revision composite_indexes; declared here so create_all matches.
+Index("ix_llm_calls_mission_created", LlmCall.mission_id, LlmCall.created_at)

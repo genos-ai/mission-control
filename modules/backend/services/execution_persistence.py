@@ -84,7 +84,6 @@ class ExecutionPersistenceService(BaseService):
         total_cost_usd: float = 0.0,
         started_at: str | None = None,
         completed_at: str | None = None,
-        parent_execution_record_id: str | None = None,
         objective_statement: str | None = None,
         objective_category: str | None = None,
         mission_id: str | None = None,
@@ -126,7 +125,6 @@ class ExecutionPersistenceService(BaseService):
             total_cost_usd=total_cost_usd,
             started_at=resolved_started,
             completed_at=resolved_completed,
-            parent_execution_record_id=parent_execution_record_id,
             objective_statement=objective_statement,
             objective_category=objective_category,
             mission_id=mission_id,
@@ -614,10 +612,6 @@ class ExecutionPersistenceService(BaseService):
     ) -> list[ExecutionRecord]:
         """Get all execution records for a session."""
         return await self._repo.get_by_session(session_id)
-
-    async def get_replan_chain(self, execution_id: str) -> list[ExecutionRecord]:
-        """Get the full re-plan lineage for an execution."""
-        return await self._repo.get_replan_chain(execution_id)
 
     # ---- Background task operations (Plan 56 Phase B) ----
 

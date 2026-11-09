@@ -26,7 +26,6 @@ export interface ExecutionRecord {
   total_cost_usd: number
   started_at: string | null
   completed_at: string | null
-  parent_execution_record_id: string | null
   // Plan 46 Phase 2 #3: task count denormalised from the eager-
   // loaded task_executions relationship for Run History row rendering.
   task_count: number

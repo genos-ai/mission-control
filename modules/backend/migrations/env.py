@@ -38,6 +38,8 @@ from modules.backend.models.mission_history import MilestoneSummary, MissionDeci
 from modules.backend.models.mission_intent import MissionIntent  # noqa: F401
 from modules.backend.models.mission_learning import MissionLearning  # noqa: F401
 from modules.backend.models.mission_plan import MissionPlan  # noqa: F401
+from modules.backend.models.mission_run import MissionRun  # noqa: F401
+from modules.backend.models.mission_run_digest import MissionRunDigest  # noqa: F401
 from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
 from modules.backend.models.prompt_version import PromptVersion  # noqa: F401

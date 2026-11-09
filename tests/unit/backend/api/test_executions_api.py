@@ -107,7 +107,6 @@ class TestGetExecution:
         mock_execution.total_cost_usd = 0.05
         mock_execution.started_at = "2026-03-06T00:00:00"
         mock_execution.completed_at = "2026-03-06T00:01:00"
-        mock_execution.parent_execution_record_id = None
         mock_execution.created_at = "2026-03-06T00:00:00"
         mock_execution.updated_at = "2026-03-06T00:01:00"
         mock_execution.objective_statement = None

@@ -175,22 +175,3 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
                 model = execution.token_usage["model"]
                 model_costs[model] = model_costs.get(model, 0.0) + execution.cost_usd
         return model_costs
-
-    async def get_replan_chain(self, execution_id: str) -> list[ExecutionRecord]:
-        """Get the full re-plan lineage for an execution.
-
-        Follows parent_execution_record_id links to build the chain.
-        Returns oldest-first.
-        """
-        chain: list[ExecutionRecord] = []
-        current_id: str | None = execution_id
-
-        while current_id:
-            record = await self.get_by_id_or_none(current_id)
-            if not record:
-                break
-            chain.append(record)
-            current_id = record.parent_execution_record_id
-
-        chain.reverse()
-        return chain

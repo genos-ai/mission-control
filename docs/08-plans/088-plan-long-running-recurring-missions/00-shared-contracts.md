@@ -234,7 +234,7 @@ DEFAULT_PER_MONTH_USD = 100.00  # missions.budgets.default_per_month_usd at plan
 | `status_reason` | VARCHAR(40) `MissionRunStatusReason` | YES | NULL | none |
 | `status_detail` | TEXT | YES | NULL | none. Written through `redact_secrets` from 88.1.6 |
 | `gate_mode` | VARCHAR(32) `GateMode` | YES | NULL | snapshot taken at `begin_mission_run`. NOT NULL once status leaves PENDING (checked by the service) |
-| `temporal_workflow_id` | VARCHAR(200) | YES | NULL | UNIQUE. Always `mission_run_workflow_id(id)` = `mission-run-{id}`. NULL for SKIPPED and MISSED |
+| `temporal_workflow_id` | VARCHAR(200) | YES | NULL | UNIQUE (`uq_mission_runs_temporal_workflow_id`). Always `mission_run_workflow_id(id)` = `mission-run-{id}`. NULL for SKIPPED and MISSED |
 | `session_id` | UUID | YES | NULL | FK `sessions.id` ON DELETE SET NULL |
 | `context_version_start` | INTEGER | YES | NULL | MCD watermark, read at begin |
 | `context_version_end` | INTEGER | YES | NULL | MCD version when the digest was written; set by write_run_digest. finalise_mission_run sets it only when NULL |
@@ -261,7 +261,7 @@ DEFAULT_PER_MONTH_USD = 100.00  # missions.budgets.default_per_month_usd at plan
 | Column | SQL type | Null | Default | FK / index / constraint |
 |---|---|---|---|---|
 | `mission_run_id` | UUID | NO | none | FK `mission_runs.id` ON DELETE CASCADE; UNIQUE |
-| `mission_id` | UUID | NO | none | FK `missions.id` ON DELETE CASCADE; index `(mission_id, created_at DESC)` |
+| `mission_id` | UUID | NO | none | FK `missions.id` ON DELETE CASCADE; index `ix_mission_run_digests_mission_created (mission_id, created_at DESC)` |
 | `schema_version` | INTEGER | NO | none | starts at `1` |
 | `generator` | VARCHAR(32) `DigestGenerator` | NO | none | none |
 | `summary` | TEXT | NO | none | length ≤ `missions.digest.summary_max_chars` |
@@ -297,7 +297,7 @@ The run-finished notification states the generator.
 | `context_changes` index | n/a | n/a | `ix_context_changes_context_version (context_id, version)`. Keyed on `context_id` because legacy rows from `tools/update_context.py:37-48` and `services/summarization.py:101,162` have `mission_id IS NULL` | `plan88_002` |
 | `llm_calls.mission_run_id` | UUID | YES | no FK, matching the existing table style (`models/llm_call.py:15-34`); index `ix_llm_calls_mission_run_id (mission_run_id)` | `plan88_002` |
 | `llm_calls.task_id` | UUID | YES | no FK; index `ix_llm_calls_task_id (task_id)` | `plan88_002` |
-| `llm_calls` index | n/a | n/a | `ix_llm_calls_mission_created (mission_id, created_at)` | `plan88_002` |
+| `llm_calls` index | n/a | n/a | `ix_llm_calls_mission_created (mission_id, created_at)`. Already created by revision `composite_indexes`; `plan88_002` does not recreate it, and the model now declares it | exists |
 | `gate_requests.mission_run_id` | UUID | YES (NULL only on legacy rows) | FK `mission_runs.id` ON DELETE CASCADE; index | `plan88_006` |
 | `gate_requests.task_id` | UUID | YES | none | `plan88_006` |
 | `gate_requests.escalate_at` / `pause_at` / `escalated_at` | TIMESTAMPTZ | YES | none | `plan88_006` |

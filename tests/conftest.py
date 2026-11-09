@@ -48,6 +48,8 @@ import modules.backend.models.mission_context  # noqa: F401 — register tables
 import modules.backend.models.mission_history  # noqa: F401 — register tables
 import modules.backend.models.mission_intent  # noqa: F401 — register tables (Plan 57)
 import modules.backend.models.mission_learning  # noqa: F401 — register tables (Plan 57)
+import modules.backend.models.mission_run  # noqa: F401 — register tables (Plan 88)
+import modules.backend.models.mission_run_digest  # noqa: F401 — register tables (Plan 88)
 import modules.backend.models.mission_team  # noqa: F401 — register tables
 import modules.backend.models.prompt_version  # noqa: F401 — register tables
 import modules.backend.models.session  # noqa: F401 — register tables
