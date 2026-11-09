@@ -1,8 +1,9 @@
 """Workflow step to task mapping (Plan 88 step 88.1.7).
 
 Turns a workflow definition's steps into TaskDefinitions. Shared by
-WorkflowRunService (Kanban persistence) and MissionRunService.plan
-(workflow-definition runs). Pure: no I/O.
+WorkflowRunService (Kanban persistence, every node type) and
+MissionRunService.plan (workflow-definition runs, agent steps only).
+Pure: no I/O.
 """
 
 import uuid
@@ -13,12 +14,11 @@ from modules.backend.schemas.workflow import WorkflowSchema
 
 
 def steps_to_task_definitions(workflow: WorkflowSchema, parameters: dict) -> list[TaskDefinition]:
-    """One TaskDefinition per step, in step order, with fresh UUID task ids.
+    """One TaskDefinition per agent step, for runs that dispatch steps as tasks.
 
-    Each task's static inputs carry the step input plus the resolved
-    workflow parameters (supplied value, else the parameter default).
-    Dependencies map step ids to the new task ids. Only agent steps are
-    supported; any other node type raises ValidationError naming the step.
+    Only agent steps are supported; any other node type raises
+    ValidationError naming the step (contract 3.7 item 2). Mapping as in
+    map_workflow_steps.
     """
     for step in workflow.steps:
         if step.node_type != "agent_step":
@@ -26,7 +26,18 @@ def steps_to_task_definitions(workflow: WorkflowSchema, parameters: dict) -> lis
                 f"Workflow step {step.id!r} has node type {step.node_type!r}; "
                 "only agent_step can become a task"
             )
+    return map_workflow_steps(workflow, parameters)
 
+
+def map_workflow_steps(workflow: WorkflowSchema, parameters: dict) -> list[TaskDefinition]:
+    """One TaskDefinition per step of any node type, in step order, with fresh UUID task ids.
+
+    Each task's static inputs carry the step input plus the resolved
+    workflow parameters (supplied value, else the parameter default).
+    Dependencies map step ids to the new task ids. A manual WorkflowRun
+    mirrors every step on the Kanban this way, so its execution is
+    unchanged (contract 3.7 item 2).
+    """
     resolved = {p.key: parameters.get(p.key, p.default) for p in workflow.parameters}
     step_uuid_map = {step.id: str(uuid.uuid4()) for step in workflow.steps}
 

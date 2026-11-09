@@ -1,10 +1,13 @@
-"""steps_to_task_definitions (Plan 88 step 88.1.7)."""
+"""steps_to_task_definitions and map_workflow_steps (Plan 88 step 88.1.7)."""
 
 import pytest
 
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.schemas.workflow import WorkflowSchema
-from modules.backend.services.workflow_task_mapping import steps_to_task_definitions
+from modules.backend.services.workflow_task_mapping import (
+    map_workflow_steps,
+    steps_to_task_definitions,
+)
 
 _OBJECTIVE = {
     "statement": "Test objective",
@@ -73,3 +76,23 @@ def test_dependencies_mapped_to_uuids():
     assert len(fetch.task_id) == 36
     assert summarise.dependencies == [fetch.task_id]
     assert fetch.dependencies == []
+
+
+def test_manual_workflow_run_keeps_non_agent_steps():
+    """WorkflowRunService mirrors every step, so manual execution is unchanged (3.7 item 2)."""
+    workflow = _workflow(
+        [
+            {"id": "fetch", "capability": "test.fetch"},
+            {
+                "id": "confirm",
+                "node_type": "human_input",
+                "depends_on": ["fetch"],
+                "human_input_config": {"prompt_message": "Proceed?"},
+            },
+        ]
+    )
+
+    fetch, confirm = map_workflow_steps(workflow, {})
+
+    assert confirm.agent == "workflow:human_input"
+    assert confirm.dependencies == [fetch.task_id]

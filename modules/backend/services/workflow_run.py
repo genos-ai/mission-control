@@ -470,9 +470,9 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             from modules.backend.schemas.task_plan import TaskPlan
             from modules.backend.services.mission_plan import MissionPlanService
             from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
-            from modules.backend.services.workflow_task_mapping import steps_to_task_definitions
+            from modules.backend.services.workflow_task_mapping import map_workflow_steps
 
-            tasks = steps_to_task_definitions(workflow, parameters)
+            tasks = map_workflow_steps(workflow, parameters)
             step_uuid_map = {
                 step.id: task.task_id for step, task in zip(workflow.steps, tasks, strict=True)
             }

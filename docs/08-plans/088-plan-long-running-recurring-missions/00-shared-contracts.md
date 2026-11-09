@@ -1637,6 +1637,9 @@ class MissionRunService(BaseService):
 #     else the mission's active run, else None. reconcile_tasks and MissionPlanOrchestrator.refine both use it,
 #     so a Director refine during an active run shows the planner that run's tasks as well as the backlog.
 #   MissionPlanOrchestrator.refine and _persist_plan take mission_run_id as a required keyword (no default).
+#   workflow_task_mapping.map_workflow_steps(workflow, parameters) maps every node type; steps_to_task_definitions
+#     rejects non-agent steps, then calls it. WorkflowRunService._persist_workflow_as_plan calls map_workflow_steps,
+#     so a manual WorkflowRun keeps its Kanban tasks and approval waits (3.7 item 2: manual execution unchanged).
 # schemas/mission_run.py (88.1.7): TaskSummary{id, agent, description, status: TaskStatus, failure_reason,
 #   cost_usd, created_at}; MissionRunDigestResponse carries every mission_run_digests column except updated_at.
 
