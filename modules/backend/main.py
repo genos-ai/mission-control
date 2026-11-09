@@ -67,7 +67,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from modules.backend.temporal.maintenance_workflow import (
             CleanupEnvironmentsWorkflow,
             DailyCleanupWorkflow,
-            EvaluateWorkflowSchedulesWorkflow,
             HourlyHealthCheckWorkflow,
             MetricsAggregationWorkflow,
             WeeklyReportWorkflow,
@@ -160,12 +159,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             CleanupEnvironmentsWorkflow.run,
             "cleanup-environments",
             cron_expressions=["0 * * * *"],
-        )
-        await _register_schedule(
-            "maintenance-workflow-schedules",
-            EvaluateWorkflowSchedulesWorkflow.run,
-            "evaluate-workflow-schedules",
-            cron_expressions=["* * * * *"],
         )
         # Plan 57: Knowledge platform schedules
         from modules.backend.temporal.knowledge_workflow import (

@@ -25,7 +25,7 @@ PROJECT_TABLES = [
     "missions",
     "api_keys",
     "users",
-    "workflow_schedules",
+    "mission_schedules",
 ]
 
 # Run data tables — cleared by db clear (dependency order: children first)
@@ -36,6 +36,8 @@ RUN_TABLES = [
     "task_executions",
     "execution_records",
     "tasks",
+    "mission_run_digests",
+    "mission_runs",
     "session_messages",
     "session_channels",
     "workflow_runs",

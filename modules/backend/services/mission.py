@@ -317,6 +317,8 @@ class MissionService(BaseService):
         # ── Level 1: direct children of missions ──
         direct_tables = [
             "execution_records",
+            "mission_runs",
+            "mission_schedules",
             "mission_plans",
             "mission_artifacts",
             "mission_events",
@@ -329,7 +331,6 @@ class MissionService(BaseService):
             "mission_team_members",
             "sessions",
             "session_followups",
-            "workflow_schedules",
             "workflow_runs",
             "workflow_definitions",
             "execution_environments",

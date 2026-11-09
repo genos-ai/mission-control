@@ -8,7 +8,7 @@
  * represent); `describeSchedule` renders a plain-English summary.
  *
  * The generated fields (ranges like `1-5`, lists like `1,3,5`) are all
- * accepted by the backend cron validator in workflow_schedule.py.
+ * accepted by Temporal, which interprets mission schedule crons.
  */
 
 export type CronFrequency =

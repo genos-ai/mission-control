@@ -1,7 +1,7 @@
 """
-Mission-scoped workflow and schedule API endpoints.
+Mission-scoped workflow API endpoints.
 
-Workflow listing, import, detail, and cron schedule management.
+Workflow listing, import, detail and runs.
 Includes the Workflow Architect chat endpoint.
 Split from missions.py for file size compliance.
 """
@@ -26,11 +26,6 @@ from modules.backend.core.exceptions import (
 )
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.workflow import WorkflowEdgeSchema
-from modules.backend.schemas.workflow_schedule import (
-    WorkflowScheduleCreateRequest,
-    WorkflowScheduleResponse,
-    WorkflowScheduleUpdateRequest,
-)
 
 router = APIRouter()
 
@@ -614,124 +609,6 @@ async def cancel_workflow_run(
     return ApiResponse(
         success=True,
         data={"id": run_id_value, "status": status, "temporal_cancelled": temporal_cancelled},
-        metadata={"request_id": request_id},
-    )
-
-
-# ---- Workflow schedules ----
-
-
-@router.get(
-    "/{mission_id}/schedules",
-    response_model=ApiResponse,
-    summary="List mission schedules",
-)
-async def list_mission_schedules(
-    mission_id: str,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-    enabled_only: bool = True,
-) -> ApiResponse:
-    """List workflow schedules for a mission."""
-    await require_mission_access(db, mission_id, current_user)
-    from modules.backend.services.workflow_schedule import WorkflowScheduleService
-
-    service = WorkflowScheduleService(db)
-    schedules = await service.list_by_mission(mission_id, enabled_only=enabled_only)
-    items = [WorkflowScheduleResponse.model_validate(s).model_dump() for s in schedules]
-    return ApiResponse(
-        success=True,
-        data={"schedules": items, "total": len(items)},
-        metadata={"request_id": request_id},
-    )
-
-
-@router.post(
-    "/{mission_id}/schedules",
-    response_model=ApiResponse,
-    summary="Create workflow schedule",
-)
-async def create_mission_schedule(
-    mission_id: str,
-    data: WorkflowScheduleCreateRequest,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Create a cron-based schedule for a workflow."""
-    await require_mission_operator(db, mission_id, current_user)
-    from modules.backend.services.workflow_schedule import WorkflowScheduleService
-
-    service = WorkflowScheduleService(db)
-    schedule = await service.create_schedule(
-        workflow_definition_id=data.workflow_definition_id,
-        mission_id=mission_id,
-        cron_expression=data.cron_expression,
-        timezone=data.timezone,
-        description=data.description,
-        budget_per_run_usd=data.budget_per_run_usd,
-        max_iterations=data.max_iterations,
-        cooldown_seconds=data.cooldown_seconds,
-        created_by="user:api",
-    )
-    response = WorkflowScheduleResponse.model_validate(schedule)
-    return ApiResponse(
-        success=True,
-        data=response.model_dump(),
-        metadata={"request_id": request_id},
-    )
-
-
-@router.patch(
-    "/{mission_id}/schedules/{schedule_id}",
-    response_model=ApiResponse,
-    summary="Update workflow schedule",
-)
-async def update_mission_schedule(
-    mission_id: str,
-    schedule_id: str,
-    data: WorkflowScheduleUpdateRequest,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Update a workflow schedule's configuration."""
-    await require_mission_operator(db, mission_id, current_user)
-    from modules.backend.services.workflow_schedule import WorkflowScheduleService
-
-    service = WorkflowScheduleService(db)
-    updates = data.model_dump(exclude_none=True)
-    schedule = await service.update_schedule(mission_id, schedule_id, **updates)
-    response = WorkflowScheduleResponse.model_validate(schedule)
-    return ApiResponse(
-        success=True,
-        data=response.model_dump(),
-        metadata={"request_id": request_id},
-    )
-
-
-@router.delete(
-    "/{mission_id}/schedules/{schedule_id}",
-    response_model=ApiResponse,
-    summary="Delete workflow schedule",
-)
-async def delete_mission_schedule(
-    mission_id: str,
-    schedule_id: str,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-) -> ApiResponse:
-    """Delete a workflow schedule."""
-    await require_mission_operator(db, mission_id, current_user)
-    from modules.backend.services.workflow_schedule import WorkflowScheduleService
-
-    service = WorkflowScheduleService(db)
-    await service.delete_schedule(mission_id, schedule_id)
-    return ApiResponse(
-        success=True,
-        data={"deleted": schedule_id},
         metadata={"request_id": request_id},
     )
 

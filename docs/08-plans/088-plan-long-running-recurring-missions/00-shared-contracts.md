@@ -199,7 +199,11 @@ DEFAULT_PER_MONTH_USD = 100.00  # missions.budgets.default_per_month_usd at plan
 
 **Objective template placeholders:** only `{scheduled_for}` (ISO 8601 in the schedule's time zone), `{sequence}` and `{mission_name}` are allowed. Any other placeholder is rejected at create and update, by parsing with `string.Formatter`.
 
-**Also in `plan88_003`:** the FK `mission_runs.schedule_id → mission_schedules.id` ON DELETE SET NULL, because `mission_schedules` does not exist at `plan88_002`.
+**Constraint and index names** (chosen in 88.1.3): the UNIQUE constraint on `temporal_schedule_id` is `uq_mission_schedules_temporal_schedule_id`; the `(mission_id, status)` index is `ix_mission_schedules_mission_status` and the `mission_id` index is `ix_mission_schedules_mission_id`; the column checks are `ck_mission_schedules_window` (`ends_at`), `ck_mission_schedules_max_runs`, `ck_mission_schedules_catch_up_window` and `ck_mission_schedules_completed_reason`.
+
+**`temporal_schedule_id` at insert:** a `before_insert` listener in `models/mission_schedule.py` assigns `id` when it is unset and sets `temporal_schedule_id = temporal_id`, so callers never set either.
+
+**Also in `plan88_003`:** the FK `fk_mission_runs_schedule_id` (`mission_runs.schedule_id → mission_schedules.id`) ON DELETE SET NULL, because `mission_schedules` does not exist at `plan88_002`. `MissionRun.schedule_id` maps it from 88.1.3.
 
 **Dropped (P3), in 88.1.3:**
 - The `workflow_schedules` table.
@@ -212,7 +216,7 @@ DEFAULT_PER_MONTH_USD = 100.00  # missions.budgets.default_per_month_usd at plan
 - `name = 'wf-' || left(id::text, 8)`.
 - `time_zone_name` taken from the old `timezone` column, with `max_runs = max_iterations`.
 - `catch_up_window_seconds = DEFAULT_CATCH_UP_WINDOW_SECONDS`, a module constant `21600  # missions.recurrence.default_catch_up_window_seconds at plan88_003`.
-- `created_by_user_id` parsed from `created_by` (`user:<uuid>`) when that UUID exists in `users`, or else the mission owner when `owner_id` is an existing user UUID. A row with neither is not migrated, and its id is logged.
+- `created_by_user_id` parsed from `created_by` (`user:<uuid>`) when that UUID exists in `users`, or else the mission owner when `owner_id` is an existing user UUID. If any row has neither, the upgrade raises `RuntimeError` listing their ids and writes nothing (88.1.3).
 - `budget_per_run_usd` (`models/workflow_schedule.py:77`) and `description` (`:72`) are dropped (P3). The migration logs the count of rows with a non-NULL `budget_per_run_usd`.
 
 #### 3.1.6 `mission_runs` (new, `plan88_002`; one row per occurrence, kept permanently)

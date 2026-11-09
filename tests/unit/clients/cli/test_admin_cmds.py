@@ -146,7 +146,6 @@ class TestActionConfig:
         mock_config.workflows.default_budget_usd = 5.0
         mock_config.workflows.max_budget_usd = 50.0
         mock_config.workflows.max_concurrent_missions = 3
-        mock_config.workflows.max_scheduled_runs_per_day = 50
 
         with patch("modules.backend.core.config.get_app_config", return_value=mock_config):
             await _action_config(cli_logger, output_format="json")

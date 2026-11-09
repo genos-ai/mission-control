@@ -181,9 +181,14 @@ class MissionRun(UUIDMixin, TimestampMixin, Base):
         ForeignKey("mission_plans.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # FK to mission_schedules.id (ON DELETE SET NULL) arrives in plan88_003.
+    # The FK was added by plan88_003, after mission_schedules existed.
     schedule_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
+        ForeignKey(
+            "mission_schedules.id",
+            ondelete="SET NULL",
+            name="fk_mission_runs_schedule_id",
+        ),
         nullable=True,
         index=True,
     )

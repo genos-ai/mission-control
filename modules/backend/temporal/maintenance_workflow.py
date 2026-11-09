@@ -81,16 +81,3 @@ class CleanupEnvironmentsWorkflow:
             schedule_to_close_timeout=timedelta(seconds=120),
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
-
-
-@workflow.defn
-class EvaluateWorkflowSchedulesWorkflow:
-    """Workflow schedule evaluation — every minute."""
-
-    @workflow.run
-    async def run(self) -> MaintenanceResult:
-        return await workflow.execute_local_activity(
-            maintenance_activities.run_evaluate_workflow_schedules,
-            schedule_to_close_timeout=timedelta(seconds=60),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )

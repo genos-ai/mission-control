@@ -113,23 +113,3 @@ async def run_cleanup_stale_environments() -> MaintenanceResult:
         return MaintenanceResult(
             task_name="cleanup_stale_environments", status="failed", error=str(e)
         )
-
-
-@activity.defn
-async def run_evaluate_workflow_schedules() -> MaintenanceResult:
-    """Evaluate due workflow schedules and create runs."""
-    try:
-        from modules.backend.tasks.workflow_scheduler import evaluate_workflow_schedules
-
-        result = await evaluate_workflow_schedules()
-        return MaintenanceResult(task_name="evaluate_workflow_schedules", details=result)
-    except Exception as e:
-        # Catch-all justified: Temporal activity boundary — any failure in
-        # the wrapped cron task must convert to a failed MaintenanceResult
-        # rather than raise, so the schedule itself keeps running.
-        activity.logger.error(
-            "evaluate_workflow_schedules failed", extra={"error": str(e)}, exc_info=True
-        )
-        return MaintenanceResult(
-            task_name="evaluate_workflow_schedules", status="failed", error=str(e)
-        )

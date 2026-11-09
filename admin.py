@@ -39,7 +39,6 @@ from modules.clients.cli.admin_groups.db import db  # noqa: E402
 from modules.clients.cli.admin_groups.execution import execution  # noqa: E402
 from modules.clients.cli.admin_groups.migrate import migrate  # noqa: E402
 from modules.clients.cli.admin_groups.mission import mission  # noqa: E402
-from modules.clients.cli.admin_groups.schedule import schedule  # noqa: E402
 from modules.clients.cli.admin_groups.server import server  # noqa: E402
 from modules.clients.cli.admin_groups.workflow import workflow  # noqa: E402
 from modules.clients.cli.admin_groups.workshop import workshop  # noqa: E402
@@ -244,7 +243,6 @@ def _format_tree(group: click.Group, prefix: str = "", is_last: bool = True) -> 
 
 admin_cli.add_command(catalog)
 admin_cli.add_command(admin)
-admin_cli.add_command(schedule)
 # =============================================================================
 # Tree command
 # =============================================================================

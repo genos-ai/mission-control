@@ -40,6 +40,7 @@ from modules.backend.models.mission_learning import MissionLearning  # noqa: F40
 from modules.backend.models.mission_plan import MissionPlan  # noqa: F401
 from modules.backend.models.mission_run import MissionRun  # noqa: F401
 from modules.backend.models.mission_run_digest import MissionRunDigest  # noqa: F401
+from modules.backend.models.mission_schedule import MissionSchedule  # noqa: F401
 from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
 from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
@@ -55,7 +56,6 @@ from modules.backend.models.workflow_definition import WorkflowDefinition  # noq
 # Import all models here so Alembic can detect them
 # Add new model imports as you create them
 from modules.backend.models.workflow_run import WorkflowRun  # noqa: F401
-from modules.backend.models.workflow_schedule import WorkflowSchedule  # noqa: F401
 
 # Alembic Config object
 config = context.config

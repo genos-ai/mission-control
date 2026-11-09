@@ -148,7 +148,6 @@ async def _action_config(cli_logger, *, output_format, **_):
             "default_budget": config.workflows.default_budget_usd,
             "max_budget": config.workflows.max_budget_usd,
             "max_concurrent": config.workflows.max_concurrent_missions,
-            "max_runs_per_day": config.workflows.max_scheduled_runs_per_day,
         },
     }
 

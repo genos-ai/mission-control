@@ -35,6 +35,13 @@ from modules.backend.models.mission_run import (
     MissionRunTrigger,
 )
 from modules.backend.models.mission_run_digest import DigestGenerator, MissionRunDigest
+from modules.backend.models.mission_schedule import (
+    MissionSchedule,
+    MissionScheduleCompletedReason,
+    MissionScheduleKind,
+    MissionScheduleStatus,
+    TemporalSyncState,
+)
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.model_pricing import ModelPricing
 from modules.backend.models.prompt_version import PromptVersion
@@ -50,7 +57,6 @@ from modules.backend.models.task import (
 from modules.backend.models.user import SystemRole, User
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
-from modules.backend.models.workflow_schedule import WorkflowSchedule
 
 __all__ = [
     "ACTIVE_RUN_STATUSES",
@@ -89,6 +95,10 @@ __all__ = [
     "MissionRunStatus",
     "MissionRunStatusReason",
     "MissionRunTrigger",
+    "MissionSchedule",
+    "MissionScheduleCompletedReason",
+    "MissionScheduleKind",
+    "MissionScheduleStatus",
     "MissionTeamMember",
     "ModelPricing",
     "PromptVersion",
@@ -102,6 +112,7 @@ __all__ = [
     "TaskDependency",
     "TaskExecution",
     "TaskStatus",
+    "TemporalSyncState",
     "TERMINAL_RUN_STATUSES",
     "TERMINAL_TASK_STATUSES",
     "User",
@@ -112,5 +123,4 @@ __all__ = [
     "WorkflowDefinition",
     "WorkflowRun",
     "WorkflowRunState",
-    "WorkflowSchedule",
 ]

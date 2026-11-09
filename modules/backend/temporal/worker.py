@@ -38,7 +38,6 @@ from modules.backend.temporal.knowledge_workflow import (
 from modules.backend.temporal.maintenance_activities import (
     run_cleanup_stale_environments,
     run_daily_cleanup,
-    run_evaluate_workflow_schedules,
     run_hourly_health_check,
     run_metrics_aggregation,
     run_weekly_report_generation,
@@ -46,7 +45,6 @@ from modules.backend.temporal.maintenance_activities import (
 from modules.backend.temporal.maintenance_workflow import (
     CleanupEnvironmentsWorkflow,
     DailyCleanupWorkflow,
-    EvaluateWorkflowSchedulesWorkflow,
     HourlyHealthCheckWorkflow,
     MetricsAggregationWorkflow,
     WeeklyReportWorkflow,
@@ -111,7 +109,6 @@ async def start_worker() -> None:
             WeeklyReportWorkflow,
             MetricsAggregationWorkflow,
             CleanupEnvironmentsWorkflow,
-            EvaluateWorkflowSchedulesWorkflow,
             # Run reconciliation (Plan 88 step 88.0.10)
             ReconcilerWorkflow,
         ],
@@ -155,7 +152,6 @@ async def start_worker() -> None:
             run_weekly_report_generation,
             run_metrics_aggregation,
             run_cleanup_stale_environments,
-            run_evaluate_workflow_schedules,
             # Run reconciliation (Plan 88 step 88.0.10)
             reconcile_mission_runs,
         ],

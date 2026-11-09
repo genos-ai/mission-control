@@ -8,7 +8,7 @@ all need them.
 
 VirtualExecution and StepContext are re-exported from
 workflow_run_waves.py for backward compatibility with existing external
-imports (workflow_run.py, workflow_scheduler.py) — this module is their
+imports (workflow_run.py) — this module is their
 canonical home now.
 """
 

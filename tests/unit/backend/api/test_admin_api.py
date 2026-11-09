@@ -245,8 +245,6 @@ class TestSystemOps:
         cfg.workflows.default_budget_usd = 5.0
         cfg.workflows.max_budget_usd = 50.0
         cfg.workflows.max_concurrent_missions = 3
-        cfg.workflows.max_scheduled_runs_per_day = 50
-        cfg.workflows.schedule_evaluation_interval_seconds = 60
         cfg.sessions.default_ttl_hours = 24
         cfg.sessions.default_cost_budget_usd = 5.0
         cfg.sessions.max_cost_budget_usd = 50.0

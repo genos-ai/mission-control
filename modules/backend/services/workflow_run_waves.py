@@ -54,8 +54,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Re-exported for backward compatibility — external callers (workflow_run.py,
-# workflow_scheduler.py) import StepContext from this module. VirtualExecution
+# Re-exported for backward compatibility — external callers (workflow_run.py)
+# import StepContext from this module. VirtualExecution
 # has no external callers but is kept here too since it's this module's
 # public-facing return type.
 __all__ = ["StepContext", "VirtualExecution", "WorkflowRunWavesMixin"]

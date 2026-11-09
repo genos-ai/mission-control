@@ -50,13 +50,13 @@ import modules.backend.models.mission_intent  # noqa: F401 — register tables (
 import modules.backend.models.mission_learning  # noqa: F401 — register tables (Plan 57)
 import modules.backend.models.mission_run  # noqa: F401 — register tables (Plan 88)
 import modules.backend.models.mission_run_digest  # noqa: F401 — register tables (Plan 88)
+import modules.backend.models.mission_schedule  # noqa: F401 — register tables (Plan 88)
 import modules.backend.models.mission_team  # noqa: F401 — register tables
 import modules.backend.models.prompt_version  # noqa: F401 — register tables
 import modules.backend.models.session  # noqa: F401 — register tables
 import modules.backend.models.session_followup  # noqa: F401 — register tables (Plan 51)
 import modules.backend.models.user  # noqa: F401 — register tables
 import modules.backend.models.workflow_definition  # noqa: F401 — register tables
-import modules.backend.models.workflow_schedule  # noqa: F401 — register tables
 from modules.backend.models.base import Base
 from tests.test_config import get_test_database_url as _get_test_database_url
 from tests.test_config import get_test_redis_url as _get_test_redis_url

@@ -347,10 +347,6 @@ def get_sanitized_config_view() -> dict:
             "default_budget_usd": config.workflows.default_budget_usd,
             "max_budget_usd": config.workflows.max_budget_usd,
             "max_concurrent_missions": config.workflows.max_concurrent_missions,
-            "max_scheduled_runs_per_day": config.workflows.max_scheduled_runs_per_day,
-            "schedule_evaluation_interval_seconds": (
-                config.workflows.schedule_evaluation_interval_seconds
-            ),
         },
         "sessions": {
             "default_ttl_hours": config.sessions.default_ttl_hours,
