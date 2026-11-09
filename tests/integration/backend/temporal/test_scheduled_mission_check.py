@@ -33,7 +33,7 @@ async def find_ready_plans_stub() -> list[dict]:
             "plan_id": PLAN_ID,
             "mission_id": MISSION_ID,
             "brief": "brief",
-            "budget": 5.0,
+            "budget_remaining_usd": 5.0,
             "gate_mode": "autonomous",
             "roster": "default",
             "owner_id": "",
