@@ -50,11 +50,9 @@ class LlmGateReviewer:
     def __init__(
         self,
         model: str,
-        temperature: float = 0.0,
-        max_tokens: int = 1024,
+        max_tokens: int,
     ):
         self.model_name = model
-        self.temperature = temperature
         self.max_tokens = max_tokens
         self._agent = None  # Lazy init to avoid import cost when unused
 
@@ -100,10 +98,7 @@ class LlmGateReviewer:
         try:
             result = await agent.run(
                 user_prompt,
-                model_settings={
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                },
+                model_settings={"max_tokens": self.max_tokens},
             )
             output = result.output
             action = _parse_action(output.action)
@@ -160,7 +155,6 @@ class ConfigurableGate:
             ai = self._config.ai
             self._llm = LlmGateReviewer(
                 model=ai.model,
-                temperature=ai.temperature,
                 max_tokens=ai.max_tokens,
             )
         return self._llm

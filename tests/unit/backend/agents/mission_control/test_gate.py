@@ -94,7 +94,7 @@ def _plan(mission_id: str = "test", tasks: list[dict] | None = None) -> TaskPlan
     )
 
 
-AI = GateAiSchema(model="fixture:gate-reviewer")
+AI = GateAiSchema(model="fixture:gate-reviewer", max_tokens=1024)
 MANUAL = GateManualSchema(timeout_seconds=1800, poll_interval_seconds=5)
 
 
@@ -270,26 +270,45 @@ class TestParseAction:
 class TestLlmGateReviewer:
     def test_lazy_init(self):
         """Agent should not be built until first review call."""
-        gate = LlmGateReviewer(model="anthropic:claude-haiku-4-5-20251001")
+        gate = LlmGateReviewer(
+            model="anthropic:claude-haiku-4-5-20251001", max_tokens=AI.max_tokens
+        )
         assert gate._agent is None
 
     def test_custom_model_name(self):
-        gate = LlmGateReviewer(model="anthropic:claude-sonnet-4-20250514")
+        gate = LlmGateReviewer(model="anthropic:claude-sonnet-4-20250514", max_tokens=AI.max_tokens)
         assert gate.model_name == "anthropic:claude-sonnet-4-20250514"
 
     def test_the_model_is_required_not_assumed(self):
         with pytest.raises(TypeError, match="model"):
             LlmGateReviewer()
 
-    def test_default_params(self):
-        gate = LlmGateReviewer(model=AI.model)
-        assert gate.temperature == 0.0
-        assert gate.max_tokens == 1024
+    def test_the_token_cap_is_required_not_assumed(self):
+        with pytest.raises(TypeError, match="max_tokens"):
+            LlmGateReviewer(model=AI.model)
+
+    def test_no_temperature_attribute(self):
+        gate = LlmGateReviewer(model=AI.model, max_tokens=AI.max_tokens)
+        assert gate.max_tokens == AI.max_tokens
+        assert not hasattr(gate, "temperature")
+
+    @pytest.mark.asyncio
+    async def test_review_never_sends_temperature(self):
+        """Claude 5.5 models answer 400 to any temperature; the gate must not send one."""
+        gate = LlmGateReviewer(model=AI.model, max_tokens=AI.max_tokens)
+        output = MagicMock(action="continue", reason="ok", modified_instructions=None)
+        gate._agent = MagicMock()
+        gate._agent.run = AsyncMock(return_value=MagicMock(output=output))
+        decision = await gate.review(GateContext(gate_type="pre_dispatch", mission_id="m-1"))
+        assert decision.action == GateAction.CONTINUE
+        sent = gate._agent.run.call_args.kwargs["model_settings"]
+        assert sent == {"max_tokens": AI.max_tokens}
+        assert "temperature" not in sent
 
     @pytest.mark.asyncio
     async def test_llm_failure_aborts_for_safety(self):
         """When the LLM call fails, the gate must ABORT — never auto-continue."""
-        gate = LlmGateReviewer(model="test")
+        gate = LlmGateReviewer(model="test", max_tokens=AI.max_tokens)
         # Force _get_agent to raise on review
         gate._agent = MagicMock()
         gate._agent.run = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
@@ -311,7 +330,6 @@ class TestGateSchema:
         schema = GateSchema(mode="autonomous", ai=AI, manual=MANUAL)
         assert schema.mode == "autonomous"
         assert schema.ai.model == AI.model
-        assert schema.ai.temperature == 0.0
         assert schema.points.pre_dispatch.enabled is True
         assert schema.points.verification_failed.mode is None
         assert schema.auto_rules.cost_threshold_pct == 80
@@ -342,6 +360,14 @@ class TestGateSchema:
     def test_a_gate_config_without_an_ai_block_is_rejected(self):
         with pytest.raises(ValidationError, match="ai"):
             GateSchema()
+
+    def test_the_reviewer_token_cap_is_required_not_assumed(self):
+        with pytest.raises(ValidationError, match="max_tokens"):
+            GateAiSchema(model=AI.model)
+
+    def test_a_stray_temperature_key_is_rejected(self):
+        with pytest.raises(ValidationError, match="temperature"):
+            GateAiSchema(model=AI.model, max_tokens=AI.max_tokens, temperature=0.0)
 
     def test_custom_ai_model(self):
         ai = GateAiSchema(model="anthropic:claude-sonnet-4-20250514", max_tokens=2048)

@@ -590,8 +590,7 @@ class GateAiSchema(_StrictBase):
     """AI reviewer model and budget settings."""
 
     model: str  # a registry model, e.g. the provider:model string of the reviewer
-    temperature: float = 0.0
-    max_tokens: int = 1024
+    max_tokens: int = Field(..., ge=1)
     budget_per_review_usd: float = Field(
         default=0.01,
         description=(
