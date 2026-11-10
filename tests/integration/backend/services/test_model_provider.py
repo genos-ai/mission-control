@@ -54,7 +54,8 @@ class TestListProviders:
         listing = await ModelProviderService(db_session).list_providers()
 
         names = {p.provider for p in listing.providers}
-        assert set(ProvidersSchema.model_fields) <= names
+        assert ProvidersSchema.provider_names() <= names
+        assert "copilot_client" not in names
 
     async def test_agent_using_a_model_is_attributed_to_it(self, db_session: AsyncSession):
         model = _registry_model()

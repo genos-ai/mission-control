@@ -669,7 +669,12 @@ class CopilotClientSchema(_StrictBase):
 
 
 class ProvidersSchema(_StrictBase):
-    """Provider authentication configuration (providers.yaml)."""
+    """Provider authentication configuration (providers.yaml).
+
+    Every ``ProviderAuthSchema`` field is a provider. Other fields (``copilot_client``)
+    are client settings: use ``provider_names()`` and ``auth_for()``, never
+    ``model_fields``, to enumerate or look up providers.
+    """
 
     copilot_client: CopilotClientSchema
     anthropic: ProviderAuthSchema = Field(
@@ -701,15 +706,30 @@ class ProvidersSchema(_StrictBase):
         ),
     )
 
+    @classmethod
+    def provider_names(cls) -> frozenset[str]:
+        """Names of the provider auth entries, excluding client settings."""
+        return frozenset(
+            name
+            for name, field in cls.model_fields.items()
+            if field.annotation is ProviderAuthSchema
+        )
+
+    def auth_for(self, provider: str) -> ProviderAuthSchema | None:
+        """Auth settings for ``provider``, or None when it has no auth entry."""
+        if provider not in self.provider_names():
+            return None
+        return getattr(self, provider)
+
     @model_validator(mode="after")
     def _protocols_match_backends(self) -> "ProvidersSchema":
         """Protocols named in endpoint_paths and deployment_protocols must exist."""
         from modules.backend.core.model_backends import BACKENDS
 
-        for name in type(self).model_fields:
+        for name in self.provider_names():
             if name not in BACKENDS:
                 continue
-            block: ProviderAuthSchema = getattr(self, name)
+            block = getattr(self, name)
             named = [*block.endpoint_paths, *block.deployment_protocols.values()]
             for protocol in named:
                 if protocol not in BACKENDS[name]:

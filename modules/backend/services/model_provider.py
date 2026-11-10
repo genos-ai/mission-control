@@ -76,7 +76,7 @@ class ModelProviderService(BaseService):
 
         provider_names = (
             set(registry)
-            | set(ProvidersSchema.model_fields)
+            | ProvidersSchema.provider_names()
             | {_provider_of(q, "agent model") for q in agents_by_model}
             | {_provider_of(q, "alias target") for q in aliases_by_model}
         )
@@ -400,7 +400,7 @@ class ModelProviderService(BaseService):
             for name in [*registered_models, *unregistered]
         ]
 
-        auth = getattr(get_app_config().providers, provider, None)
+        auth = get_app_config().providers.auth_for(provider)
         return ProviderInfo(
             provider=provider,
             auth_mode=auth.auth_mode if auth else None,
