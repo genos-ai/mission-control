@@ -5,6 +5,78 @@ Each item references the actual code and the specific issue.
 
 ---
 
+## Plan 88 Phase 1 live check — deferred follow-ups (2026-11-10)
+
+Found while getting the first scheduled mission to run end to end. Only
+what blocked the run was fixed at the time; everything below was left
+open on purpose.
+
+**Dev environment**
+
+- [ ] **Dev Temporal loses all state on every restart.** `services.py`
+  (line ~127) and `modules/clients/service_manager/dev_runner.py` (line
+  ~85) run `temporal server start-dev` without `--db-filename`, so
+  `services.py restart` wipes schedules, workflow history and in-flight
+  runs. The worker's startup `sync_all` re-creates schedules, but queued
+  ticks and open runs are lost. Add `--db-filename var/temporal.db`
+  (path from config).
+- [ ] **No way to restart only the API and worker.** `services.py stop`
+  always stops Temporal, even with `--backend-only`. Add a flag (or make
+  `--backend-only` mean it) so a code reload does not wipe Temporal.
+- [ ] **Temporal CLI needs `--address 127.0.0.1:7233` on this machine**;
+  `localhost` times out. Either document it or set `TEMPORAL_ADDRESS` in
+  the dev profile.
+
+**Tests**
+
+- [ ] **Temporal integration tests can hang forever.** A workflow task
+  that raises is retried indefinitely, so `execute_workflow` never
+  returns (this hung a pytest run for 17 hours and filled
+  `system.jsonl` with ~4,000 errors). Give Temporal integration tests a
+  configured `execution_timeout` and a configured per-test timeout
+  (pytest-timeout) for `tests/integration/backend/temporal/`. Do not use
+  `workflow_failure_exception_types=[Exception]`; it changes failure
+  semantics versus production.
+- [ ] **No integration test proves run events reach `mission_events`.**
+  ee9b0a8a fixed `plan_mission_run` and `execute_mission` publishing on
+  an unbound event bus, covered by unit tests only. Add an integration
+  test (with a stubbed model) asserting `plan.created` and
+  `agent.tool.called` rows exist for a `MissionRunWorkflow` run.
+
+**Logging**
+
+- [ ] **CLI log context leaks into later tasks.**
+  `modules/clients/cli/cli_context.py:39` calls
+  `bind_context(source=...)` and never clears it, so in a long-lived
+  process (pytest) every later asyncio task logs `source=admin`. Scope it
+  with `bound_contextvars` or a reset token.
+
+**Models and ping**
+
+- [ ] **Prompted output on large schemas.** claude-sonnet-5-5 and
+  claude-opus-5-5 now use `output_mode: prompted` (f437567b, 27b020b6),
+  so structured agents depend on the model returning valid JSON text.
+  Watch retry rates on large outputs such as `KnowledgeOfficerReport`.
+- [ ] **Ping can fail falsely in prompted mode.** `_ping_model` and
+  `_ping_agent` (`modules/backend/agents/preflight.py`) use
+  `UsageLimits(request_limit=1)`; one unparsable JSON reply exhausts it
+  and reports a provider failure that is not one.
+- [ ] **`classify_ping_error` matches any error containing
+  `tool_choice`** and appends the "set output_mode: prompted" advice.
+  Narrow it to the Foundry 400 message.
+
+**CLI and scripts**
+
+- [ ] **`scripts/verify_budget_enforcement.py` is broken** since
+  88.1.0: it calls `create_for_mission(mission.id)` without the now
+  required `gate_mode` and raises `TypeError`.
+- [ ] **`admin.py mission list` makes one plan query per mission** to
+  show the gate mode (N+1), since `Mission.gate_mode` moved to the plan.
+- [ ] **Phase 1 verification text is wrong:** it says
+  `mc mission use p88-live`; the command needs `--name`.
+
+---
+
 ## Reliability — Provider error taxonomy (2026-06-05)
 
 Implemented `modules/backend/core/provider_errors.py` with a
