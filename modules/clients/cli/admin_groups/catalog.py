@@ -168,7 +168,8 @@ def catalog_sync_yaml(ctx, agent_name, dry_run, check):
     existing files in place, keeping comments and formatting.
 
     Synced: description, enabled, chat_enabled, visibility, version, keywords,
-    tools, model (name, temperature, max_tokens), scope, interface, engine,
+    tools, model (every field: name, temperature, max_tokens, betas,
+    output_mode), scope, interface, engine,
     effort, thinking_budget, max_budget_usd, max_input_length, timeout_seconds,
     retry_budget. Not synced: system prompts (config/prompts), agent_type,
     invocation, execution.

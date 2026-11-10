@@ -10,7 +10,7 @@ Each top-level class corresponds to one config file:
     MissionControlConfigSchema     -> config/agents/mission_control.yaml
 """
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -135,6 +135,25 @@ class AgentModelSchema(_StrictBase):
             "output_mode: prompted })."
         ),
     )
+
+    @classmethod
+    def from_spec(cls, spec: "str | AgentModelSchema") -> "AgentModelSchema":
+        """A YAML ``model`` field as a schema: a flat string is a name with the defaults."""
+        return spec if isinstance(spec, AgentModelSchema) else cls(name=spec)
+
+    def to_catalog(self) -> dict[str, Any]:
+        """The ``agent_catalog.model_config_json`` form: every field, unset ones omitted.
+
+        Derived from the schema so a new field reaches the catalog without code
+        here changing. Read back with ``AgentModelSchema.model_validate``, where an
+        absent key takes the schema default (``output_mode`` None: the registry decides).
+        """
+        return self.model_dump(mode="json", exclude_none=True)
+
+    @classmethod
+    def from_catalog(cls, data: dict[str, Any] | None) -> "AgentModelSchema":
+        """Read ``agent_catalog.model_config_json`` back; a null value counts as absent."""
+        return cls.model_validate({k: v for k, v in (data or {}).items() if v is not None})
 
 
 class AgentConfigSchema(_StrictBase):

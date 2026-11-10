@@ -18,7 +18,6 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from modules.backend.core import agent_defaults
 from modules.backend.core.agent_files import agents_dir, find_agent_files
 from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
@@ -45,17 +44,9 @@ def _db_row_to_config(row: Any) -> AgentConfigSchema:
             f"Agent '{row.agent_name}' has no model name in model_config_json. "
             f"Fix the agent_catalog row in the database."
         )
-    model_name = model_cfg["name"]
-
-    # Reconstruct the model field as AgentModelSchema if it has extra fields
-    if model_cfg.get("temperature") is not None or model_cfg.get("max_tokens"):
-        model: str | AgentModelSchema = AgentModelSchema(
-            name=model_name,
-            temperature=model_cfg.get("temperature", agent_defaults.temperature()),
-            max_tokens=model_cfg.get("max_tokens") or agent_defaults.max_tokens(),
-        )
-    else:
-        model = model_name
+    # Every AgentModelSchema field round-trips; an absent key takes the schema
+    # default (output_mode None means the model registry decides).
+    model = AgentModelSchema.from_catalog(model_cfg)
 
     scope_data = row.scope or {}
     interface_data = row.interface

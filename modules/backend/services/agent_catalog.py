@@ -9,15 +9,20 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import agent_defaults
-from modules.backend.core.exceptions import ConflictError, NotFoundError
+from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.logging import get_logger
-from modules.backend.core.model_builder import _resolve_model_alias
+from modules.backend.core.model_builder import (
+    _resolve_model_alias,
+    effective_output_mode,
+    resolve_model,
+)
 from modules.backend.models.agent_catalog import AgentCatalog
 from modules.backend.repositories.agent_catalog import AgentCatalogRepository
-from modules.backend.schemas.agent_config import Visibility
+from modules.backend.schemas.agent_config import AgentModelSchema, Visibility
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -26,6 +31,28 @@ logger = get_logger(__name__)
 def _or(value: Any, default: Callable[[], Any]) -> Any:
     """``value`` unless it is None, else the default; 0 and empty values are kept."""
     return default() if value is None else value
+
+
+def validated_model_config(raw: dict[str, Any]) -> dict[str, Any]:
+    """``raw`` checked against AgentModelSchema: the keys given, coerced; a null drops its key.
+
+    An output_mode is checked against the protocol the model registry files the
+    model under, the same check the agent build makes, so a mode the model cannot
+    honour is refused here rather than when the agent is next built.
+
+    Raises:
+        ValidationError: unknown key, bad value, or an output_mode the model's
+            protocol cannot honour.
+    """
+    try:
+        model = AgentModelSchema.from_catalog(raw)
+    except PydanticValidationError as exc:
+        first = exc.errors()[0]
+        location = ".".join(str(part) for part in first["loc"]) or "model_config_json"
+        raise ValidationError(f"model_config_json.{location}: {first['msg']}") from exc
+    if model.output_mode is not None:
+        effective_output_mode(model, resolve_model(_resolve_model_alias(model.name)))
+    return model.model_dump(mode="json", exclude_unset=True)
 
 
 class AgentCatalogService(BaseService):
@@ -134,7 +161,11 @@ class AgentCatalogService(BaseService):
             version=_or(version, agent_defaults.version),
             description=description,
             system_prompt=system_prompt,
-            model_config_json=model_config_json or self._default_model_config(),
+            model_config_json=(
+                validated_model_config(model_config_json)
+                if model_config_json
+                else self._default_model_config()
+            ),
             tools=tools or [],
             scope=scope or {"read": [], "write": []},
             interface=interface,
@@ -209,9 +240,9 @@ class AgentCatalogService(BaseService):
             ValidationError: If no fields are provided.
         """
         if not updates:
-            from modules.backend.core.exceptions import ValidationError
-
             raise ValidationError("No fields to update")
+        if updates.get("model_config_json") is not None:
+            updates["model_config_json"] = validated_model_config(updates["model_config_json"])
         entry = await self.get_by_name(agent_name)
         return await self._repo.update(entry.id, **updates)
 

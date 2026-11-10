@@ -77,8 +77,20 @@ def _constraint(row: Any, key: str, default: Callable[[], Any]) -> Any:
     return default() if value is None else value
 
 
-def _model_config(row: Any) -> dict:
-    return row.model_config_json or {}
+def _model_field(name: str) -> _SyncedField:
+    """``model.<name>`` as the catalog row holds it, else the schema default.
+
+    One per AgentModelSchema field, so a field added to the schema is synced
+    without a change here. The name is required and has no default.
+    """
+    info = AgentModelSchema.model_fields[name]
+    default = (lambda: None) if info.is_required() else _schema_default(AgentModelSchema, name)
+
+    def database(row: Any) -> Any:
+        value = (row.model_config_json or {}).get(name)
+        return default() if value is None else value
+
+    return _SyncedField(("model", name), database, default=default)
 
 
 # Fields the admin API can change, in YAML terms. Not synced: agent_type,
@@ -112,21 +124,7 @@ _FIELDS: tuple[_SyncedField, ...] = (
         lambda r: list(r.tools or []),
         default=_schema_default(AgentConfigSchema, "tools"),
     ),
-    _SyncedField(("model", "name"), lambda r: _model_config(r).get("name")),
-    _SyncedField(
-        ("model", "temperature"),
-        lambda r: _model_config(r).get(
-            "temperature", _schema_default(AgentModelSchema, "temperature")()
-        ),
-        default=_schema_default(AgentModelSchema, "temperature"),
-    ),
-    _SyncedField(
-        ("model", "max_tokens"),
-        lambda r: (
-            _model_config(r).get("max_tokens") or _schema_default(AgentModelSchema, "max_tokens")()
-        ),
-        default=_schema_default(AgentModelSchema, "max_tokens"),
-    ),
+    *(_model_field(name) for name in AgentModelSchema.model_fields),
     _SyncedField(
         ("scope", "read"),
         lambda r: list((r.scope or {}).get("read", [])),

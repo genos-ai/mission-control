@@ -89,7 +89,11 @@ class TestListProviders:
         assert alias in found.aliases
 
     async def test_agent_without_a_model_name_is_reported(self, db_session: AsyncSession):
-        await _add_agent(db_session, "test.no_model.agent", {"temperature": 0.0})
+        # The service refuses a model block without a name, so corrupt the row directly.
+        await _add_agent(db_session, "test.no_model.agent", {"name": _registry_model()})
+        row = await AgentCatalogService(db_session).get_by_name("test.no_model.agent")
+        row.model_config_json = {"temperature": 0.0}
+        await db_session.flush()
 
         listing = await ModelProviderService(db_session).list_providers()
 

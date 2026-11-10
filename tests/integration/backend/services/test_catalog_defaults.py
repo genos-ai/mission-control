@@ -107,3 +107,25 @@ class TestRowMapping:
 
         assert config.max_budget_usd == 0.5
         assert config.max_input_length == 1000
+
+
+class TestModelSettingsRoundTrip:
+    """Every AgentModelSchema field survives a write to Postgres and a read back."""
+
+    async def test_output_mode_and_betas_survive_seed_and_read(self, db_session: AsyncSession):
+        from modules.backend.schemas.agent_config import AgentModelSchema
+        from modules.backend.services.catalog_seeder import _extract_model_config
+
+        block = AgentModelSchema(
+            name="foundry:claude-opus-5-5",
+            temperature=0.3,
+            output_mode="prompted",
+            betas=["structured-outputs-2025-11-13"],
+        )
+        await _create(db_session, model_config_json=_extract_model_config(block))
+        await db_session.flush()
+        db_session.expire_all()
+
+        row = await AgentCatalogService(db_session).get_by_name("test.defaults.agent")
+
+        assert _db_row_to_config(row).model == block

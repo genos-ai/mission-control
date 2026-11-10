@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.core import agent_defaults
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.agent_config import AgentModelSchema
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,14 +20,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class RosterModelSchema(BaseModel):
-    """Pinned model config within a roster entry."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    temperature: float = Field(default_factory=agent_defaults.temperature)
-    max_tokens: int = Field(default_factory=agent_defaults.max_tokens)
+class RosterModelSchema(AgentModelSchema):
+    """Pinned model config within a roster entry: every AgentModelSchema field."""
 
 
 class RosterInterfaceSchema(BaseModel):
@@ -150,11 +145,7 @@ async def derive_roster_from_team(
                 agent_name=catalog_entry.agent_name,
                 agent_version=catalog_entry.version,
                 description=catalog_entry.description,
-                model=RosterModelSchema(
-                    name=model_cfg["name"],
-                    temperature=model_cfg.get("temperature", agent_defaults.temperature()),
-                    max_tokens=model_cfg.get("max_tokens", agent_defaults.max_tokens()),
-                ),
+                model=RosterModelSchema.from_catalog(model_cfg),
                 tools=catalog_entry.tools or [],
                 interface=RosterInterfaceSchema(
                     input=(catalog_entry.interface or {}).get("input", {}),

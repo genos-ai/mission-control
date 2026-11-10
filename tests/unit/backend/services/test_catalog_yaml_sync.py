@@ -7,9 +7,11 @@ import re
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from modules.backend.core.config import get_app_config, get_mission_control_config
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
+from modules.backend.services.catalog_seeder import _extract_model_config
 from modules.backend.services.catalog_yaml_sync import (
     _dump,
     _same,
@@ -109,6 +111,11 @@ class TestNoDrift:
         assert changes == []
         assert text == SAMPLE
 
+    def test_a_freshly_seeded_row_is_not_drift(self):
+        seeded = _extract_model_config(AgentConfigSchema(**yaml.safe_load(SAMPLE)).model)
+
+        assert diff_agent(_row(model_config_json=seeded), _yaml().load(SAMPLE)) == []
+
     def test_the_sample_round_trips_byte_for_byte(self):
         assert _dump(_yaml().load(SAMPLE)) == SAMPLE
 
@@ -150,18 +157,45 @@ class TestModel:
         assert f"temperature: {DEFAULT_TEMPERATURE + 0.5}" in text
         assert "max_tokens" not in text
 
-    def test_a_block_model_keeps_the_keys_the_catalog_does_not_store(self):
+    def test_a_block_model_keeps_the_settings_the_catalog_carries(self):
         block = SAMPLE.replace(
             'model: "foundry:gpt-5-mini"  # pinned for cost',
             'model:\n  name: "foundry:gpt-5-mini"\n  output_mode: native\n  betas: [one]',
         )
-        row = _row(model_config_json=_model("foundry:gpt-5.4"))
+        row = _row(model_config_json=_model("foundry:gpt-5.4", output_mode="native", betas=["one"]))
 
-        _, text = _sync(row, block)
+        changes, text = _sync(row, block)
 
+        assert [c.field for c in changes] == ["model.name"]
         assert 'name: "foundry:gpt-5.4"' in text
         assert "output_mode: native" in text
         assert "betas: [one]" in text
+
+    def test_the_catalog_is_authoritative_for_every_model_setting(self):
+        block = SAMPLE.replace(
+            'model: "foundry:gpt-5-mini"  # pinned for cost',
+            'model:\n  name: "foundry:gpt-5-mini"\n  output_mode: native\n  betas: [one]',
+        )
+
+        changes, text = _sync(_row(), block)
+
+        assert sorted(c.field for c in changes) == ["model.betas", "model.output_mode"]
+        assert "output_mode" not in text
+        assert "betas: []" in text
+        assert "[one]" not in text
+
+    def test_output_mode_and_betas_set_in_the_catalog_are_written_back(self):
+        row = _row(
+            model_config_json=_model("foundry:gpt-5-mini", output_mode="prompted", betas=["beta-x"])
+        )
+
+        changes, text = _sync(row)
+
+        assert sorted(c.field for c in changes) == ["model.betas", "model.output_mode"]
+        assert "output_mode: prompted" in text
+        assert "beta-x" in text
+        assert AgentConfigSchema(**yaml.safe_load(text)).model.output_mode == "prompted"
+        assert diff_agent(row, _yaml().load(text)) == []
 
 
 class TestOtherFields:

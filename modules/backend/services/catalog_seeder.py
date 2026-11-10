@@ -68,13 +68,8 @@ def _resolve_system_prompt(agent_name: str, project_root: Path) -> str:
 
 
 def _extract_model_config(model_field: str | AgentModelSchema) -> dict:
-    """Normalise the agent YAML model field to a dict, with the schema's defaults."""
-    model = (
-        model_field
-        if isinstance(model_field, AgentModelSchema)
-        else AgentModelSchema(name=model_field)
-    )
-    return {"name": model.name, "temperature": model.temperature, "max_tokens": model.max_tokens}
+    """Normalise the agent YAML model field to its catalog dict (every schema field)."""
+    return AgentModelSchema.from_spec(model_field).to_catalog()
 
 
 async def seed_catalog(
