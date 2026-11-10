@@ -42,6 +42,13 @@ aliases:
 #   thinking   anthropic_messages only. "budget" (default) takes an explicit
 #              thinking-token budget; "adaptive" is for models that reject one
 #              (the API answers 400 'thinking.type.enabled is not supported').
+#   output_mode  structured output for agents on this model, unless the agent's
+#              model block sets its own. "tool" (default) forces a final_result
+#              tool call; "prompted" (openai_chat, anthropic_messages) puts the
+#              schema in the instructions, for models that reject a forced tool
+#              choice; "native" (openai_chat) uses response_format json_schema.
+#              `python admin.py catalog ping` makes a structured-output call, so
+#              a model that rejects its mode fails there.
 #
 # To add a model: list it under its provider, then add its rates to model_pricing
 # in config/agents/mission_control.yaml.
@@ -66,5 +73,7 @@ registry:
     gpt-5-mini: {protocol: openai_chat}
     gpt-5-nano: {protocol: openai_chat}
     claude-haiku-5-5: {protocol: anthropic_messages, thinking: adaptive}
-    claude-sonnet-5-5: {protocol: anthropic_messages, thinking: adaptive}
+    # Rejects a forced tool choice (HTTP 400 "tool_choice: type \"tool\" and \"any\"
+    # are not supported for this model"), so structured output is prompted.
+    claude-sonnet-5-5: {protocol: anthropic_messages, thinking: adaptive, output_mode: prompted}
     claude-opus-5-5: {protocol: anthropic_messages, thinking: adaptive}

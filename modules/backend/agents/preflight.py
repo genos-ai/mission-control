@@ -10,6 +10,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel
 from pydantic_ai import Agent, UsageLimits
 
 from modules.backend.agents.mission_control.cost import compute_cost_usd
@@ -43,14 +44,39 @@ class PreflightResult:
         return [c for c in self.checks if not c.ok]
 
 
+class PingReply(BaseModel):
+    """Structured answer to the ping prompt.
+
+    A structured output type, not ``str``, so the ping goes through the same
+    structured-output path as the agents: under 'tool' mode PydanticAI forces a
+    tool choice, which some models reject (Foundry claude-sonnet-5-5 answers HTTP
+    400). A plain-text ping passes on those models while every agent fails.
+    """
+
+    ok: bool
+
+
+PING_PROMPT = 'Reply with {"ok": true}.'
+
+
+def classify_ping_error(error_msg: str) -> str:
+    """Error type of a failed ping, for callers that explain the failure."""
+    lowered = error_msg.lower()
+    if "credit balance is too low" in lowered:
+        return "insufficient_credits"
+    if "tool_choice" in lowered:
+        return "forced_tool_choice_unsupported"
+    return "error"
+
+
 async def _ping_model(model_name: str) -> ModelCheckResult:
-    """Make a one-token call through PydanticAI to verify a model works."""
+    """Make one small structured-output call through PydanticAI to verify a model works."""
     start = time.monotonic()
     try:
         model = _build_model(model_name)
-        agent: Agent[None, str] = Agent(model, output_type=str)
+        agent: Agent[None, PingReply] = Agent(model, output_type=PingReply)
         await agent.run(
-            "Reply with OK",
+            PING_PROMPT,
             usage_limits=UsageLimits(request_limit=1),
         )
         elapsed = (time.monotonic() - start) * 1000
@@ -58,9 +84,12 @@ async def _ping_model(model_name: str) -> ModelCheckResult:
     except Exception as e:
         elapsed = (time.monotonic() - start) * 1000
         error_msg = str(e)
-        error_type = (
-            "insufficient_credits" if "credit balance is too low" in error_msg.lower() else "error"
-        )
+        error_type = classify_ping_error(error_msg)
+        if error_type == "forced_tool_choice_unsupported":
+            error_msg = (
+                f"{error_msg} (the model rejects a forced tool choice: set "
+                f"output_mode: prompted on it in config/settings/models.yaml)"
+            )
         return ModelCheckResult(
             model_name=model_name,
             ok=False,
@@ -150,9 +179,9 @@ async def _ping_agent(agent_name: str, semaphore: asyncio.Semaphore) -> AgentPin
 
             model_name = _get_model_name(agent_config.model)
             model = _build_model(agent_config.model)
-            probe: Agent[None, str] = Agent(model, output_type=str)
+            probe: Agent[None, PingReply] = Agent(model, output_type=PingReply)
             result = await probe.run(
-                "Reply with OK",
+                PING_PROMPT,
                 usage_limits=UsageLimits(request_limit=1),
             )
             elapsed = (time.monotonic() - start) * 1000

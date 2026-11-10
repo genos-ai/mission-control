@@ -724,6 +724,16 @@ class ModelSpec(_StrictBase):
             "by models that reject one."
         ),
     )
+    output_mode: Literal["tool", "native", "prompted"] = Field(
+        default="tool",
+        description=(
+            "How structured output is enforced for agents on this model unless the "
+            "agent sets its own. 'tool' (default) forces a final_result tool call; "
+            "'prompted' puts the schema in the instructions, for models that reject a "
+            "forced tool choice (openai_chat, anthropic_messages); 'native' uses "
+            "response_format json_schema (openai_chat only)."
+        ),
+    )
 
 
 class ModelsSchema(_StrictBase):
@@ -747,8 +757,12 @@ class ModelsSchema(_StrictBase):
 
     @model_validator(mode="after")
     def _registry_matches_backends(self) -> "ModelsSchema":
-        """Every provider and protocol must exist, and thinking applies to Anthropic only."""
-        from modules.backend.core.model_backends import ANTHROPIC_SETTINGS_PROTOCOLS, BACKENDS
+        """Every provider and protocol must exist, and each spec must suit its protocol."""
+        from modules.backend.core.model_backends import (
+            ANTHROPIC_SETTINGS_PROTOCOLS,
+            BACKENDS,
+            output_mode_error,
+        )
 
         for provider, models in self.registry.items():
             if provider not in BACKENDS:
@@ -768,6 +782,11 @@ class ModelsSchema(_StrictBase):
                     raise ValueError(
                         f"models.registry.{provider}.{model}: 'thinking' applies only to "
                         f"{sorted(ANTHROPIC_SETTINGS_PROTOCOLS)}, not '{spec.protocol}'."
+                    )
+                error = output_mode_error(spec.output_mode, {spec.protocol})
+                if error:
+                    raise ValueError(
+                        f"models.registry.{provider}.{model}: {error}, not '{spec.protocol}'."
                     )
         return self
 

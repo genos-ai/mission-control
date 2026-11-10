@@ -11,7 +11,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.core.model_backends import (
     ANTHROPIC_SETTINGS_PROTOCOLS,
     BACKENDS,
-    NATIVE_OUTPUT_PROTOCOLS,
+    output_mode_error,
 )
 from modules.backend.schemas.agent_config import AgentConfigSchema, AgentModelSchema
 
@@ -125,6 +125,7 @@ class ResolvedModel:
     name: str
     protocol: str
     thinking: str
+    output_mode: str
 
 
 def resolve_model(qualified_name: str) -> ResolvedModel:
@@ -152,8 +153,29 @@ def resolve_model(qualified_name: str) -> ResolvedModel:
             f"{models.models_of(provider)}."
         )
     return ResolvedModel(
-        provider=provider, name=name, protocol=spec.protocol, thinking=spec.thinking
+        provider=provider,
+        name=name,
+        protocol=spec.protocol,
+        thinking=spec.thinking,
+        output_mode=spec.output_mode,
     )
+
+
+def effective_output_mode(config_model: str | AgentModelSchema, resolved: ResolvedModel) -> str:
+    """The structured-output mode an agent's model is built with.
+
+    The agent's own ``output_mode`` wins when set; otherwise the registry's, whose
+    schema default is 'tool'. Raises when the model's protocol cannot honour it.
+    """
+    agent_mode = config_model.output_mode if isinstance(config_model, AgentModelSchema) else None
+    mode = agent_mode if agent_mode is not None else resolved.output_mode
+
+    error = output_mode_error(mode, {resolved.protocol})
+    if error:
+        raise ValidationError(
+            f"'{resolved.provider}:{resolved.name}' is called over {resolved.protocol}; {error}."
+        )
+    return mode
 
 
 def _build_model(config_model: str | AgentModelSchema) -> Model:
@@ -164,22 +186,8 @@ def _build_model(config_model: str | AgentModelSchema) -> Model:
         model_name = config_model
 
     resolved = resolve_model(_resolve_model_alias(model_name))
-
-    # Tool mode is the default (P17 portable structured output). Agents opt in to
-    # native JSON-schema mode per agent via `output_mode: native` in the
-    # AgentModelSchema dict form; only some protocols can honour it.
-    if (
-        isinstance(config_model, AgentModelSchema)
-        and config_model.output_mode == "native"
-        and resolved.protocol not in NATIVE_OUTPUT_PROTOCOLS
-    ):
-        raise ValidationError(
-            f"'{resolved.provider}:{resolved.name}' is called over {resolved.protocol}, "
-            f"which does not support output_mode='native'. Supported: "
-            f"{sorted(NATIVE_OUTPUT_PROTOCOLS)}."
-        )
-
-    return BACKENDS[resolved.provider][resolved.protocol](resolved.name, config_model)
+    output_mode = effective_output_mode(config_model, resolved)
+    return BACKENDS[resolved.provider][resolved.protocol](resolved.name, output_mode)
 
 
 def _get_model_name(config_model: str | AgentModelSchema) -> str:

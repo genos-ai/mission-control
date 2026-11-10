@@ -68,6 +68,8 @@ def catalog_providers(ctx):
 def catalog_ping(ctx, models, providers, all_models):
     """Make one live call per model to prove provider, auth and model work.
 
+    The call asks for structured output in the model's registry output_mode, so
+    a model that rejects a forced tool choice under 'tool' mode fails here.
     Select with --model, --provider or --all. Models must be in the registry.
     Exits 1 if any call fails.
 

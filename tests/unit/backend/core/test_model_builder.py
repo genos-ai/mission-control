@@ -24,6 +24,7 @@ from modules.backend.schemas.agent_config import AgentModelSchema
 GPT = "foundry:gpt-fixture"
 CLAUDE_ADAPTIVE = "foundry:claude-adaptive-fixture"
 CLAUDE_BUDGET = "anthropic:claude-budget-fixture"
+CLAUDE_PROMPTED = "foundry:claude-prompted-fixture"
 COPILOT = "copilot:copilot-fixture"
 
 
@@ -36,6 +37,10 @@ def fixture_registry(monkeypatch):
             "foundry": {
                 "gpt-fixture": {"protocol": OPENAI_CHAT},
                 "claude-adaptive-fixture": {"protocol": ANTHROPIC_MESSAGES, "thinking": "adaptive"},
+                "claude-prompted-fixture": {
+                    "protocol": ANTHROPIC_MESSAGES,
+                    "output_mode": "prompted",
+                },
             },
             "anthropic": {"claude-budget-fixture": {"protocol": ANTHROPIC_MESSAGES}},
             "copilot": {"copilot-fixture": {"protocol": COPILOT_SDK}},
@@ -46,12 +51,12 @@ def fixture_registry(monkeypatch):
 
 @pytest.fixture
 def recorded(monkeypatch):
-    """Replace every builder with one that records (provider, protocol, bare name)."""
-    calls: list[tuple[str, str, str]] = []
+    """Replace every builder with one that records (provider, protocol, bare name, mode)."""
+    calls: list[tuple[str, str, str, str]] = []
 
     def make(provider: str, protocol: str):
-        def build(bare_name, config_model):
-            calls.append((provider, protocol, bare_name))
+        def build(bare_name, output_mode):
+            calls.append((provider, protocol, bare_name, output_mode))
             return f"{provider}/{protocol}/{bare_name}"
 
         return build
@@ -100,17 +105,17 @@ class TestBuildModelDispatch:
     def test_claude_on_foundry_is_built_over_the_messages_api(self, recorded):
         _build_model(CLAUDE_ADAPTIVE)
 
-        assert recorded == [("foundry", ANTHROPIC_MESSAGES, "claude-adaptive-fixture")]
+        assert recorded == [("foundry", ANTHROPIC_MESSAGES, "claude-adaptive-fixture", "tool")]
 
     def test_gpt_on_foundry_is_built_over_chat_completions(self, recorded):
         _build_model(GPT)
 
-        assert recorded == [("foundry", OPENAI_CHAT, "gpt-fixture")]
+        assert recorded == [("foundry", OPENAI_CHAT, "gpt-fixture", "tool")]
 
     def test_alias_resolves_before_dispatch(self, recorded):
         _build_model("fast")
 
-        assert recorded == [("foundry", ANTHROPIC_MESSAGES, "claude-adaptive-fixture")]
+        assert recorded == [("foundry", ANTHROPIC_MESSAGES, "claude-adaptive-fixture", "tool")]
 
     def test_unregistered_model_never_reaches_a_builder(self, recorded):
         with pytest.raises(ValidationError, match="not in the model registry"):
@@ -129,7 +134,46 @@ class TestBuildModelDispatch:
     def test_native_output_is_accepted_over_chat_completions(self, recorded):
         _build_model(AgentModelSchema(name=GPT, output_mode="native"))
 
-        assert recorded == [("foundry", OPENAI_CHAT, "gpt-fixture")]
+        assert recorded == [("foundry", OPENAI_CHAT, "gpt-fixture", "native")]
+
+
+class TestOutputModeResolution:
+    """Agent output_mode wins, else the registry's, whose schema default is 'tool'."""
+
+    def test_registry_default_is_tool(self, recorded):
+        _build_model(AgentModelSchema(name=CLAUDE_ADAPTIVE))
+
+        assert recorded[0][3] == "tool"
+
+    def test_registry_mode_applies_when_the_agent_sets_none(self, recorded):
+        _build_model(AgentModelSchema(name=CLAUDE_PROMPTED))
+
+        assert recorded[0][3] == "prompted"
+
+    def test_registry_mode_applies_to_a_bare_string_model(self, recorded):
+        _build_model(CLAUDE_PROMPTED)
+
+        assert recorded[0][3] == "prompted"
+
+    def test_agent_mode_overrides_the_registry(self, recorded):
+        _build_model(AgentModelSchema(name=CLAUDE_PROMPTED, output_mode="tool"))
+
+        assert recorded[0][3] == "tool"
+
+    def test_agent_prompted_overrides_a_tool_registry_entry(self, recorded):
+        _build_model(AgentModelSchema(name=CLAUDE_ADAPTIVE, output_mode="prompted"))
+
+        assert recorded[0][3] == "prompted"
+
+    def test_resolved_model_carries_the_registry_mode(self):
+        assert resolve_model(CLAUDE_PROMPTED).output_mode == "prompted"
+        assert resolve_model(GPT).output_mode == "tool"
+
+    def test_prompted_is_refused_over_the_copilot_sdk(self, recorded):
+        with pytest.raises(ValidationError, match="output_mode='prompted'"):
+            _build_model(AgentModelSchema(name=COPILOT, output_mode="prompted"))
+
+        assert recorded == []
 
 
 def _agent(model: str, thinking_budget: dict | None = None, effort: str | None = None):

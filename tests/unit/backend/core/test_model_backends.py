@@ -91,6 +91,48 @@ class TestRegistrySchema:
                 registry={"anthropic": {"x": {"protocol": ANTHROPIC_MESSAGES, "thinking": "max"}}}
             )
 
+    def test_output_mode_defaults_to_tool(self):
+        models = _models(registry={"foundry": {"gpt-a": {"protocol": OPENAI_CHAT}}})
+
+        assert models.spec_of("foundry", "gpt-a").output_mode == "tool"
+
+    @pytest.mark.parametrize(
+        ("provider", "protocol", "mode"),
+        [
+            ("foundry", ANTHROPIC_MESSAGES, "prompted"),
+            ("anthropic", ANTHROPIC_MESSAGES, "prompted"),
+            ("foundry", OPENAI_CHAT, "prompted"),
+            ("foundry", OPENAI_CHAT, "native"),
+            ("copilot", COPILOT_SDK, "tool"),
+        ],
+    )
+    def test_output_mode_the_protocol_supports_is_accepted(self, provider, protocol, mode):
+        models = _models(registry={provider: {"m": {"protocol": protocol, "output_mode": mode}}})
+
+        assert models.spec_of(provider, "m").output_mode == mode
+
+    @pytest.mark.parametrize(
+        ("provider", "protocol", "mode"),
+        [
+            ("foundry", ANTHROPIC_MESSAGES, "native"),
+            ("copilot", COPILOT_SDK, "prompted"),
+            ("copilot", COPILOT_SDK, "native"),
+        ],
+    )
+    def test_output_mode_the_protocol_cannot_honour_is_rejected(self, provider, protocol, mode):
+        with pytest.raises(PydanticValidationError, match=f"output_mode='{mode}'"):
+            _models(registry={provider: {"m": {"protocol": protocol, "output_mode": mode}}})
+
+    def test_an_unknown_output_mode_is_rejected(self):
+        with pytest.raises(PydanticValidationError):
+            _models(registry={"foundry": {"m": {"protocol": OPENAI_CHAT, "output_mode": "json"}}})
+
+    def test_shipped_sonnet_5_5_uses_prompted_output(self):
+        # Foundry claude-sonnet-5-5 answers HTTP 400 to a forced tool choice.
+        spec = get_app_config().models.spec_of("foundry", "claude-sonnet-5-5")
+
+        assert spec is not None and spec.output_mode == "prompted"
+
     def test_an_unknown_key_on_a_model_is_rejected(self):
         with pytest.raises(PydanticValidationError):
             _models(registry={"foundry": {"x": {"protocol": OPENAI_CHAT, "colour": "red"}}})

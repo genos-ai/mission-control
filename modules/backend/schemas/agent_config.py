@@ -119,19 +119,20 @@ class AgentModelSchema(_StrictBase):
         default_factory=list,
         description="Provider beta feature flags, e.g. ['structured-outputs-2025-11-13'].",
     )
-    output_mode: Literal["tool", "native"] = Field(
-        default="tool",
+    output_mode: Literal["tool", "native", "prompted"] | None = Field(
+        default=None,
         description=(
-            "How PydanticAI enforces structured output. 'tool' (default) uses the "
-            "hidden final_result tool call — portable across every provider and "
-            "the safe choice for P17-style incremental tool building. 'native' uses "
-            "response_format with json_schema strict mode (constrained decoding at "
-            "the model layer, one fewer round-trip). Requires a model called over "
-            "OpenAI chat completions (openai_chat in the model registry); rejected "
-            "otherwise. Only takes effect when "
-            "the agent's model is in dict form (model: { name: ..., output_mode: "
-            "native }); bare-string model declarations cannot set this field and "
-            "silently default to 'tool'."
+            "How PydanticAI enforces structured output for this agent. None (default) "
+            "uses the model's output_mode in the registry (config/settings/models.yaml), "
+            "which is 'tool' unless the registry says otherwise. 'tool' uses the hidden "
+            "final_result tool call with a forced tool choice, portable across most "
+            "providers and the safe choice for P17-style incremental tool building. "
+            "'native' uses response_format with json_schema strict mode (constrained "
+            "decoding at the model layer); requires openai_chat. 'prompted' puts the "
+            "schema in the instructions and validates the JSON text answer, with no "
+            "forced tool choice; requires openai_chat or anthropic_messages. Only "
+            "settable when the agent's model is in dict form (model: { name: ..., "
+            "output_mode: prompted })."
         ),
     )
 
@@ -256,7 +257,7 @@ class AgentConfigSchema(_StrictBase):
         # Known provider check
         from modules.backend.core.model_backends import (
             BACKENDS,
-            NATIVE_OUTPUT_PROTOCOLS,
+            output_mode_error,
         )
 
         provider = model_name.split(":")[0] if ":" in model_name else ""
@@ -266,16 +267,16 @@ class AgentConfigSchema(_StrictBase):
                 f"Known: {', '.join(sorted(BACKENDS))}"
             )
 
-        # Native JSON-schema mode requires response_format support. Which models
-        # can honour it depends on the protocol the registry files them under, so
-        # the exact check is in _build_model; this only rejects a provider that
-        # has no such protocol at all.
-        if isinstance(self.model, AgentModelSchema) and self.model.output_mode == "native":
-            if not NATIVE_OUTPUT_PROTOCOLS & set(BACKENDS.get(provider, ())):
+        # Native and prompted modes need protocol support. Which models can honour
+        # them depends on the protocol the registry files them under, so the exact
+        # check is in _build_model; this only rejects a provider that has no such
+        # protocol at all.
+        output_mode = self.model.output_mode if isinstance(self.model, AgentModelSchema) else None
+        if output_mode is not None:
+            error = output_mode_error(output_mode, set(BACKENDS.get(provider, ())))
+            if error:
                 raise ValueError(
-                    f"Agent '{self.agent_name}': output_mode='native' requires a provider "
-                    f"with a protocol that passes response_format through to the model "
-                    f"({', '.join(sorted(NATIVE_OUTPUT_PROTOCOLS))}); '{provider}' has none."
+                    f"Agent '{self.agent_name}': {error}; provider '{provider}' has none."
                 )
 
         return self
