@@ -77,13 +77,23 @@ open on purpose.
   supervisor). 88.2.3 threads the run id through `build_dispatch_runtime`;
   make sure it also tags the planner and supervisor ledger writes.
   **Fixed 2026-11-10:** `record_llm_call` and `record_call` take
-  `mission_run_id` and `task_id`; `dispatch_approved` passes the run id
-  through `handle_mission` (new keyword) to the agent executor, and
-  `refine` passes it to the planner, so every existing ledger write in a
-  run is tagged. Still open: `task_id` stays None until the per-task
-  activity in 88.2.3; the supervisor classifier (`gate_post_run.py`) and
-  CLI-engine agents (`claude_code`, `codex`, `copilot`) write no
-  `llm_calls` row at all, so their spend is missing from run cost.
+  `mission_run_id`; `dispatch_approved` passes the run id through
+  `handle_mission` (new keyword) to the agent executor, and `refine`
+  passes it to the planner, so the run's dispatch and planner ledger
+  writes are tagged. Still open: `task_id` stays None (no caller has the
+  task id; add the parameter with the per-task activity in 88.2.3); the
+  supervisor classifier (`gate_post_run.py`), `LlmGateReviewer.review`
+  (`gate.py:99`, LLM gate mode) and CLI-engine agents (`claude_code`,
+  `codex`, `copilot`) write no `llm_calls` row at all, so their spend is
+  missing from run cost.
+
+- [ ] **Run-triggered Director turns are not in run cost.**
+  `start_director_turn` (`temporal/supervisor_activities.py:303`) fires
+  for ADVANCE_REFINE, PROPOSE_COMPLETE and ESCALATE during a run; the
+  resulting `ChatTurnWorkflow` reaches `mission_control.handle`, whose
+  `record_llm_call` (`mission_control.py:466`) writes no
+  `mission_run_id`. Fix: add `mission_run_id` to `DirectorTurnInput` and
+  `ChatTurnInput` (data models only) and pass it into `handle()`.
 
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards

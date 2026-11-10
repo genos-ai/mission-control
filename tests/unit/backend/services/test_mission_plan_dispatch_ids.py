@@ -1,7 +1,7 @@
 """dispatch_approved builds its gate from the plan's mode (Plan 88 steps 88.0.3, 88.1.7).
 
 The run, plan and mission repositories are mocked; dispatch stops at the
-patched create_gate.
+patched create_gate, or at the patched handle_mission for the run-id check.
 """
 
 import uuid
@@ -32,6 +32,7 @@ def _mission_repo(execution_environment: str = "local") -> MagicMock:
         name="mission",
         default_roster="default",
         execution_environment=execution_environment,
+        repo_root=None,
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=mission)
@@ -82,3 +83,46 @@ async def test_dispatch_approved_builds_gate_from_plan_mode():
     assert list_by_run.await_args.args == (run_id,)
     assert create_gate.call_args.kwargs["mode_override"] == GateMode.MANUAL
     assert create_gate.call_args.kwargs["event_bus"] is orchestrator._event_bus
+
+
+class _StopAtHandleMission(Exception):
+    """Raised by the patched handle_mission once its kwargs are captured."""
+
+
+async def test_dispatch_approved_passes_run_id_to_handle_mission():
+    """A dropped mission_run_id kwarg here zeroes the run's recorded cost."""
+    plan = _plan()
+    approved = SimpleNamespace(id=str(uuid.uuid4()), status=None, last_attempt_at=None)
+    orchestrator = SimpleNamespace(
+        _repo=SimpleNamespace(get_by_id=AsyncMock(return_value=plan)),
+        _task_repo=SimpleNamespace(list_by_run=AsyncMock(return_value=[approved])),
+        _session=SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock()),
+        _event_bus=MagicMock(),
+        _log_operation=MagicMock(),
+    )
+    handle_mission = AsyncMock(side_effect=_StopAtHandleMission)
+    taskio = mission_plan_dispatch.mission_plan_taskio
+    run_id = str(uuid.uuid4())
+
+    with (
+        patch.object(taskio, "materialize_task_plan", MagicMock()),
+        patch.object(taskio, "derive_subset_task_plan", AsyncMock()),
+        patch.object(taskio, "load_prior_outputs", AsyncMock(return_value={})),
+        patch.object(mission_plan_dispatch, "MissionRunRepository", _run_repo(plan.id)),
+        patch.object(mission_plan_dispatch, "MissionRepository", _mission_repo()),
+        patch("modules.backend.agents.mission_control.gate.create_gate", MagicMock()),
+        patch(
+            "modules.backend.agents.mission_control.mission_control.handle_mission",
+            handle_mission,
+        ),
+        pytest.raises(_StopAtHandleMission),
+    ):
+        await mission_plan_dispatch.dispatch_approved(
+            orchestrator,
+            run_id,
+            str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()),
+            execution_record_id=str(uuid.uuid4()),
+        )
+
+    assert handle_mission.await_args.kwargs["mission_run_id"] == run_id

@@ -448,6 +448,7 @@ async def test_refine_scoped_to_run(db_session_factory, gateway, owner, monkeypa
 
     assert result.status == "failed"
     assert captured
+    assert captured[0]["mission_run_id"] == second.id
     task_ids = {t["task_id"] for t in captured[0]["current_plan"]["tasks"]}
     assert backlog in task_ids
     assert done not in task_ids
