@@ -13,6 +13,7 @@ import pytest
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.services import mission_plan_dispatch
 from modules.backend.services.mission_plan import remaining_plan_budget_usd
+from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 from modules.backend.temporal.plan_refine_models import PlanRefineInput
 
 
@@ -71,10 +72,11 @@ async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
 
 
 def test_plan_refine_input_budget_required():
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="mission_budget_usd"):
         PlanRefineInput(  # type: ignore[call-arg]
             mission_id=str(uuid.uuid4()),
             plan_id=str(uuid.uuid4()),
             instructions="refine it",
             user_id=str(uuid.uuid4()),
+            timeouts=build_workflow_timeouts_snapshot(),
         )

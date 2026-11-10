@@ -5,7 +5,9 @@ Serializable dataclasses for PlanRefineWorkflow. Same convention
 as chat_models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from modules.backend.temporal.mission_run_models import WorkflowTimeoutsSnapshot
 
 
 @dataclass
@@ -17,6 +19,7 @@ class PlanRefineInput:
     instructions: str
     user_id: str
     mission_budget_usd: float
+    timeouts: WorkflowTimeoutsSnapshot = field(kw_only=True)
 
 
 @dataclass

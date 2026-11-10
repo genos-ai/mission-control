@@ -1,30 +1,43 @@
-"""Workflow modules read no config (Plan 88 step 88.1.8, contract 3.3.2).
+"""Workflow modules read no config (Plan 88 steps 88.1.8 and 88.2.2, contract 3.3.2).
 
 Replay must not depend on the worker's config: every value a workflow needs
-arrives in its pinned snapshot. 88.2.2 widens WORKFLOW_FILES to *workflow*.py.
+arrives in its pinned input snapshot. Every *workflow*.py module under
+temporal/ is checked, except workflow.py, which 88.2.6 deletes.
 """
 
 import ast
+from pathlib import Path
+
+import pytest
 
 from modules.backend.core.config import find_project_root
 
-WORKFLOW_FILES = (
-    "modules/backend/temporal/mission_run_workflow.py",
-    "modules/backend/temporal/mission_schedule_tick_workflow.py",
+TEMPORAL_DIR = find_project_root() / Path("modules/backend/temporal")
+# AgentMissionWorkflow; 88.2.6 deletes the file and this constant.
+DELETED_IN_88_2_6 = frozenset({"workflow.py"})
+WORKFLOW_FILES = sorted(
+    p for p in TEMPORAL_DIR.glob("*workflow*.py") if p.name not in DELETED_IN_88_2_6
 )
-FORBIDDEN = frozenset({"get_app_config", "get_default_budget_usd"})
+FORBIDDEN = frozenset({"get_app_config", "get_default_budget_usd", "get_settings"})
 
 
-def test_workflows_do_not_import_config():
-    root = find_project_root()
-    offenders: list[str] = []
-    for rel in WORKFLOW_FILES:
-        tree = ast.parse((root / rel).read_text(), filename=rel)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                offenders.extend(
-                    f"{rel}:{node.lineno} imports {alias.name}"
-                    for alias in node.names
-                    if alias.name in FORBIDDEN
-                )
-    assert offenders == []
+def _forbidden_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            found.update(alias.name for alias in node.names if alias.name in FORBIDDEN)
+        elif isinstance(node, ast.Name) and node.id in FORBIDDEN:
+            found.add(node.id)
+        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN:
+            found.add(node.attr)
+    return found
+
+
+def test_workflow_files_discovered():
+    assert len(WORKFLOW_FILES) >= 6
+
+
+@pytest.mark.parametrize("path", WORKFLOW_FILES, ids=lambda p: p.name)
+def test_no_forbidden_config_access(path: Path):
+    assert _forbidden_names(path) == set()

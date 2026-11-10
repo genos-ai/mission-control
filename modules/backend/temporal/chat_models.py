@@ -5,7 +5,9 @@ Serializable dataclasses for the ChatTurnWorkflow. Same convention
 as temporal/models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from modules.backend.temporal.mission_run_models import WorkflowTimeoutsSnapshot
 
 
 @dataclass
@@ -19,6 +21,7 @@ class ChatTurnInput:
     agent_id: str | None = None
     channel: str = "api"
     parent_workflow_id: str | None = None
+    timeouts: WorkflowTimeoutsSnapshot = field(kw_only=True)
 
 
 @dataclass

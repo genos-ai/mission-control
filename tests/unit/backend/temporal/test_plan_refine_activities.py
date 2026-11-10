@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from temporalio.testing import ActivityEnvironment
 
+from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_models import PlanRefineInput
 
@@ -58,6 +59,7 @@ async def _run_refine(gate_mode: str | None) -> tuple[AsyncMock, AsyncMock]:
                 instructions="refine it",
                 user_id=str(uuid.uuid4()),
                 mission_budget_usd=10.0,
+                timeouts=build_workflow_timeouts_snapshot(),
             ),
         )
     return approve, on_approved

@@ -28,7 +28,6 @@ from temporalio.common import RetryPolicy
 from modules.backend.temporal.chat_models import ChatTurnInput, ChatTurnResult
 
 with workflow.unsafe.imports_passed_through():
-    from modules.backend.core.config import get_app_config
     from modules.backend.temporal import chat_activities
 
 
@@ -54,8 +53,6 @@ class ChatTurnWorkflow:
     @workflow.run
     async def run(self, input: ChatTurnInput) -> ChatTurnResult:
         """Execute a single chat turn with durable persistence."""
-        temporal_config = get_app_config().temporal
-
         # Step 1: Persist user message (local activity — no scheduling hop)
         # Fast, retryable, own DB commit. After this, the user message
         # is safely in session_messages regardless of what happens next.
@@ -63,10 +60,10 @@ class ChatTurnWorkflow:
             chat_activities.persist_user_message,
             input,
             schedule_to_close_timeout=timedelta(
-                seconds=temporal_config.persistence_timeout_seconds,
+                seconds=input.timeouts.persistence_timeout_seconds,
             ),
             retry_policy=RetryPolicy(
-                maximum_attempts=temporal_config.persistence_retry_max_attempts,
+                maximum_attempts=input.timeouts.persistence_retry_max_attempts,
             ),
         )
 
@@ -75,12 +72,7 @@ class ChatTurnWorkflow:
         # the assistant response at step 11 within the same activity.
         # Events publish to Redis Pub/Sub in real-time via the event
         # bus. No separate persist_assistant_message activity needed.
-        activity_timeout = timedelta(
-            seconds=max(
-                temporal_config.min_activity_timeout_seconds,
-                600,  # 10 minutes floor for chat turns with tool calls
-            ),
-        )
+        activity_timeout = timedelta(seconds=input.timeouts.activity_timeout_seconds)
         result = await workflow.execute_activity(
             chat_activities.execute_chat_turn,
             input,

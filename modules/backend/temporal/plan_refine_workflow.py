@@ -17,7 +17,6 @@ from temporalio.common import RetryPolicy
 from modules.backend.temporal.plan_refine_models import PlanRefineInput, PlanRefineResult
 
 with workflow.unsafe.imports_passed_through():
-    from modules.backend.core.config import get_app_config
     from modules.backend.temporal import plan_refine_activities
 
 
@@ -41,14 +40,10 @@ class PlanRefineWorkflow:
     @workflow.run
     async def run(self, input: PlanRefineInput) -> PlanRefineResult:
         """Execute the Planning Agent refinement."""
-        temporal_config = get_app_config().temporal
-
         result = await workflow.execute_activity(
             plan_refine_activities.execute_plan_refine,
             input,
-            start_to_close_timeout=timedelta(
-                seconds=max(temporal_config.min_activity_timeout_seconds, 120),
-            ),
+            start_to_close_timeout=timedelta(seconds=input.timeouts.activity_timeout_seconds),
             retry_policy=RetryPolicy(
                 maximum_attempts=2,
             ),

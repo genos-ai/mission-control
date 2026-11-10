@@ -2,8 +2,9 @@
 
 Not a workflow module, so it may read config. The schema import is under
 TYPE_CHECKING so workflow modules can import this through
-imports_passed_through without loading config. build_run_config_snapshot and
-build_tick_config_snapshot are the only builders of their snapshots.
+imports_passed_through without loading config. build_run_config_snapshot,
+build_tick_config_snapshot and build_workflow_timeouts_snapshot are the only
+builders of their snapshots.
 """
 
 import dataclasses
@@ -17,6 +18,7 @@ from modules.backend.temporal.mission_run_models import (
     RetrySnapshot,
     RunConfigSnapshot,
     TickConfigSnapshot,
+    WorkflowTimeoutsSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -70,6 +72,8 @@ def build_run_config_snapshot() -> RunConfigSnapshot:
         refine_wait_seconds=run.refine_wait_seconds,
         continue_as_new_after_iterations=run.continue_as_new_after_iterations,
         max_parallel_tasks=run.max_parallel_tasks,
+        max_run_duration_seconds=run.max_run_duration_seconds,
+        task_heartbeat_interval_seconds=run.task_heartbeat_interval_seconds,
     )
     return dataclasses.replace(snap, config_hash=config_hash(snap))
 
@@ -85,3 +89,13 @@ def build_tick_config_snapshot() -> TickConfigSnapshot:
         notify=policy_snapshot(activities.notify),
     )
     return dataclasses.replace(snap, config_hash=config_hash(snap))
+
+
+def build_workflow_timeouts_snapshot() -> WorkflowTimeoutsSnapshot:
+    """Pin the activity and persistence timeouts for one chat, plan-refine or tool-fork workflow."""
+    temporal = get_app_config().temporal
+    return WorkflowTimeoutsSnapshot(
+        activity_timeout_seconds=temporal.min_activity_timeout_seconds,
+        persistence_timeout_seconds=temporal.persistence_timeout_seconds,
+        persistence_retry_max_attempts=temporal.persistence_retry_max_attempts,
+    )

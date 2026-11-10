@@ -22,6 +22,7 @@ from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.user import User
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.services.mission_run import MissionRunService
+from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_models import PlanRefineInput
 from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
@@ -231,6 +232,7 @@ async def test_refine_activity_does_not_auto_approve_manual(
                 instructions="refine it",
                 user_id=user.id,
                 mission_budget_usd=10.0,
+                timeouts=build_workflow_timeouts_snapshot(),
             ),
         )
 

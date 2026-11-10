@@ -26,7 +26,6 @@ from modules.backend.temporal.tool_fork_models import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from modules.backend.core.config import get_app_config
     from modules.backend.temporal import tool_fork_activities
 
 
@@ -75,8 +74,6 @@ class DesignWorkflowWorkflow:
 
     @workflow.run
     async def run(self, input: DesignWorkflowInput) -> ToolForkResult:
-        config = get_app_config().temporal
-
         await workflow.execute_activity(
             tool_fork_activities.update_execution_record_status,
             args=[input.execution_record_id, "running"],
@@ -87,9 +84,7 @@ class DesignWorkflowWorkflow:
             result = await workflow.execute_activity(
                 tool_fork_activities.execute_design_workflow,
                 input,
-                start_to_close_timeout=timedelta(
-                    seconds=max(config.min_activity_timeout_seconds, 300),
-                ),
+                start_to_close_timeout=timedelta(seconds=input.timeouts.activity_timeout_seconds),
                 retry_policy=RetryPolicy(maximum_attempts=1),
             )
         except Exception as exc:
@@ -122,8 +117,6 @@ class RunWorkflowWorkflow:
 
     @workflow.run
     async def run(self, input: RunWorkflowInput) -> ToolForkResult:
-        config = get_app_config().temporal
-
         await workflow.execute_activity(
             tool_fork_activities.update_execution_record_status,
             args=[input.execution_record_id, "running"],
@@ -134,9 +127,7 @@ class RunWorkflowWorkflow:
             result = await workflow.execute_activity(
                 tool_fork_activities.execute_run_workflow,
                 input,
-                start_to_close_timeout=timedelta(
-                    seconds=max(config.min_activity_timeout_seconds, 600),
-                ),
+                start_to_close_timeout=timedelta(seconds=input.timeouts.activity_timeout_seconds),
                 retry_policy=RetryPolicy(maximum_attempts=1),
             )
         except Exception as exc:

@@ -48,6 +48,7 @@ async def refine_plan(
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
     from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
     from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 
@@ -70,6 +71,7 @@ async def refine_plan(
             instructions=instructions,
             user_id=mission.owner_id,
             mission_budget_usd=remaining_plan_budget_usd(plan),
+            timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,
         task_queue=config.task_queue,

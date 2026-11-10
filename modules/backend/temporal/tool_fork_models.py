@@ -5,7 +5,9 @@ Serializable dataclasses for DesignWorkflowWorkflow and RunWorkflowWorkflow.
 Same convention as chat_models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from modules.backend.temporal.mission_run_models import WorkflowTimeoutsSnapshot
 
 
 @dataclass
@@ -18,6 +20,7 @@ class DesignWorkflowInput:
     workflow_name: str
     description: str
     instructions: str
+    timeouts: WorkflowTimeoutsSnapshot = field(kw_only=True)
 
 
 @dataclass
@@ -34,6 +37,7 @@ class RunWorkflowInput:
     # its own name; API-triggered runs (Plan 84 Phase 3.1) pass the real
     # caller (e.g. "user:api").
     triggered_by: str = "mission_director"
+    timeouts: WorkflowTimeoutsSnapshot = field(kw_only=True)
 
 
 @dataclass

@@ -327,6 +327,7 @@ async def run_mission_workflow(
         await redis.aclose()
 
         from modules.backend.temporal.client import get_temporal_client, get_temporal_config
+        from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
         from modules.backend.temporal.tool_fork_models import RunWorkflowInput
         from modules.backend.temporal.tool_fork_workflow import RunWorkflowWorkflow
 
@@ -364,6 +365,7 @@ async def run_mission_workflow(
                 workflow_name=workflow_name,
                 context_overrides=context_overrides,
                 triggered_by=triggered_by,
+                timeouts=build_workflow_timeouts_snapshot(),
             ),
             id=workflow_id,
             task_queue=config.task_queue,

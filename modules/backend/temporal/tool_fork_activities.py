@@ -219,6 +219,7 @@ async def notify_director_on_completion(
     from modules.backend.temporal.chat_models import ChatTurnInput
     from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
     from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 
     prompt = fallback_prompt
 
@@ -265,6 +266,7 @@ async def notify_director_on_completion(
             sender_id="mission.supervisor.agent",
             agent_id="mission.director.agent",
             channel="followup",
+            timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,
         task_queue=config.task_queue,

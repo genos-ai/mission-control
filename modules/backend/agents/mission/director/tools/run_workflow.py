@@ -54,6 +54,7 @@ async def run_workflow(
         The execution record id, Temporal workflow id, resolved name and
         a message pointing at check_background_tasks.
     """
+    from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
     from modules.backend.temporal.tool_fork_models import RunWorkflowInput
 
     clean_name = strip_workflow_suffix(workflow_name)
@@ -74,6 +75,7 @@ async def run_workflow(
             execution_record_id=record.id,
             workflow_name=clean_name,
             context_overrides=context_overrides,
+            timeouts=build_workflow_timeouts_snapshot(),
         ),
         record_id=record.id,
     )

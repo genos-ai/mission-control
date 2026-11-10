@@ -317,6 +317,7 @@ async def start_director_turn(input: DirectorTurnInput) -> str:
     from modules.backend.temporal.chat_models import ChatTurnInput
     from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
     from modules.backend.temporal.client import get_temporal_client
+    from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 
     client = await get_temporal_client()
     config = get_app_config().temporal
@@ -329,6 +330,7 @@ async def start_director_turn(input: DirectorTurnInput) -> str:
         agent_id="mission.director.agent",
         channel="followup",
         parent_workflow_id=input.signal_workflow_id,
+        timeouts=build_workflow_timeouts_snapshot(),
     )
 
     workflow_id = f"director-followup-{input.mission_id[:12]}-{uuid.uuid4().hex[:8]}"

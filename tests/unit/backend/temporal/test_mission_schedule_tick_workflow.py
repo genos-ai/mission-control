@@ -95,6 +95,8 @@ def _run_input(run_id: str, task_queue: str) -> MissionRunWorkflowInput:
             refine_wait_seconds=5,
             continue_as_new_after_iterations=10,
             max_parallel_tasks=1,
+            max_run_duration_seconds=43200,
+            task_heartbeat_interval_seconds=20,
         ),
     )
 

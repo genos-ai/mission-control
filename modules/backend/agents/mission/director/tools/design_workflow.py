@@ -43,6 +43,9 @@ async def design_workflow(
         The execution record id, Temporal workflow id, name and a message
         pointing at check_background_tasks.
     """
+    from modules.backend.temporal.config_snapshots import (
+        build_workflow_timeouts_snapshot,
+    )
     from modules.backend.temporal.tool_fork_models import DesignWorkflowInput
 
     record = await create_background_record(
@@ -62,6 +65,7 @@ async def design_workflow(
             workflow_name=name,
             description=description,
             instructions=instructions,
+            timeouts=build_workflow_timeouts_snapshot(),
         ),
         record_id=record.id,
     )

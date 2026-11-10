@@ -84,6 +84,20 @@ class RunConfigSnapshot:
     refine_wait_seconds: int
     continue_as_new_after_iterations: int
     max_parallel_tasks: int
+    max_run_duration_seconds: int
+    task_heartbeat_interval_seconds: int
+
+
+@dataclass(frozen=True)
+class WorkflowTimeoutsSnapshot:
+    """Built only by config_snapshots.build_workflow_timeouts_snapshot.
+
+    Pinned into the chat, plan-refine and tool-fork workflow inputs.
+    """
+
+    activity_timeout_seconds: int  # temporal.min_activity_timeout_seconds
+    persistence_timeout_seconds: int  # temporal.persistence_timeout_seconds
+    persistence_retry_max_attempts: int  # temporal.persistence_retry_max_attempts
 
 
 @dataclass(frozen=True)
