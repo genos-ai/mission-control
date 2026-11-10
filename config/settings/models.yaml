@@ -73,7 +73,7 @@ registry:
     gpt-5-mini: {protocol: openai_chat}
     gpt-5-nano: {protocol: openai_chat}
     claude-haiku-5-5: {protocol: anthropic_messages, thinking: adaptive}
-    # Rejects a forced tool choice (HTTP 400 "tool_choice: type \"tool\" and \"any\"
+    # Both reject a forced tool choice (HTTP 400 "tool_choice: type \"tool\" and \"any\"
     # are not supported for this model"), so structured output is prompted.
     claude-sonnet-5-5: {protocol: anthropic_messages, thinking: adaptive, output_mode: prompted}
-    claude-opus-5-5: {protocol: anthropic_messages, thinking: adaptive}
+    claude-opus-5-5: {protocol: anthropic_messages, thinking: adaptive, output_mode: prompted}

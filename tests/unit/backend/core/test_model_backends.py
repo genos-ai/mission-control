@@ -127,9 +127,10 @@ class TestRegistrySchema:
         with pytest.raises(PydanticValidationError):
             _models(registry={"foundry": {"m": {"protocol": OPENAI_CHAT, "output_mode": "json"}}})
 
-    def test_shipped_sonnet_5_5_uses_prompted_output(self):
-        # Foundry claude-sonnet-5-5 answers HTTP 400 to a forced tool choice.
-        spec = get_app_config().models.spec_of("foundry", "claude-sonnet-5-5")
+    @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-opus-5-5"])
+    def test_shipped_claude_5_5_rejecting_forced_tools_uses_prompted_output(self, model):
+        # Foundry answers HTTP 400 to a forced tool choice on these models.
+        spec = get_app_config().models.spec_of("foundry", model)
 
         assert spec is not None and spec.output_mode == "prompted"
 
