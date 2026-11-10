@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from modules.clients.service_manager.constants import (
@@ -16,6 +17,7 @@ from modules.clients.service_manager.constants import (
     DAEMON_START_TIMEOUT_SEC,
     FRONTEND_PORT,
     SERVICE_LOG_DIR,
+    TEMPORAL_DB_FILE,
     TEMPORAL_NAMESPACE,
     TEMPORAL_PORT,
     TEMPORAL_START_TIMEOUT_SEC,
@@ -23,10 +25,15 @@ from modules.clients.service_manager.constants import (
 
 
 def get_pids_on_port(port: int) -> list[int]:
-    """Return PIDs listening on a port."""
+    """Return PIDs listening on a port.
+
+    Restricted to the LISTEN state: a bare ``lsof -i :PORT`` also returns every
+    client holding a connection (the worker and backend for Temporal's port, a
+    browser for the frontend's), and stopping a service must not signal those.
+    """
     try:
         result = subprocess.run(
-            ["lsof", "-i", f":{port}", "-t"],
+            ["lsof", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
             capture_output=True,
             text=True,
             timeout=3,
@@ -90,16 +97,69 @@ def kill_pids(pids: list[int], label: str) -> int:
     return killed
 
 
-def stop_port(port: int, label: str) -> int:
-    """Kill all processes on a port, retrying to catch respawned children."""
+def get_pids_by_cmdline(fragment: str) -> list[int]:
+    """Return PIDs of other processes whose command line contains ``fragment``."""
+    import psutil
+
+    own_pid = os.getpid()
+    return [
+        proc.pid
+        for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None)
+        if proc.pid != own_pid
+        and any(fragment in str(arg) for arg in proc.info.get("cmdline") or [])
+    ]
+
+
+def stop_processes(find_pids: Callable[[], list[int]], label: str) -> int:
+    """Stop every process ``find_pids`` returns, retrying to catch respawned children."""
     total = 0
     for _ in range(3):
-        pids = get_pids_on_port(port)
+        pids = find_pids()
         if not pids:
             break
         total += kill_pids(pids, label)
         time.sleep(1)
     return total
+
+
+def find_foreground_supervisor(pids: list[int]) -> int | None:
+    """Return the PID of a foreground ``services.py start|restart`` that owns ``pids``.
+
+    A foreground session (no ``--daemon``) shuts the whole stack down as soon as
+    any child exits, so stopping one of its services in isolation would take the
+    rest with it. Daemon-started services are detached, so none of their
+    ancestors match.
+    """
+    import psutil
+
+    own_pid = os.getpid()
+    for pid in pids:
+        try:
+            ancestors = psutil.Process(pid).parents()
+        except psutil.NoSuchProcess:
+            # Exited between the port scan and this lookup; nothing to protect.
+            continue
+        for ancestor in ancestors:
+            try:
+                cmdline = ancestor.cmdline()
+            except psutil.NoSuchProcess:
+                continue
+            runs_services = any(Path(arg).name == "services.py" for arg in cmdline)
+            is_foreground = bool({"start", "restart"} & set(cmdline)) and "--daemon" not in cmdline
+            if ancestor.pid != own_pid and runs_services and is_foreground:
+                return ancestor.pid
+    return None
+
+
+def temporal_db_args() -> list[str]:
+    """Flags that make the dev Temporal server persist to disk.
+
+    Without them ``start-dev`` is in-memory, so every restart wipes schedules
+    and workflow history. The parent directory is created here because the
+    server does not create it.
+    """
+    TEMPORAL_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    return ["--db-filename", str(TEMPORAL_DB_FILE)]
 
 
 def _connect_host_for_bind(bind_host: str) -> str:

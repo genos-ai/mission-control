@@ -10,8 +10,11 @@ Usage:
     python services.py start --backend-only   # Backend only
     python services.py start --no-migrate     # Skip migrations
     python services.py stop                   # Stop backend + frontend
-    python services.py stop --backend-only    # Stop backend only
+    python services.py stop --backend-only    # Stop everything except the frontend
     python services.py restart                # Stop then start
+    python services.py restart api worker     # Restart only the API and the worker
+    python services.py restart worker         # Restart only the Temporal worker
+    python services.py stop frontend          # Stop one service
     python services.py restart --log-level WARNING --log-format console  # Errors/warnings only, colored  # noqa: E501
     python services.py status                 # Show what's running
     python services.py check                  # Preflight checks only
@@ -25,6 +28,12 @@ PostgreSQL is a hard requirement. If it is not listening, preflight asks
 whether to start the Homebrew launch agent (macOS) and clears a stale
 postmaster.pid left by an unclean shutdown. It never starts without
 confirmation; non-interactive runs just print the command to run.
+
+Services are named api, worker, frontend and temporal. Naming one or more on start,
+stop or restart acts on only those. Named services always run detached and skip
+preflight, migrations and seeding. Stopping or restarting a named service is refused
+when the stack runs in a foreground session, because that session shuts everything
+down as soon as one service exits.
 
 Daemon mode uses a new process session (no controlling terminal), stdin disconnected,
 stdout/stderr appended to per-service log files, and a TCP readiness check before exit.
@@ -44,12 +53,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from modules.clients.service_manager.constants import (  # noqa: E402
     BACKEND_PORT,
+    DEFAULT_BIND_HOST,
     FRONTEND_PORT,
     SERVICE_LOG_DIR,
     TEMPORAL_PORT,
     TEMPORAL_UI_PORT,
 )
-from modules.clients.service_manager.dev_runner import DevRunner, _backend_command  # noqa: E402
+from modules.clients.service_manager.dev_runner import DevRunner  # noqa: E402
 from modules.clients.service_manager.preflight import (  # noqa: E402
     dev_login_line,
     ensure_dev_user,
@@ -57,13 +67,18 @@ from modules.clients.service_manager.preflight import (  # noqa: E402
     run_migrations,
 )
 from modules.clients.service_manager.process_utils import (  # noqa: E402
-    _connect_host_for_bind,
-    _service_log_paths,
-    _spawn_detached,
-    _verify_daemon_ready,
     _wait_for_temporal,
+    find_foreground_supervisor,
     get_pids_on_port,
-    stop_port,
+)
+from modules.clients.service_manager.registry import (  # noqa: E402
+    SERVICE_NAMES,
+    SERVICES,
+    ManagedService,
+    ServiceContext,
+    resolve_services,
+    start_services,
+    stop_services,
 )
 
 # ===========================================================================
@@ -71,8 +86,8 @@ from modules.clients.service_manager.process_utils import (  # noqa: E402
 # ===========================================================================
 
 
-def _prepare_services_environment(args) -> None:
-    """Preflight, migrate, and seed. Exits the process on hard failure."""
+def _apply_logging_environment(args) -> None:
+    """Pass the logging flags to child processes through their environment."""
     if getattr(args, "log_level", None):
         os.environ["MC_LOG_LEVEL"] = args.log_level
     if getattr(args, "log_format", None):
@@ -82,6 +97,11 @@ def _prepare_services_environment(args) -> None:
         # Trace requires DEBUG level to capture log entries
         if not os.environ.get("MC_LOG_LEVEL"):
             os.environ["MC_LOG_LEVEL"] = "DEBUG"
+
+
+def _prepare_services_environment(args) -> None:
+    """Preflight, migrate, and seed. Exits the process on hard failure."""
+    _apply_logging_environment(args)
 
     if not preflight(args.port, check_frontend=not args.backend_only):
         sys.exit(1)
@@ -102,80 +122,46 @@ def _prepare_services_environment(args) -> None:
         print("  Dev user .......... skipped")
 
 
+def _context(args) -> ServiceContext:
+    # stop and status have no --host; the bind host only matters when starting.
+    return ServiceContext(port=args.port, host=getattr(args, "host", DEFAULT_BIND_HOST))
+
+
+def _selected_services(args) -> list[ManagedService]:
+    return resolve_services(args.services, include_frontend=not args.backend_only)
+
+
+def _refuse_foreground_session(services: list[ManagedService], ctx: ServiceContext) -> None:
+    """Exit if stopping these services would collapse a foreground session."""
+    pids = [pid for service in services for pid in service.find_pids(ctx)]
+    owner = find_foreground_supervisor(pids)
+    if owner is not None:
+        print(
+            f"\n  Refusing: these services belong to a foreground session (PID {owner}), "
+            "which shuts every service down when one exits.\n"
+            "  Stop that session with Ctrl+C, or restart the whole stack: "
+            "python services.py restart"
+        )
+        sys.exit(1)
+
+
 def cmd_start_daemon(args):
-    """Start backend (and optionally frontend) detached with log files and readiness checks."""
+    """Start services detached, with log files and readiness checks."""
+    targeted = bool(args.services)
     print("=" * 50)
     print("  MISSION CONTROL — Start (daemon)")
     print("=" * 50)
 
-    _prepare_services_environment(args)
-
-    backend_log, frontend_log = _service_log_paths(args.port)
-    connect_host = _connect_host_for_bind(args.host)
-
-    # Start Temporal server if not already running
-    temporal_pids = get_pids_on_port(TEMPORAL_PORT)
-    if not temporal_pids:
-        temporal_log = SERVICE_LOG_DIR / "services-temporal.log"
-        temporal_log.parent.mkdir(parents=True, exist_ok=True)
-        temporal_log.write_text("")  # per-run log; a failure tail should show this start
-        print("\nStarting Temporal server in background...")
-        _spawn_detached(
-            [
-                "temporal",
-                "server",
-                "start-dev",
-                "--port",
-                str(TEMPORAL_PORT),
-                "--ui-port",
-                str(TEMPORAL_UI_PORT),
-            ],
-            PROJECT_ROOT,
-            temporal_log,
-        )
-        if not _wait_for_temporal(temporal_log):
-            sys.exit(1)
-        print(f"  Temporal server: http://localhost:{TEMPORAL_UI_PORT}")
+    if targeted:
+        _apply_logging_environment(args)
     else:
-        print(f"\n  Temporal server already running (PID {temporal_pids[0]})")
+        _prepare_services_environment(args)
 
     print("\nStarting services in background...")
-    proc_backend = _spawn_detached(
-        _backend_command(args.host, args.port, reload=False),
-        PROJECT_ROOT,
-        backend_log,
-    )
-    _verify_daemon_ready(
-        "Backend",
-        proc_backend,
-        backend_log,
-        connect_host=connect_host,
-        port=args.port,
-    )
+    start_services(_selected_services(args), _context(args))
 
-    # Start Temporal worker
-    worker_log = SERVICE_LOG_DIR / "services-temporal-worker.log"
-    _spawn_detached(
-        [sys.executable, "-m", "modules.backend.temporal.worker"],
-        PROJECT_ROOT,
-        worker_log,
-    )
-    print("  Temporal Worker started")
-
-    if not args.backend_only:
-        frontend_dir = PROJECT_ROOT / "modules" / "frontend"
-        proc_frontend = _spawn_detached(
-            ["npm", "run", "dev"],
-            frontend_dir,
-            frontend_log,
-        )
-        _verify_daemon_ready(
-            "Frontend",
-            proc_frontend,
-            frontend_log,
-            connect_host="127.0.0.1",
-            port=FRONTEND_PORT,
-        )
+    if targeted:
+        return
 
     print("\n" + "-" * 50)
     print(f"  Backend API:    http://localhost:{args.port}")
@@ -191,8 +177,10 @@ def cmd_start_daemon(args):
 
 def cmd_start(args):
     """Start development services."""
-    if args.daemon:
-        if not args.no_reload:
+    if args.daemon or args.services:
+        if args.services:
+            print("Note: named services always run detached.\n")
+        elif not args.no_reload:
             print(
                 "Note: daemon mode always runs without uvicorn --reload "
                 "(the reloader uses an extra supervisor process and is unsuitable for detached startup).\n"  # noqa: E501
@@ -252,39 +240,23 @@ def cmd_stop(args):
     print("  MISSION CONTROL — Stop")
     print("=" * 50)
 
-    total = 0
-    total += stop_port(args.port, f"Backend (:{args.port})")
+    services = _selected_services(args)
+    ctx = _context(args)
+    if args.services:
+        _refuse_foreground_session(services, ctx)
 
-    # Stop Temporal worker (find by process name)
-    import psutil
-
-    for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
-        cmdline = proc.info.get("cmdline") or []
-        if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
-            proc.terminate()
-            total += 1
-            print(f"  Temporal Worker: sent SIGTERM to PID {proc.pid}")
-
-    # Stop Temporal server
-    total += stop_port(TEMPORAL_PORT, f"Temporal (:{TEMPORAL_PORT})")
-
-    if not args.backend_only:
-        total += stop_port(FRONTEND_PORT, f"Frontend (:{FRONTEND_PORT})")
+    total = stop_services(services, ctx)
 
     if total == 0:
         print("\n  No services running.")
-    else:
-        remaining = (
-            get_pids_on_port(args.port)
-            + get_pids_on_port(TEMPORAL_PORT)
-            + ([] if args.backend_only else get_pids_on_port(FRONTEND_PORT))
+        return
+    remaining = [pid for service in services for pid in service.find_pids(ctx)]
+    if remaining:
+        print(
+            f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually."  # noqa: E501
         )
-        if remaining:
-            print(
-                f"\n  Warning: {len(remaining)} process(es) still running. Try again or kill manually."  # noqa: E501
-            )
-        else:
-            print(f"\n  Stopped {total} process(es).")
+    else:
+        print(f"\n  Stopped {total} process(es).")
 
 
 def cmd_restart(args):
@@ -300,43 +272,13 @@ def cmd_status(args):
     print("=" * 50)
     print("  MISSION CONTROL — Status")
     print("=" * 50)
+    print()
 
-    backend_pids = get_pids_on_port(args.port)
-    if backend_pids:
-        print(
-            f"\n  Backend (:{args.port})  .... RUNNING (PID {', '.join(str(p) for p in backend_pids)})"  # noqa: E501
-        )
-    else:
-        print(f"\n  Backend (:{args.port})  .... stopped")
-
-    temporal_pids = get_pids_on_port(TEMPORAL_PORT)
-    if temporal_pids:
-        print(
-            f"  Temporal (:{TEMPORAL_PORT})  ... RUNNING (PID {', '.join(str(p) for p in temporal_pids)})"  # noqa: E501
-        )
-    else:
-        print(f"  Temporal (:{TEMPORAL_PORT})  ... stopped")
-
-    # Check Temporal worker by process name
-    import psutil
-
-    worker_running = False
-    for proc in psutil.process_iter(["pid", "cmdline"], ad_value=None):
-        cmdline = proc.info.get("cmdline") or []
-        if any("modules.backend.temporal.worker" in str(c) for c in cmdline):
-            print(f"  Temporal Worker .. RUNNING (PID {proc.pid})")
-            worker_running = True
-            break
-    if not worker_running:
-        print("  Temporal Worker .. stopped")
-
-    frontend_pids = get_pids_on_port(FRONTEND_PORT)
-    if frontend_pids:
-        print(
-            f"  Frontend (:{FRONTEND_PORT}) ... RUNNING (PID {', '.join(str(p) for p in frontend_pids)})"  # noqa: E501
-        )
-    else:
-        print(f"  Frontend (:{FRONTEND_PORT}) ... stopped")
+    ctx = _context(args)
+    for service in SERVICES:
+        pids = service.find_pids(ctx)
+        state = f"RUNNING (PID {', '.join(str(p) for p in pids)})" if pids else "stopped"
+        print(f"  {service.label(ctx)} ".ljust(21, ".") + f" {state}")
 
     redis_ok = False
     try:
@@ -401,6 +343,16 @@ def cmd_check(args):
         sys.exit(1)
 
 
+def _tree_arguments(sub: argparse.ArgumentParser) -> str:
+    """Render a subparser's positionals then options, read from the parser itself."""
+    positionals = [a for a in sub._actions if not a.option_strings and a.dest != "help"]
+    options = [a for a in sub._actions if a.option_strings and a.dest != "help"]
+    parts = [
+        f"[{a.metavar or a.dest}{' ...' if a.nargs in ('*', '+') else ''}]" for a in positionals
+    ] + [f"[{a.option_strings[-1]}]" for a in options]
+    return (" " + " ".join(parts)) if parts else ""
+
+
 def cmd_tree(args):
     """Show all services.py subcommands and their flags (rule 010.1)."""
     parser = _build_parser()
@@ -412,12 +364,8 @@ def cmd_tree(args):
     for i, name in enumerate(names):
         last = i == len(names) - 1
         connector = "└── " if last else "├── "
-        sub = subaction.choices[name]
-        flags = [
-            a.option_strings[-1] for a in sub._actions if a.option_strings and a.dest != "help"
-        ]
-        flag_str = (" " + " ".join(f"[{f}]" for f in flags)) if flags else ""
-        print(f"{connector}{name}{flag_str}  {help_by_name.get(name, '')}".rstrip())
+        arguments = _tree_arguments(subaction.choices[name])
+        print(f"{connector}{name}{arguments}  {help_by_name.get(name, '')}".rstrip())
 
 
 # ===========================================================================
@@ -425,8 +373,36 @@ def cmd_tree(args):
 # ===========================================================================
 
 
+def _service_name(value: str) -> str:
+    if value not in SERVICE_NAMES:
+        raise argparse.ArgumentTypeError(
+            f"invalid service '{value}' (choose from {', '.join(SERVICE_NAMES)})"
+        )
+    return value
+
+
+def _add_services_argument(p: argparse.ArgumentParser, *, detached_note: bool) -> None:
+    note = (
+        " Named services run detached and skip preflight, migrations and seeding."
+        if detached_note
+        else ""
+    )
+    p.add_argument(
+        "services",
+        nargs="*",
+        type=_service_name,
+        metavar="SERVICE",
+        help=f"Act on only these services ({', '.join(SERVICE_NAMES)}); default: all.{note}",
+    )
+
+
 def _add_start_arguments(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
+    _add_services_argument(p, detached_note=True)
+    p.add_argument(
+        "--host",
+        default=DEFAULT_BIND_HOST,
+        help=f"Backend host (default: {DEFAULT_BIND_HOST})",
+    )
     p.add_argument(
         "--daemon",
         action="store_true",
@@ -438,7 +414,11 @@ def _add_start_arguments(p: argparse.ArgumentParser) -> None:
         ),
     )
     p.add_argument("--no-reload", action="store_true", help="Disable backend auto-reload")
-    p.add_argument("--backend-only", action="store_true", help="Skip frontend dev server")
+    p.add_argument(
+        "--backend-only",
+        action="store_true",
+        help="Skip frontend dev server (cannot be combined with SERVICE)",
+    )
     p.add_argument("--no-migrate", action="store_true", help="Skip database migrations")
     p.add_argument("--no-seed", action="store_true", help="Skip dev user seeding")
     p.add_argument(
@@ -472,6 +452,9 @@ Examples:
   python services.py start --no-migrate     Skip DB migrations
   python services.py stop                   Stop all services
   python services.py restart                Restart everything
+  python services.py restart api worker     Restart only the API and the worker
+  python services.py restart worker         Restart only the Temporal worker
+  python services.py stop frontend          Stop one service
   python services.py status                 Show what's running
   python services.py check                  Run preflight checks
   python services.py tree                   Show all commands and flags
@@ -495,13 +478,21 @@ Logging:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    p_start = subparsers.add_parser("start", help="Start development services")
+    scope_help = f"; name SERVICE... ({', '.join(SERVICE_NAMES)}) to limit it"
+    p_start = subparsers.add_parser("start", help=f"Start development services{scope_help}")
     _add_start_arguments(p_start)
 
-    p_stop = subparsers.add_parser("stop", help="Stop running services")
-    p_stop.add_argument("--backend-only", action="store_true", help="Stop backend only")
+    p_stop = subparsers.add_parser("stop", help=f"Stop running services{scope_help}")
+    _add_services_argument(p_stop, detached_note=False)
+    p_stop.add_argument(
+        "--backend-only",
+        action="store_true",
+        help="Leave the frontend running (cannot be combined with SERVICE)",
+    )
 
-    p_restart = subparsers.add_parser("restart", help="Restart services (stop + start)")
+    p_restart = subparsers.add_parser(
+        "restart", help=f"Restart services (stop + start){scope_help}"
+    )
     _add_start_arguments(p_restart)
 
     subparsers.add_parser("status", help="Show service status")
@@ -527,6 +518,9 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    if getattr(args, "services", None) and args.backend_only:
+        parser.error("--backend-only cannot be combined with named services")
 
     commands[args.command](args)
 

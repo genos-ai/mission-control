@@ -13,14 +13,14 @@ open on purpose.
 
 **Dev environment**
 
-- [ ] **Dev Temporal loses all state on every restart.** `services.py`
+- [X] **Dev Temporal loses all state on every restart.** `services.py`
   (line ~127) and `modules/clients/service_manager/dev_runner.py` (line
   ~85) run `temporal server start-dev` without `--db-filename`, so
   `services.py restart` wipes schedules, workflow history and in-flight
   runs. The worker's startup `sync_all` re-creates schedules, but queued
   ticks and open runs are lost. Add `--db-filename var/temporal.db`
   (path from config).
-- [ ] **No way to restart only the API and worker.** `services.py stop`
+- [X] **No way to restart only the API and worker.** `services.py stop`
   always stops Temporal, even with `--backend-only`. Add a flag (or make
   `--backend-only` mean it) so a code reload does not wipe Temporal.
 - [ ] **Temporal CLI needs `--address 127.0.0.1:7233` on this machine**;

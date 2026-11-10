@@ -28,13 +28,17 @@ def _read_backend_port() -> int:
 
 
 BACKEND_PORT = _read_backend_port()
+DEFAULT_BIND_HOST = "0.0.0.0"  # backend bind address unless --host overrides it
 FRONTEND_PORT = 5174  # defined in modules/frontend/vite.config.ts
 TEMPORAL_PORT = 7233
 TEMPORAL_UI_PORT = 8233
+# Same path Plan 89 uses when it starts Temporal by hand, so both share one store.
+TEMPORAL_DB_FILE = PROJECT_ROOT / "var" / "temporal" / "temporal.db"
 
 # Log directory aligns with application logging (var/logs).
 SERVICE_LOG_DIR = PROJECT_ROOT / "var" / "logs"
 DAEMON_START_TIMEOUT_SEC = 90.0
 DAEMON_LOG_TAIL_BYTES = 8000
 TEMPORAL_START_TIMEOUT_SEC = 45.0
+TEMPORAL_WORKER_MODULE = "modules.backend.temporal.worker"  # python -m target; also the stop match
 TEMPORAL_NAMESPACE = "default"  # must match config/settings/temporal.yaml

@@ -96,7 +96,18 @@ python services.py start
 python services.py check    # preflight checks only
 python services.py status   # what's running
 python services.py stop     # stop services
+
+# Act on individual services (api, worker, frontend, temporal):
+python services.py restart api worker   # restart only the API and the worker
+python services.py restart worker       # e.g. after editing a workflow or activity
+python services.py stop frontend
 ```
+
+Named services run detached and skip preflight, migrations and seeding. They
+are refused when the stack was started in a foreground terminal (no `--daemon`),
+because that session shuts everything down as soon as one service exits; in
+that case the API already reloads on code changes. Run `python services.py tree`
+for every command and flag.
 
 ### First mission (prove the install works)
 

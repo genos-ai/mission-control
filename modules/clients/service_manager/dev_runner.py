@@ -14,7 +14,7 @@ from modules.clients.service_manager.constants import (
     TEMPORAL_PORT,
     TEMPORAL_UI_PORT,
 )
-from modules.clients.service_manager.process_utils import get_pids_on_port
+from modules.clients.service_manager.process_utils import get_pids_on_port, temporal_db_args
 
 
 def _backend_command(host: str, port: int, *, reload: bool) -> list[str]:
@@ -87,6 +87,7 @@ class DevRunner:
                 str(TEMPORAL_PORT),
                 "--ui-port",
                 str(TEMPORAL_UI_PORT),
+                *temporal_db_args(),
                 "--log-format",
                 "pretty",
             ],
