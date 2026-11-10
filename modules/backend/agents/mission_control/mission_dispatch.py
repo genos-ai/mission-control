@@ -22,7 +22,10 @@ from modules.backend.agents.mission_control.models import EventBusProtocol
 from modules.backend.agents.mission_control.outcome import ExecutionOutcome, ExecutionStatus
 from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
 from modules.backend.agents.mission_control.plan_validator import validate_plan
-from modules.backend.agents.mission_control.runtime import build_dispatch_runtime
+from modules.backend.agents.mission_control.runtime import (
+    build_context_services,
+    provision_dispatch_runtime,
+)
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import SessionServiceProtocol
@@ -113,23 +116,13 @@ async def handle_mission(
         },
     )
     await _phase("roster", "Deriving agent roster from team")
-    runtime = await build_dispatch_runtime(
-        db_session=db_session,
-        event_bus=event_bus,
-        mission_id=mission_id,
-        session_id=session_id or execution_label,
-        execution_mode=execution_mode,
-        mission_repo_root=mission_repo_root,
-        container_image=container_image,
-        extra_volumes=extra_volumes,
-        mission_run_id=mission_run_id,
-        task_id=None,
-    )
-    roster = runtime.roster
+    # Roster and context services come before planning so the planner gets
+    # PCD + failure history; the environment is provisioned once the plan is valid.
+    services = await build_context_services(db_session=db_session, mission_id=mission_id)
+    roster = services.roster
     await _phase("roster", f"Roster ready — {len(roster.agents)} agents")
 
-    # The planner gets PCD + failure history from the runtime's context services
-    context_curator = runtime.context_curator
+    context_curator = services.context_curator
     project_context = None
     recent_failures = None
 
@@ -362,6 +355,20 @@ async def handle_mission(
                 extra={"mission_id": mission_id},
                 exc_info=True,
             )
+
+    runtime = await provision_dispatch_runtime(
+        services,
+        db_session=db_session,
+        event_bus=event_bus,
+        mission_id=mission_id,
+        session_id=session_id or execution_label,
+        execution_mode=execution_mode,
+        mission_repo_root=mission_repo_root,
+        container_image=container_image,
+        extra_volumes=extra_volumes,
+        mission_run_id=mission_run_id,
+        task_id=None,
+    )
 
     # Execute dispatch loop
     outcome = await dispatch(

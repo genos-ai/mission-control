@@ -1068,6 +1068,47 @@ class TestDispatch:
         call_kwargs = mock_assembler.build.call_args
         assert call_kwargs.kwargs.get("domain_tags") is None
 
+    @pytest.mark.asyncio
+    async def test_assembler_not_entered_concurrently_within_a_layer(self, db_session_factory):
+        """88.2.3: the assembler shares one AsyncSession, so a layer's tasks assemble in turn."""
+        plan = _db_plan(
+            [
+                {**_task("t1"), "domain_tags": ["auth"]},
+                {**_task("t2"), "domain_tags": ["api"]},
+            ]
+        )
+        roster = Roster(agents=[_entry("agent_a")])
+        in_build = False
+
+        async def build(**kwargs):
+            nonlocal in_build
+            if in_build:
+                raise AssertionError("context assembler entered concurrently")
+            in_build = True
+            try:
+                await asyncio.sleep(0.01)
+                return {"project_context": {"identity": {"name": "proj"}}}
+            finally:
+                in_build = False
+
+        mock_assembler = MagicMock()
+        mock_assembler.build = AsyncMock(side_effect=build)
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            return {"result": "done", "confidence": 0.9, "_meta": {}}
+
+        outcome = await _dispatch_seeded(
+            db_session_factory,
+            plan,
+            roster,
+            mock_execute,
+            10.0,
+            mission_id="proj-1",
+            context_assembler=mock_assembler,
+        )
+        assert outcome.status == ExecutionStatus.SUCCESS
+        assert mock_assembler.build.await_count == 2
+
 
 # ---------------------------------------------------------------------------
 # A.3 — Workflow task dispatch (Plan 53 Phase B)

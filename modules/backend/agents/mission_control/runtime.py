@@ -2,14 +2,22 @@
 
 ``build_dispatch_runtime`` derives the roster from the mission team, builds
 the mission context services, provisions the execution environment and
-creates the agent executor. ``handle_mission`` builds one per in-process
-dispatch; the per-task Temporal activity builds one per task, passing its
-``task_id`` so every ledger row it writes is attributed to the task.
+creates the agent executor. The per-task Temporal activity builds one per
+task, passing its ``task_id`` so every ledger row it writes is attributed
+to the task.
+
+The build has two phases, so a caller that plans first need not provision
+an environment for a plan that fails: ``build_context_services`` (roster
+and context services, which the planner needs) and
+``provision_dispatch_runtime`` (environment and executor).
+``handle_mission`` runs the first before planning and the second once the
+plan is valid; ``build_dispatch_runtime`` runs both.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from modules.backend.agents.mission_control.helpers import _emit, _make_agent_executor
@@ -37,16 +45,47 @@ logger = get_logger(__name__)
 
 @dataclass
 class DispatchRuntime:
-    """The roster, executor and context services one dispatch runs tasks with."""
+    """The roster, executor and context services one dispatch runs tasks with.
+
+    The context services share one AsyncSession, which rejects concurrent
+    operations. ``context_lock`` serialises context assembly across the
+    tasks of a layer, which ``run_single_task`` runs concurrently.
+    """
 
     roster: Roster
     execute_agent_fn: ExecuteAgentFn
     context_curator: ContextCuratorProtocol | None
     context_assembler: ContextAssemblerProtocol | None
     environment_handle: object | None
+    context_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
-async def build_dispatch_runtime(
+@dataclass
+class ContextServices:
+    """The roster and mission context services, built before planning."""
+
+    roster: Roster
+    context_curator: ContextCuratorProtocol
+    context_assembler: ContextAssemblerProtocol
+
+
+async def build_context_services(*, db_session: AsyncSession, mission_id: str) -> ContextServices:
+    """Derive the roster from the mission team and build the context services."""
+    roster = await derive_roster_from_team(mission_id, db_session)
+    pcd_manager = MissionContextManager(db_session)
+    return ContextServices(
+        roster=roster,
+        context_curator=ContextCurator(pcd_manager),
+        context_assembler=ContextAssembler(
+            context_manager=pcd_manager,
+            history_service=HistoryQueryService(db_session),
+            code_map_loader=CodeMapLoader(find_project_root()),
+        ),
+    )
+
+
+async def provision_dispatch_runtime(
+    services: ContextServices,
     *,
     db_session: AsyncSession,
     event_bus: EventBusProtocol,
@@ -59,21 +98,11 @@ async def build_dispatch_runtime(
     mission_run_id: str | None,
     task_id: str | None,
 ) -> DispatchRuntime:
-    """Build the runtime for one dispatch of a mission's tasks.
+    """Provision the execution environment and executor on top of ``services``.
 
     ``mission_run_id`` and ``task_id`` tag every LLM ledger row the executor
     writes; ``task_id`` is None when the runtime serves a whole plan.
     """
-    roster = await derive_roster_from_team(mission_id, db_session)
-
-    pcd_manager = MissionContextManager(db_session)
-    context_curator = ContextCurator(pcd_manager)
-    context_assembler = ContextAssembler(
-        context_manager=pcd_manager,
-        history_service=HistoryQueryService(db_session),
-        code_map_loader=CodeMapLoader(find_project_root()),
-    )
-
     env_handle = await _provision_environment(
         db_session=db_session,
         event_bus=event_bus,
@@ -96,11 +125,41 @@ async def build_dispatch_runtime(
     )
 
     return DispatchRuntime(
-        roster=roster,
+        roster=services.roster,
         execute_agent_fn=execute_agent_fn,
-        context_curator=context_curator,
-        context_assembler=context_assembler,
+        context_curator=services.context_curator,
+        context_assembler=services.context_assembler,
         environment_handle=env_handle,
+    )
+
+
+async def build_dispatch_runtime(
+    *,
+    db_session: AsyncSession,
+    event_bus: EventBusProtocol,
+    mission_id: str,
+    session_id: str,
+    execution_mode: str,
+    mission_repo_root: str | None,
+    container_image: str | None,
+    extra_volumes: list[dict[str, str]] | None,
+    mission_run_id: str | None,
+    task_id: str | None,
+) -> DispatchRuntime:
+    """Build the runtime for one dispatch of a mission's tasks: both phases in one call."""
+    services = await build_context_services(db_session=db_session, mission_id=mission_id)
+    return await provision_dispatch_runtime(
+        services,
+        db_session=db_session,
+        event_bus=event_bus,
+        mission_id=mission_id,
+        session_id=session_id,
+        execution_mode=execution_mode,
+        mission_repo_root=mission_repo_root,
+        container_image=container_image,
+        extra_volumes=extra_volumes,
+        mission_run_id=mission_run_id,
+        task_id=task_id,
     )
 
 

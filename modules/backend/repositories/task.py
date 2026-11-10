@@ -260,14 +260,21 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_dependency_tasks(self, task_id: str) -> list[Task]:
-        """Return the tasks that the given task directly depends on."""
+    async def get_dependency_tasks(
+        self,
+        task_id: str,
+        *,
+        status: TaskStatus | None = None,
+    ) -> list[Task]:
+        """Return the tasks the given task directly depends on, optionally filtered by status."""
         query = (
             select(Task)
             .join(TaskDependency, TaskDependency.depends_on_id == Task.id)
             .where(TaskDependency.task_id == task_id)
             .order_by(Task.created_at)
         )
+        if status is not None:
+            query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 

@@ -179,12 +179,16 @@ async def load_prior_outputs(
 async def load_dependency_outputs(session: AsyncSession, task_id: str) -> dict[str, dict]:
     """Outputs of the task's direct dependencies, keyed by dependency task id.
 
-    Reads result_summary of every task the given task depends on
+    Reads result_summary of every COMPLETED task the given task depends on
     (task_dependencies.depends_on_id), whatever run it completed in: explicit
-    dependency edges are not bounded by run. A dependency with no
-    result_summary is absent, so a from_upstream reference to it fails.
+    dependency edges are not bounded by run. A dependency that is not
+    COMPLETED is absent even when it carries a result_summary from an
+    earlier run (write-back never clears it), and so is one without a
+    result_summary; a from_upstream reference to either fails.
     """
-    dependencies = await TaskRepository(session).get_dependency_tasks(task_id)
+    dependencies = await TaskRepository(session).get_dependency_tasks(
+        task_id, status=TaskStatus.COMPLETED
+    )
     return _decode_result_summaries(dependencies)
 
 

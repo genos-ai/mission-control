@@ -69,6 +69,19 @@ async def test_load_dependency_outputs_reads_direct_dependencies(db_session):
 
 
 @pytest.mark.asyncio
+async def test_load_dependency_outputs_skips_failed_dependency_with_stale_output(db_session):
+    """A dependency that completed once, then failed on a re-run, keeps its old result_summary."""
+    ids = await _seed(db_session)
+    task_a = await db_session.get(Task, ids["a"])
+    task_a.status = TaskStatus.FAILED
+    await db_session.flush()
+
+    outputs = await load_dependency_outputs(db_session, ids["c"])
+
+    assert outputs == {ids["b"]: {"result": "plain text"}}
+
+
+@pytest.mark.asyncio
 async def test_load_dependency_outputs_empty_without_dependencies(db_session):
     ids = await _seed(db_session)
 
