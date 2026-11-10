@@ -215,7 +215,7 @@ Full standards in `docs/10-reference-architecture/`:
 | 21 | Event Architecture |
 | 24 | LLM Integration |
 | 27 | TUI Architecture (Textual + Textual Web) |
-| 28 | CLI Architecture (Click, --options, service lifecycle, testing) |
+| 28 | CLI Architecture (Click groups and subcommands, service lifecycle, testing) |
 | **AI-First Platform (40-47)** | |
 | 40 | Agentic AI Architecture (conceptual) |
 | 41 | Agentic AI PydanticAI Implementation |

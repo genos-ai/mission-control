@@ -188,7 +188,7 @@ def find_project_root() -> Path:
 
 ## CLI Standards
 
-CLI uses Click groups and subcommands with a single entry point (`cli.py`). Use `@click.group()` for command organization, positional arguments for required values, and `--options` for optional configuration. Include `--verbose` and `--debug` on the root group.
+CLI uses Click groups and subcommands with a single entry point (`cli.py`). Use `@click.group()` for command organization, positional arguments for required values and targets, and `--options` for optional configuration. Include `--verbose` and `--debug` on the root group.
 
 The full CLI architecture (command structure, implementation patterns, output formatting, testing) is defined in the Optional Platform module `28-cli-architecture.md`.
 
