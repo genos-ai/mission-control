@@ -6,6 +6,7 @@ ledger write made inside a run must carry the run id:
   mission_run_id (real test database, P12).
 - _call_planning_agent passes mission_run_id to record_llm_call.
 - handle_mission forwards mission_run_id to the agent executor and planner.
+- record_call and record_llm_call persist task_id (88.2.3).
 """
 
 import contextlib
@@ -110,6 +111,50 @@ class TestLedgerWritesRunAttribution:
         assert rows[0].cost_usd == pytest.approx(0.02)
 
 
+class TestLedgerWritesTaskAttribution:
+    """llm_calls.task_id attributes a call to the plan task it executed (3.1.9 rule 2)."""
+
+    @pytest.mark.asyncio
+    async def test_record_call_writes_task_id(self, db_session):
+        task_id = str(uuid.uuid4())
+
+        call = await TokenEconomicsService(db_session).record_call(
+            **_record_call_kwargs(task_id=task_id)
+        )
+        await db_session.flush()
+
+        stored = await db_session.get(LlmCall, call.id)
+        assert stored.task_id == task_id
+
+    @pytest.mark.asyncio
+    async def test_record_llm_call_passes_task_id(
+        self, _route_llm_calls_to_test_db, db_session_factory
+    ):
+        run_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+
+        await record_llm_call(
+            session_id=None,
+            mission_id=str(uuid.uuid4()),
+            agent_name="test.agent",
+            agent_role="worker",
+            model="test:model",
+            usage=RunUsage(input_tokens=3, output_tokens=2),
+            cost_usd=0.02,
+            mission_run_id=run_id,
+            task_id=task_id,
+        )
+
+        async with db_session_factory() as session:
+            rows = (
+                (await session.execute(select(LlmCall).where(LlmCall.task_id == task_id)))
+                .scalars()
+                .all()
+            )
+        assert len(rows) == 1
+        assert rows[0].mission_run_id == run_id
+
+
 class _FinalisingPlanner:
     """Planning agent stand-in: finalises an empty plan in one run."""
 
@@ -186,19 +231,18 @@ class TestHandleMissionRunAttribution:
 
     @pytest.fixture
     def _isolated_handle_mission(self, monkeypatch):
-        from modules.backend.agents.mission_control import mission_dispatch
+        from modules.backend.agents.mission_control import mission_dispatch, runtime
 
         async def _empty_roster(mission_id, db_session):
             return Roster(agents=[])
 
-        monkeypatch.setattr(mission_dispatch, "derive_roster_from_team", _empty_roster)
-        monkeypatch.setattr(mission_dispatch, "MissionContextManager", lambda db: None)
-        monkeypatch.setattr(mission_dispatch, "ContextCurator", _StubCurator)
+        monkeypatch.setattr(runtime, "derive_roster_from_team", _empty_roster)
+        monkeypatch.setattr(runtime, "MissionContextManager", lambda db: None)
+        monkeypatch.setattr(runtime, "ContextCurator", _StubCurator)
+        monkeypatch.setattr(runtime, "HistoryQueryService", _StubHistory)
+        monkeypatch.setattr(runtime, "ContextAssembler", lambda **kwargs: None)
+        monkeypatch.setattr(runtime, "CodeMapLoader", lambda root: None)
         monkeypatch.setattr(mission_dispatch, "HistoryQueryService", _StubHistory)
-        monkeypatch.setattr(mission_dispatch, "ContextAssembler", lambda **kwargs: None)
-        monkeypatch.setattr(
-            "modules.backend.services.code_map.loader.CodeMapLoader", lambda root: None
-        )
         monkeypatch.setattr(
             mission_dispatch,
             "validate_plan",
@@ -227,7 +271,9 @@ class TestHandleMissionRunAttribution:
             captured.update(kwargs)
             raise _StopAtCapture
 
-        monkeypatch.setattr(_isolated_handle_mission, "_make_agent_executor", _capture)
+        from modules.backend.agents.mission_control import runtime
+
+        monkeypatch.setattr(runtime, "_make_agent_executor", _capture)
         run_id = str(uuid.uuid4())
 
         with pytest.raises(_StopAtCapture):
@@ -238,6 +284,7 @@ class TestHandleMissionRunAttribution:
             )
 
         assert captured["mission_run_id"] == run_id
+        assert captured["task_id"] is None
 
     @pytest.mark.asyncio
     async def test_forwards_run_id_to_planner(self, _isolated_handle_mission, monkeypatch):

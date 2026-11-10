@@ -15,12 +15,36 @@ from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission_run import MissionRunRepository
+from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
-from modules.backend.schemas.task_plan import TaskPlan
+from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from modules.backend.models.mission_plan import MissionPlan
+    from modules.backend.models.task import Task
     from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+
+
+def _task_row_dict(task: Task) -> dict:
+    """The TaskDefinition-shaped dict of one Task row and its dependency edges."""
+    return {
+        "task_id": task.id,
+        "agent": task.agent,
+        "description": task.description,
+        "instructions": task.instructions,
+        "inputs": task.inputs_json or {},
+        "dependencies": [d.depends_on_id for d in task.dependencies],
+        "verification": task.verification_json or {},
+        "constraints": task.constraints_json or {},
+        "domain_tags": task.domain_tags or [],
+    }
+
+
+def task_definition_from_row(task: Task) -> TaskDefinition:
+    """Build the TaskDefinition dispatch runs from one Task row (dependencies loaded)."""
+    return TaskDefinition.model_validate(_task_row_dict(task))
 
 
 def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> dict | None:
@@ -34,22 +58,7 @@ def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> d
     scoped = [t for t in plan.tasks if t.mission_run_id in (mission_run_id, None)]
     if not scoped:
         return None
-    tasks = []
-    for t in scoped:
-        dep_ids = [d.depends_on_id for d in t.dependencies]
-        tasks.append(
-            {
-                "task_id": t.id,
-                "agent": t.agent,
-                "description": t.description,
-                "instructions": t.instructions,
-                "inputs": t.inputs_json or {},
-                "dependencies": dep_ids,
-                "verification": t.verification_json or {},
-                "constraints": t.constraints_json or {},
-                "domain_tags": t.domain_tags or [],
-            }
-        )
+    tasks = [_task_row_dict(t) for t in scoped]
     return {
         "version": f"{plan.version}.0.0",
         "mission_id": plan.mission_id,
@@ -164,15 +173,32 @@ async def load_prior_outputs(
         mission_plan_id,
         status=TaskStatus.COMPLETED,
     )
-    prior: dict[str, dict] = {}
-    for task in completed_states:
+    return _decode_result_summaries(completed_states)
+
+
+async def load_dependency_outputs(session: AsyncSession, task_id: str) -> dict[str, dict]:
+    """Outputs of the task's direct dependencies, keyed by dependency task id.
+
+    Reads result_summary of every task the given task depends on
+    (task_dependencies.depends_on_id), whatever run it completed in: explicit
+    dependency edges are not bounded by run. A dependency with no
+    result_summary is absent, so a from_upstream reference to it fails.
+    """
+    dependencies = await TaskRepository(session).get_dependency_tasks(task_id)
+    return _decode_result_summaries(dependencies)
+
+
+def _decode_result_summaries(tasks: list[Task]) -> dict[str, dict]:
+    """{task_id: output_dict} from each task's JSON result_summary; tasks without one skipped."""
+    outputs: dict[str, dict] = {}
+    for task in tasks:
         if not task.result_summary:
             continue
         try:
-            prior[task.id] = json.loads(task.result_summary)
+            outputs[task.id] = json.loads(task.result_summary)
         except (TypeError, ValueError, json.JSONDecodeError):
-            prior[task.id] = {"result": task.result_summary}
-    return prior
+            outputs[task.id] = {"result": task.result_summary}
+    return outputs
 
 
 async def write_back_task_results(

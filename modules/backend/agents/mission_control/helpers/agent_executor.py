@@ -57,11 +57,14 @@ def _make_agent_executor(
     environment_handle: object | None = None,
     current_user_id: str | None = None,
     mission_run_id: str | None = None,
+    task_id: str | None = None,
 ) -> ExecuteAgentFn:
     """Create the execute_agent_fn closure for the dispatch loop.
 
     mission_run_id tags every ledger row so the run's cost is summed at
     finalise; None when the dispatch is not part of a mission run.
+    task_id tags them with the one plan task this executor runs; None when
+    the executor serves a whole plan (in-process dispatch).
     """
     cumulative_cost_usd = 0.0
 
@@ -348,6 +351,7 @@ def _make_agent_executor(
                 latency_ms=0,
                 tool_count=len(agent_config.tools),
                 mission_run_id=mission_run_id,
+                task_id=task_id,
             )
         except Exception:
             logger.warning(

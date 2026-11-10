@@ -56,8 +56,12 @@ async def record_llm_call(
     tool_count: int = 0,
     execution_record_id: str | None = None,
     mission_run_id: str | None = None,
+    task_id: str | None = None,
 ) -> None:
     """Persist an LlmCall row. Manages its own DB session.
+
+    mission_run_id and task_id attribute the call to a run and a plan task;
+    None when the call is outside either (chat, planning).
 
     Raises on failure — silent data loss in cost tracking
     defeats the purpose of this system.
@@ -82,6 +86,7 @@ async def record_llm_call(
             mission_id=mission_id,
             execution_record_id=execution_record_id,
             mission_run_id=mission_run_id,
+            task_id=task_id,
             agent_name=agent_name,
             agent_role=agent_role,
             model=model,

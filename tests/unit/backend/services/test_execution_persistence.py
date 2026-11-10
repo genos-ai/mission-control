@@ -6,7 +6,7 @@ with transaction rollback for isolation. Only mocks: get_app_config()
 """
 
 from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,6 +135,35 @@ class TestSaveTaskExecution:
         assert execution.task_id == _TASK_1
         assert execution.agent_name == "software.quality.agent"
         assert execution.status == TaskExecutionStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_run_link_and_idempotency_key_default_to_none(self, service):
+        execution_record = await _create_execution(service)
+
+        execution = await service.save_task_execution(
+            execution_record_id=execution_record.id,
+            task_id=_TASK_1,
+            agent_name="software.quality.agent",
+            status="completed",
+        )
+
+        assert execution.mission_run_id is None
+        assert execution.idempotency_key is None
+
+    @pytest.mark.asyncio
+    async def test_idempotency_key_persisted(self, service):
+        execution_record = await _create_execution(service)
+        key = f"{uuid4()}:{_TASK_1}:0"
+
+        execution = await service.save_task_execution(
+            execution_record_id=execution_record.id,
+            task_id=_TASK_1,
+            agent_name="software.quality.agent",
+            status="completed",
+            idempotency_key=key,
+        )
+
+        assert execution.idempotency_key == key
 
     @pytest.mark.asyncio
     async def test_output_truncation(self, service):

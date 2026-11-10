@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from modules.backend.agents.mission_control.outcome import (
     ExecutionOutcome,
     ExecutionStatus,
+    TaskResult,
     TaskStatus,
 )
 from modules.backend.core.logging import get_logger
@@ -19,6 +20,8 @@ from modules.backend.services.mission_artifact import MissionArtifactService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from modules.backend.models.execution_record import TaskExecution
 
 logger = get_logger(__name__)
 
@@ -84,84 +87,17 @@ async def persist_mission_results(
         task_ids = [tr.task_id for tr in outcome.task_results if tr.task_id]
         domain_tags_map = await MissionPlanService(db_session).get_domain_tags_map(task_ids)
 
-        task_status_map = {
-            TaskStatus.SUCCESS: "completed",
-            TaskStatus.FAILED: "failed",
-            TaskStatus.TIMEOUT: "failed",
-            TaskStatus.SKIPPED: "skipped",
-        }
-
         for task_result in outcome.task_results:
-            verification_dict = None
-            if task_result.verification_outcome:
-                verification_dict = task_result.verification_outcome.model_dump()
-
-            token_dict = None
-            if task_result.token_usage:
-                token_dict = {
-                    "input_tokens": task_result.token_usage.input,
-                    "output_tokens": task_result.token_usage.output,
-                }
-
-            exec_status = task_status_map.get(task_result.status, "failed")
-            domain_tags = domain_tags_map.get(task_result.task_id)
-
-            execution = await service.save_task_execution(
+            await persist_task_result(
+                service,
                 execution_record_id=record.id,
-                task_id=task_result.task_id,
-                agent_name=task_result.agent_name,
-                status=exec_status,
-                output_data=task_result.output_reference or None,
-                token_usage=token_dict,
-                cost_usd=task_result.cost_usd,
-                duration_seconds=task_result.duration_seconds,
-                verification_outcome=verification_dict,
-                execution_id=task_result.execution_id or None,
-                domain_tags=domain_tags,
+                task_result=task_result,
+                mission_id=mission_id,
+                domain_tags=domain_tags_map.get(task_result.task_id),
+                mission_run_id=None,
+                idempotency_key=None,
+                artifact_svc=artifact_svc,
             )
-
-            # Create artifact if the agent declares produces_artifact.
-            # Driven by catalog config, not output heuristics.
-            if artifact_svc is not None and mission_id is not None:
-                try:
-                    await _maybe_create_artifact(
-                        artifact_svc=artifact_svc,
-                        mission_id=mission_id,
-                        execution_record_id=record.id,
-                        task_execution_id=execution.id,
-                        task_result=task_result,
-                    )
-                except Exception as artifact_exc:  # noqa: BLE001
-                    # best-effort — this whole module is best-effort persistence
-                    # (see module docstring); no event_bus is threaded through
-                    # this bridge to surface artifact-creation failures.
-                    logger.warning(
-                        "Failed to create artifact",
-                        extra={
-                            "task_id": task_result.task_id,
-                            "agent": task_result.agent_name,
-                            "error": str(artifact_exc),
-                            "mission_id": mission_id,
-                        },
-                    )
-
-            for retry_entry in task_result.retry_history:
-                failure_tier_map = {
-                    1: "tier_1_structural",
-                    2: "tier_2_quality",
-                    3: "tier_3_integration",
-                    0: "agent_error",
-                }
-                ft = failure_tier_map.get(retry_entry.failure_tier)
-
-                await service.save_attempt(
-                    task_execution_id=execution.id,
-                    attempt_number=retry_entry.attempt,
-                    status="failed",
-                    failure_tier=ft,
-                    failure_reason=retry_entry.failure_reason,
-                    feedback_provided=retry_entry.feedback_provided,
-                )
 
         await db_session.commit()
 
@@ -185,9 +121,106 @@ async def persist_mission_results(
         raise
 
 
+_TASK_STATUS_MAP = {
+    TaskStatus.SUCCESS: "completed",
+    TaskStatus.FAILED: "failed",
+    TaskStatus.TIMEOUT: "failed",
+    TaskStatus.SKIPPED: "skipped",
+}
+
+_FAILURE_TIER_MAP = {
+    1: "tier_1_structural",
+    2: "tier_2_quality",
+    3: "tier_3_integration",
+    0: "agent_error",
+}
+
+
+async def persist_task_result(
+    service: ExecutionPersistenceService,
+    *,
+    execution_record_id: str,
+    task_result: TaskResult,
+    mission_id: str | None,
+    domain_tags: list[str] | None,
+    mission_run_id: str | None,
+    idempotency_key: str | None,
+    artifact_svc: MissionArtifactService | None,
+) -> TaskExecution:
+    """Write one task's task_executions row, its artifact and its retry attempts.
+
+    Does not commit; the caller owns the transaction. The artifact is written
+    only when ``artifact_svc`` and ``mission_id`` are set and the agent declares
+    produces_artifact; an artifact failure is logged and never fails the row.
+    ``artifact_svc`` is required so every caller decides on artifacts explicitly.
+    """
+    verification_dict = None
+    if task_result.verification_outcome:
+        verification_dict = task_result.verification_outcome.model_dump()
+
+    token_dict = None
+    if task_result.token_usage:
+        token_dict = {
+            "input_tokens": task_result.token_usage.input,
+            "output_tokens": task_result.token_usage.output,
+        }
+
+    execution = await service.save_task_execution(
+        execution_record_id=execution_record_id,
+        task_id=task_result.task_id,
+        agent_name=task_result.agent_name,
+        status=_TASK_STATUS_MAP.get(task_result.status, "failed"),
+        output_data=task_result.output_reference or None,
+        token_usage=token_dict,
+        cost_usd=task_result.cost_usd,
+        duration_seconds=task_result.duration_seconds,
+        verification_outcome=verification_dict,
+        execution_id=task_result.execution_id or None,
+        domain_tags=domain_tags,
+        mission_run_id=mission_run_id,
+        idempotency_key=idempotency_key,
+    )
+
+    # Create artifact if the agent declares produces_artifact.
+    # Driven by catalog config, not output heuristics.
+    if artifact_svc is not None and mission_id is not None:
+        try:
+            await _maybe_create_artifact(
+                artifact_svc=artifact_svc,
+                mission_id=mission_id,
+                execution_record_id=execution_record_id,
+                task_execution_id=execution.id,
+                task_result=task_result,
+            )
+        except Exception as artifact_exc:  # noqa: BLE001
+            # best-effort — artifact creation never fails the task row; no
+            # event_bus is threaded through this bridge to surface the failure.
+            logger.warning(
+                "Failed to create artifact",
+                extra={
+                    "task_id": task_result.task_id,
+                    "agent": task_result.agent_name,
+                    "error": str(artifact_exc),
+                    "mission_id": mission_id,
+                },
+            )
+
+    for retry_entry in task_result.retry_history:
+        await service.save_attempt(
+            task_execution_id=execution.id,
+            attempt_number=retry_entry.attempt,
+            status="failed",
+            failure_tier=_FAILURE_TIER_MAP.get(retry_entry.failure_tier),
+            failure_reason=retry_entry.failure_reason,
+            feedback_provided=retry_entry.feedback_provided,
+        )
+
+    return execution
+
+
 async def _maybe_create_artifact(
     *,
-    artifact_svc: "MissionArtifactService",
+    artifact_svc: MissionArtifactService,
     mission_id: str,
     execution_record_id: str,
     task_execution_id: str,

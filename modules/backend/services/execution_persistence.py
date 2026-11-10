@@ -235,8 +235,15 @@ class ExecutionPersistenceService(BaseService):
         completed_at: str | None = None,
         execution_id: str | None = None,
         domain_tags: list[str] | None = None,
+        mission_run_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> TaskExecution:
-        """Persist a single task execution result."""
+        """Persist a single task execution result.
+
+        mission_run_id links the row to its run and idempotency_key
+        (`{mission_run_id}:{task_id}:{retry_count}`, 3.1.9) makes a retried
+        activity's write unique; both None outside a mission run.
+        """
         config = get_app_config().executions
 
         if output_data:
@@ -274,6 +281,8 @@ class ExecutionPersistenceService(BaseService):
             completed_at=completed_at,
             execution_id=execution_id,
             domain_tags=domain_tags,
+            mission_run_id=mission_run_id,
+            idempotency_key=idempotency_key,
         )
 
         self._session.add(execution)
