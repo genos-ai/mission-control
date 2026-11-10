@@ -114,6 +114,12 @@ open on purpose.
   the reconciler can insert MISSED rows for slots between the watermark
   and `now - catch_up_window` that have no row. No service-level test
   yet shows `update_schedule` sends the new timeout to the gateway.
+- [ ] **Web header says "Plan running · 48 of 49" when nothing runs.**
+  `mission-top-bar.tsx:43-45` shows the pill whenever the plan is
+  `active` and `autonomous`, and `lib/plan-progress.ts` counts every task
+  the mission's single plan has held across all runs (business logic in
+  the client). Fixed by 88.4.2, which now replaces the pill with the
+  active run's progress computed in the backend.
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
