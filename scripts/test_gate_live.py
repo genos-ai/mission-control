@@ -508,7 +508,6 @@ def test_llm_gate_reviewer() -> None:
     async def _run():
         reviewer = LlmGateReviewer(
             model="anthropic:claude-haiku-4-5-20251001",
-            temperature=0.0,
             max_tokens=1024,
         )
 
