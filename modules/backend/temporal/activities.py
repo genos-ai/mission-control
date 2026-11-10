@@ -71,12 +71,15 @@ async def execute_mission(input: ExecuteWaveInput) -> MissionExecutionResult:
     )
 
     redis = AsyncRedis.from_url(get_redis_url())
-    event_bus = SessionEventBus(redis)
+    # Bound once the run is loaded: agent-layer code calls bare publish(),
+    # which drops events on an unbound bus. None until then.
+    event_bus: SessionEventBus | None = None
 
     async with get_async_session() as db:
         try:
             run = await MissionRunRepository(db).get_by_id(input.mission_run_id)
             mission_id = run.mission_id
+            event_bus = SessionEventBus(redis, mission_id=mission_id)
             # Look up mission owner for audit trail
             mission = await MissionService(db).get_mission(mission_id)
 
@@ -118,26 +121,29 @@ async def execute_mission(input: ExecuteWaveInput) -> MissionExecutionResult:
                 "Mission execution cancelled",
                 extra={"mission_run_id": input.mission_run_id, "mission_id": mission_id},
             )
-            # Emit error event so it surfaces in the Console
-            try:
-                import uuid
+            # Emit error event so it surfaces in the Console. No bus means
+            # the run never loaded, so there is no mission to tell.
+            if event_bus is not None:
+                try:
+                    import uuid
 
-                from modules.backend.events.types import SystemEvent
+                    from modules.backend.events.types import SystemEvent
 
-                await event_bus.publish_to_mission(
-                    mission_id,
-                    SystemEvent(
-                        session_id=uuid.uuid4(),
-                        source="mission_execution",
-                        level="error",
-                        message=f"Mission execution cancelled: {type(e).__name__}",
-                        mission_id=mission_id,
-                    ),
-                )
-            except Exception:
-                logger.debug(
-                    "error event publish failed in Temporal activity (best-effort)", exc_info=True
-                )
+                    await event_bus.publish_to_mission(
+                        mission_id,
+                        SystemEvent(
+                            session_id=uuid.uuid4(),
+                            source="mission_execution",
+                            level="error",
+                            message=f"Mission execution cancelled: {type(e).__name__}",
+                            mission_id=mission_id,
+                        ),
+                    )
+                except Exception:
+                    logger.debug(
+                        "error event publish failed in Temporal activity (best-effort)",
+                        exc_info=True,
+                    )
             raise
 
         except Exception as e:
@@ -154,26 +160,29 @@ async def execute_mission(input: ExecuteWaveInput) -> MissionExecutionResult:
                 },
                 exc_info=True,
             )
-            # Emit error event so it surfaces in the Console
-            try:
-                import uuid
+            # Emit error event so it surfaces in the Console. No bus means
+            # the run never loaded, so there is no mission to tell.
+            if event_bus is not None:
+                try:
+                    import uuid
 
-                from modules.backend.events.types import SystemEvent
+                    from modules.backend.events.types import SystemEvent
 
-                await event_bus.publish_to_mission(
-                    mission_id,
-                    SystemEvent(
-                        session_id=uuid.uuid4(),
-                        source="mission_execution",
-                        level="error",
-                        message=clean_msg,
-                        mission_id=mission_id,
-                    ),
-                )
-            except Exception:
-                logger.debug(
-                    "error event publish failed in Temporal activity (best-effort)", exc_info=True
-                )
+                    await event_bus.publish_to_mission(
+                        mission_id,
+                        SystemEvent(
+                            session_id=uuid.uuid4(),
+                            source="mission_execution",
+                            level="error",
+                            message=clean_msg,
+                            mission_id=mission_id,
+                        ),
+                    )
+                except Exception:
+                    logger.debug(
+                        "error event publish failed in Temporal activity (best-effort)",
+                        exc_info=True,
+                    )
             raise
         finally:
             await redis.aclose()

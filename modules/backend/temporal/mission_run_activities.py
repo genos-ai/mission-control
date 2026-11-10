@@ -31,19 +31,29 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def _run_service() -> AsyncIterator["MissionRunService"]:
-    """A MissionRunService on a fresh session and event bus, closed on exit."""
+async def _run_service(bind_to_run_id: str | None = None) -> AsyncIterator["MissionRunService"]:
+    """A MissionRunService on a fresh session and event bus, closed on exit.
+
+    With bind_to_run_id the bus is bound to that run's mission, so agent-layer
+    code that calls bare publish() (the planner) reaches mission_events.
+    Without it the bus is unbound and only publish_to_mission() delivers.
+    """
     from redis.asyncio import Redis as AsyncRedis
 
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
+    from modules.backend.repositories.mission_run import MissionRunRepository
     from modules.backend.services.mission_run import MissionRunService
 
     redis = AsyncRedis.from_url(get_redis_url())
     try:
         async with get_async_session() as db:
-            yield MissionRunService(db, SessionEventBus(redis))
+            mission_id = None
+            if bind_to_run_id is not None:
+                run = await MissionRunRepository(db).get_by_id(bind_to_run_id)
+                mission_id = run.mission_id
+            yield MissionRunService(db, SessionEventBus(redis, mission_id=mission_id))
     finally:
         await redis.aclose()
 
@@ -61,7 +71,10 @@ async def plan_mission_run(input: PlanRunInput) -> PlanRunResult:
     from modules.backend.core.config import get_app_config
 
     interval = get_app_config().temporal.mission_run.task_heartbeat_interval_seconds
-    async with heartbeat_every(interval, "planning"), _run_service() as svc:
+    async with (
+        heartbeat_every(interval, "planning"),
+        _run_service(bind_to_run_id=input.mission_run_id) as svc,
+    ):
         return await svc.plan(input.mission_run_id, input.session_id)
 
 

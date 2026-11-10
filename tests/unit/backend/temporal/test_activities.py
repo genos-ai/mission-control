@@ -218,6 +218,47 @@ class TestExecuteMission:
             for call in heartbeat.call_args_list:
                 assert call.args == ({"phase": "executing"},)
 
+    @pytest.mark.asyncio
+    async def test_event_bus_is_bound_to_the_runs_mission(self):
+        """Agent-layer code calls bare publish(); an unbound bus drops those events."""
+        from modules.backend.temporal.activities import execute_mission
+
+        async with self._patch_infra() as entered:
+            await execute_mission(
+                ExecuteWaveInput(
+                    mission_run_id="test-6",
+                    session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                    execution_record_id="00000000-0000-0000-0000-0000000000e1",
+                ),
+            )
+
+            entered["event_bus"].assert_called_once_with(
+                entered["redis_cls"].return_value,
+                mission_id="00000000-0000-0000-0000-000000000001",
+            )
+            orchestrator_kwargs = entered["orchestrator"].call_args.kwargs
+            assert orchestrator_kwargs["event_bus"] is entered["event_bus"].return_value
+
+    @pytest.mark.asyncio
+    async def test_run_lookup_failure_publishes_nothing(self):
+        """No run, no mission: the error is raised without an unaddressed event."""
+        from modules.backend.temporal.activities import execute_mission
+
+        async with self._patch_infra() as entered:
+            entered["run_repo"].return_value.get_by_id = AsyncMock(
+                side_effect=RuntimeError("no run")
+            )
+            with pytest.raises(RuntimeError, match="no run"):
+                await execute_mission(
+                    ExecuteWaveInput(
+                        mission_run_id="test-7",
+                        session_id="80d00060-470d-5db0-aa70-5adc526200ea",
+                        execution_record_id="00000000-0000-0000-0000-0000000000e1",
+                    ),
+                )
+
+            entered["event_bus"].assert_not_called()
+
 
 class TestPersistMissionOutcome:
     @pytest.mark.asyncio
