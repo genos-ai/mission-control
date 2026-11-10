@@ -199,10 +199,12 @@ async def persist_mission_outcome(
     """Persist mission results to PostgreSQL. Raises on failure; the retry policy decides.
 
     The fallback path updates the run's ExecutionRecord (execution_record_id);
-    it never inserts a second record.
+    it never inserts a second record. Every call then refreshes the record's
+    run task counts, which the post-run stall rule reads.
     """
     from modules.backend.agents.mission_control.persistence_bridge import persist_mission_results
     from modules.backend.core.database import get_async_session
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
     try:
         outcome = ExecutionOutcome.model_validate(outcome_json)
@@ -218,29 +220,34 @@ async def persist_mission_outcome(
                     "mission_id": mission_id,
                 },
             )
-            return True
+        else:
+            # Inline persistence didn't happen (execution_record_id is None) —
+            # this is the crash recovery path. Persist everything into the
+            # run's record.
+            task_plan_ref = outcome_json.get("task_plan_reference")
+            if isinstance(task_plan_ref, str):
+                import json
 
-        # Inline persistence didn't happen (execution_record_id is None) —
-        # this is the crash recovery path. Persist everything into the
-        # run's record.
-        task_plan_ref = outcome_json.get("task_plan_reference")
-        if isinstance(task_plan_ref, str):
-            import json
+                try:
+                    task_plan_ref = json.loads(task_plan_ref)
+                except (json.JSONDecodeError, TypeError):
+                    task_plan_ref = None
 
-            try:
-                task_plan_ref = json.loads(task_plan_ref)
-            except (json.JSONDecodeError, TypeError):
-                task_plan_ref = None
+            async with get_async_session() as db:
+                await persist_mission_results(
+                    outcome,
+                    session_id=session_id,
+                    roster_name=None,
+                    thinking_trace=outcome_json.get("planning_trace_reference"),
+                    mission_id=mission_id,
+                    db_session=db,
+                    execution_record_id=execution_record_id,
+                )
+                await db.commit()
 
         async with get_async_session() as db:
-            await persist_mission_results(
-                outcome,
-                session_id=session_id,
-                roster_name=None,
-                thinking_trace=outcome_json.get("planning_trace_reference"),
-                mission_id=mission_id,
-                db_session=db,
-                execution_record_id=execution_record_id,
+            await ExecutionPersistenceService(db).record_run_task_counts(
+                execution_record_id, mission_run_id
             )
             await db.commit()
         return True

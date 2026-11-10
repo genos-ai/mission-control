@@ -215,6 +215,47 @@ class TestSaveAttempt:
         assert attempt.feedback_provided == "Add the missing field"
 
 
+class TestRecordRunTaskCounts:
+    """Counts come from the run's Task rows, so repeats never double count."""
+
+    @pytest.mark.asyncio
+    async def test_counts_completed_and_idempotent_on_retry(self, service):
+        from modules.backend.models.task import TaskStatus
+
+        record = await _create_execution(service, status="running")
+        wave_one = [MagicMock(status=TaskStatus.COMPLETED)]
+        with patch(
+            "modules.backend.services.execution_persistence.TaskRepository.list_by_run",
+            return_value=wave_one,
+        ) as list_by_run:
+            await service.record_run_task_counts(record.id, "run-1")
+            retried = await service.record_run_task_counts(record.id, "run-1")
+
+        list_by_run.assert_called_with("run-1")
+        assert retried.completed_task_count == 1
+        assert retried.failed_task_count == 0
+
+    @pytest.mark.asyncio
+    async def test_second_wave_counts_all_run_tasks(self, service):
+        from modules.backend.models.task import TaskStatus
+
+        record = await _create_execution(service, status="running")
+        tasks = [
+            MagicMock(status=TaskStatus.COMPLETED),
+            MagicMock(status=TaskStatus.COMPLETED),
+            MagicMock(status=TaskStatus.FAILED),
+            MagicMock(status=TaskStatus.PROPOSED),
+        ]
+        with patch(
+            "modules.backend.services.execution_persistence.TaskRepository.list_by_run",
+            return_value=tasks,
+        ):
+            updated = await service.record_run_task_counts(record.id, "run-1")
+
+        assert updated.completed_task_count == 2
+        assert updated.failed_task_count == 1
+
+
 class TestSaveDecision:
     @pytest.mark.asyncio
     async def test_creates_decision(self, service):

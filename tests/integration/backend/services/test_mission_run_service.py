@@ -379,6 +379,43 @@ async def test_wave_reuses_run_execution_record(
     assert count == 1
 
 
+async def test_persist_outcome_writes_run_task_counts(
+    db_session_factory, gateway, owner, monkeypatch
+) -> None:
+    """The stall rule reads these counts; a retried persist must not double count."""
+    from modules.backend.temporal.activities import persist_mission_outcome
+
+    user, mission, plan = await owner()
+    run = await _start(db_session_factory, mission, user)
+    begun = await _begin(db_session_factory, run.id)
+    await _task(db_session_factory, plan, TaskStatus.COMPLETED, run.id)
+
+    @asynccontextmanager
+    async def test_session():
+        async with db_session_factory() as session:
+            yield session
+
+    monkeypatch.setattr("modules.backend.core.database.get_async_session", test_session)
+    outcome = ExecutionOutcome(
+        mission_id=mission.id,
+        status=ExecutionStatus.SUCCESS,
+        execution_record_id=begun.execution_record_id,
+    )
+    for _ in range(2):
+        await persist_mission_outcome(
+            run.id,
+            begun.session_id,
+            outcome.model_dump(mode="json"),
+            mission.id,
+            begun.execution_record_id,
+        )
+
+    async with db_session_factory() as session:
+        record = await session.get(ExecutionRecord, begun.execution_record_id)
+    assert record.completed_task_count == 1
+    assert record.failed_task_count == 0
+
+
 # ── run-scoped planning ───────────────────────────────────────────────────
 
 

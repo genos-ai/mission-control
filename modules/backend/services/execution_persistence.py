@@ -32,7 +32,9 @@ from modules.backend.models.execution_record import (
     TaskExecution,
     TaskExecutionStatus,
 )
+from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.execution_record import ExecutionRecordRepository
+from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_record import ExecutionCostBreakdown
 from modules.backend.services.base import BaseService
 
@@ -200,6 +202,21 @@ class ExecutionPersistenceService(BaseService):
                 "cost": total_cost_usd,
             },
         )
+        return record
+
+    async def record_run_task_counts(
+        self, execution_record_id: str, mission_run_id: str
+    ) -> ExecutionRecord:
+        """Set the record's completed/failed task counts from the run's tasks.
+
+        Recomputed from Task rows on every call, so a retried or repeated
+        wave never double counts. The post-run stall rule reads these.
+        """
+        tasks = await TaskRepository(self._session).list_by_run(mission_run_id)
+        record = await self._repo.get_by_id(execution_record_id)
+        record.completed_task_count = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+        record.failed_task_count = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
+        await self._session.flush()
         return record
 
     async def save_task_execution(
