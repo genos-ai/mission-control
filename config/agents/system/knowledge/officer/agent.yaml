@@ -43,4 +43,7 @@ interface:
   input:
     mission_id: string
   output:
-    report: object
+    contradictions_flagged: integer
+    promoted: integer
+    retracted: integer
+    notes: array
