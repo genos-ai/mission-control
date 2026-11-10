@@ -67,6 +67,16 @@ open on purpose.
 
 **Agents, gate and diagnostics**
 
+- [ ] **Run cost is always $0 (scheduled for Plan 88 step 88.2.3).**
+  No `llm_calls` row carries `mission_run_id` or `task_id`:
+  `record_llm_call` (`helpers/cost_recorder.py:47`) and
+  `TokenEconomicsService.record_call` (`services/token_economics.py:75`)
+  take neither, and `agent_executor.py:335/624` pass neither. So
+  `MissionRunLifecycle.finalise` sums nothing and `mission_runs.cost_usd`
+  is 0 (live run #5 spent $0.0437 across planner, officer and
+  supervisor). 88.2.3 threads the run id through `build_dispatch_runtime`;
+  make sure it also tags the planner and supervisor ledger writes.
+
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
