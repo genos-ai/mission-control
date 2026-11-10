@@ -29,7 +29,7 @@ from modules.backend.services.catalog_seeder import _extract_model_config
 
 # Registry entries (config/settings/models.yaml): an anthropic_messages model whose
 # registry mode is the default 'tool', and an openai_chat one.
-CLAUDE = "foundry:claude-opus-5-5"
+CLAUDE = "foundry:claude-haiku-5-5"
 GPT = "foundry:gpt-5-mini"
 
 YAML_AGENT = {
