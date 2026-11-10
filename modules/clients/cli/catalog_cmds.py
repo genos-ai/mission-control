@@ -274,7 +274,8 @@ async def _action_ping(cli_logger, *, models, providers, all_models, output_form
                 ("Status", {"width": 8}),
                 ("Model", {"style": "cyan"}),
                 ("Latency", {"justify": "right"}),
-                ("Detail", {"ratio": 1}),
+                # Wrap, never truncate: the provider's message and the fix hint are at the end.
+                ("Detail", {"ratio": 1, "no_wrap": False, "overflow": "fold"}),
             ],
         )
         for r in report.results:

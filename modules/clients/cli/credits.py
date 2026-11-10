@@ -60,7 +60,8 @@ async def _check_credits_async(logger, roster: str) -> None:
         columns=[
             ("Status", {"width": 8}),
             ("Model", {"style": "cyan", "width": 44}),
-            ("Detail", {"ratio": 1}),
+            # Wrap, never truncate: the provider's message and the fix hint are at the end.
+            ("Detail", {"ratio": 1, "no_wrap": False, "overflow": "fold"}),
         ],
     )
 
