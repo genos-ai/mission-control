@@ -65,6 +65,38 @@ open on purpose.
   `tool_choice`** and appends the "set output_mode: prompted" advice.
   Narrow it to the Foundry 400 message.
 
+**Agents, gate and diagnostics**
+
+- [ ] **Task failure reasons are thrown away.** `failed_result`
+  (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
+  it, and `TaskResult` (`schemas/execution_outcome.py`) has no
+  `failure_reason`, so `mission_plan_taskio.py:226-233` always stores
+  "Task failed during dispatch". A verification-gate abort also loses
+  the agent's output reference and cost. Add `failure_reason`, persist
+  it, and drop the getattr fallback string.
+- [ ] **Agent interfaces are hand-maintained and can contradict the
+  code.** The knowledge officer declared `output: {report}` while its
+  `output_type` has four other fields (fixed in the catalog,
+  1c300ae2). `mission.supervisor.agent` still declares `{result}`
+  against `SupervisorDecision {decision, reason, confidence}`. Derive
+  `interface.output` from `output_type.model_json_schema()` at seed
+  time, or validate it on seed/PATCH plus a unit test over all agents.
+- [ ] **Dead temperature config.** Nothing sends temperature to a
+  model any more: `AgentModelSchema.temperature`,
+  `agent_defaults.temperature()`, the catalog's stored temperature,
+  workflow-template temperature (`schemas/workflow.py:193/223/266`) and
+  the deliberation critic/debater values are inert. Remove them or wire
+  them through `build_model_settings` behind a per-model capability.
+- [ ] **Gate builds its own model settings.** `LlmGateReviewer`
+  hand-rolls `model_settings` instead of using the shared builder, so
+  it gets no cache, thinking or effort handling. Split
+  `build_model_settings` into a protocol-level core both use.
+- [ ] **Ping does not cover non-catalog model consumers or real
+  settings.** `catalog ping` never pings `gate.ai.model`, and sends no
+  `model_settings`, so a model that rejects a runtime setting passes.
+  Ping every configured consumer with its runtime settings, and teach
+  `classify_ping_error` the "deprecated for this model" 400.
+
 **CLI and scripts**
 
 - [ ] **`scripts/verify_budget_enforcement.py` is broken** since
