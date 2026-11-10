@@ -33,6 +33,12 @@ from modules.backend.services.token_economics import TokenEconomicsService
 logger = get_logger(__name__)
 
 
+def _reject_unbacked_environment(execution_environment: str | None) -> None:
+    """Reject an execution environment that no backend can provide (contracts 3.8.5)."""
+    if execution_environment == "worktree":
+        raise ValidationError("no worktree backend is registered")
+
+
 class MissionService(BaseService):
     """Service for mission CRUD, membership, and scoping."""
 
@@ -76,13 +82,15 @@ class MissionService(BaseService):
         repo_url: str | None = None,
         repo_root: str | None = None,
         tier: str = "user",
+        execution_environment: str | None = None,
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
         Creates: missions row, mission_plans row (with the gate mode),
         mission_members row (owner), seed MCD. Raises ValidationError for an
-        unknown gate mode.
+        unknown gate mode or an execution environment with no backend.
         """
+        _reject_unbacked_environment(execution_environment)
         try:
             resolved_gate_mode = GateMode(gate_mode)
         except ValueError as exc:
@@ -105,6 +113,7 @@ class MissionService(BaseService):
             repo_url=repo_url,
             repo_root=repo_root,
             tier=tier,
+            execution_environment=execution_environment,
         )
 
         await MissionPlanRepository(self._session).create_for_mission(
@@ -508,7 +517,8 @@ class MissionService(BaseService):
         mission_id: str,
         **updates,
     ) -> Mission:
-        """Update mission fields."""
+        """Update mission fields. Raises ValidationError for an environment with no backend."""
+        _reject_unbacked_environment(updates.get("execution_environment"))
         return await self._mission_repo.update(mission_id, **updates)
 
     async def archive_mission(self, mission_id: str) -> Mission:

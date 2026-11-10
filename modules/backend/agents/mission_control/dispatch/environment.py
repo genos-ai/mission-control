@@ -9,12 +9,16 @@ Resolution priority:
     3. Mission-level default (mission.execution_environment)
     4. Auto-resolution based on agent tools
     5. Fallback: "local"
+
+A resolved worktree or container mode without a repo_root raises
+ExecutionEnvironmentError (Plan 88 contracts 3.8.5).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from modules.backend.core.exceptions import ExecutionEnvironmentError
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -104,14 +108,9 @@ def resolve_execution_mode(
 def _validate_mode(mode: str, repo_root: str | None) -> str:
     """Validate that the resolved mode is feasible.
 
-    If worktree or container is requested but repo_root is missing,
-    fall back to local with a warning.
+    Worktree or container mode without a repo_root raises
+    ``ExecutionEnvironmentError``; there is no fallback to local (contracts 3.8.5).
     """
     if mode in ("worktree", "container") and not repo_root:
-        logger.warning(
-            "Execution mode '%s' requires repo_root but mission has none — falling back to local",
-            mode,
-            extra={"requested_mode": mode},
-        )
-        return "local"
+        raise ExecutionEnvironmentError(f"execution mode '{mode}' requires repo_root")
     return mode

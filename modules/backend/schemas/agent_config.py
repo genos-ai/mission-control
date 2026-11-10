@@ -209,9 +209,9 @@ class AgentConfigSchema(_StrictBase):
 
     # Execution engine — determines how the agent runs (Plan 55).
     # "pydantic_ai" (default): in-process PydanticAI agent.run_stream()
-    # "claude_code": subprocess via claude-agent-sdk
-    # "codex": subprocess via codex exec CLI
-    # "copilot": subprocess via copilot -p CLI
+    # "claude_code": read-only subprocess via claude-agent-sdk
+    # codex and copilot are rejected until CLI engines run inside the
+    # container (Plan 88 contracts 3.8.7).
     engine: str = "pydantic_ai"
 
     # Effort level: for CLI engines that support it (claude_code), and for
@@ -243,9 +243,12 @@ class AgentConfigSchema(_StrictBase):
     @field_validator("engine")
     @classmethod
     def _validate_engine(cls, v: str) -> str:
-        valid = {"pydantic_ai", "claude_code", "codex", "copilot"}
+        valid = ("pydantic_ai", "claude_code")
         if v not in valid:
-            raise ValueError(f"engine must be one of {valid}, got '{v}'")
+            raise ValueError(
+                f"engine must be one of {valid}, got '{v}'. codex and copilot are "
+                "unavailable until CLI engines run inside the container (Plan 88 contracts 3.8.7)"
+            )
         return v
 
     @field_validator("effort")

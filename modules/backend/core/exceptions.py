@@ -101,6 +101,18 @@ class RunStartRejectedError(ValidationError):
     """
 
 
+class ExecutionEnvironmentError(ApplicationError):
+    """Raised when no isolated execution environment can be provided (Plan 88 3.8.5).
+
+    The execution boundary fails closed: no workspace means no execution,
+    never local execution. Non-retryable: the class name is listed in temporal
+    NON_RETRYABLE.
+    """
+
+    def __init__(self, message: str = "Execution environment unavailable") -> None:
+        super().__init__(message, code="SYS_ENV_UNAVAILABLE")
+
+
 class DatabaseError(ApplicationError):
     """Raised when a database operation fails."""
 

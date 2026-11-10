@@ -78,6 +78,7 @@ async def create_mission(
         repo_root=data.repo_root,
         gate_mode=data.gate_mode,
         tier=data.tier,
+        execution_environment=data.execution_environment,
     )
     response = (await service.to_responses([mission]))[0]
     result = ApiResponse(

@@ -32,7 +32,7 @@ _TASK_3 = str(uuid5(_TEST_NS, "task:t3"))
 def _mock_app_config(**overrides) -> MagicMock:
     """Create a mock AppConfig with a real ExecutionsSchema."""
     config = MagicMock()
-    config.executions = ExecutionsSchema(**overrides)
+    config.executions = ExecutionsSchema(**{"run_tests_timeout_seconds": 900, **overrides})
     return config
 
 

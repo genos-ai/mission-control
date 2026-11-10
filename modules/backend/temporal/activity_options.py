@@ -11,7 +11,12 @@ from temporalio.common import RetryPolicy
 
 from modules.backend.temporal.mission_run_models import ActivityPolicySnapshot, RetrySnapshot
 
-NON_RETRYABLE: list[str] = ["BudgetExceededError", "MissionRunStateError", "RunStartRejectedError"]
+NON_RETRYABLE: list[str] = [
+    "BudgetExceededError",
+    "ExecutionEnvironmentError",
+    "MissionRunStateError",
+    "RunStartRejectedError",
+]
 
 
 def retry_policy(p: RetrySnapshot) -> RetryPolicy:

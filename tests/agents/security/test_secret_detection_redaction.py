@@ -55,7 +55,8 @@ class TestStripSecretValues:
 
         assert "sk-live-abc123" not in msg
         assert "sk-live-abc123" not in snippet
-        assert "<<REDACTED>>" in msg or "<<REDACTED>>" in snippet
+        assert "<redacted>" in msg
+        assert "<redacted>" in snippet
 
     def test_github_pat_redacted(self, tmp_path: Path):
         sarif = {

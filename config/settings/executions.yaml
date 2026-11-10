@@ -14,6 +14,8 @@
 #   persist_verification_details - Whether to store full verification outcome JSON (boolean)
 #   tier3_min_evaluation_score   - Tier 3 pass threshold, 0.0-1.0 (float). Single source of
 #                                  truth; verification_tiers.py no longer defaults a literal.
+#   run_tests_timeout_seconds    - Wall-clock limit in seconds for one run_tests call inside the
+#                                  environment handle (integer, >= 1, required)
 # =============================================================================
 
 max_thinking_trace_length: 50000
@@ -24,3 +26,4 @@ max_page_size: 100
 persist_thinking_trace: true
 persist_verification_details: true
 tier3_min_evaluation_score: 0.8
+run_tests_timeout_seconds: 900   # wall-clock limit for one run_tests call inside the environment handle

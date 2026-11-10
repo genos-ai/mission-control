@@ -6,8 +6,8 @@ Spec Section 1.2.
 
 The runner:
 1. Resolves the command template from the registry spec + standard input
-2. Runs the subprocess asynchronously (locally or in container via
-   ExecutionEnvironmentService)
+2. Runs the tool inside the environment handle via run_in_environment
+   (never on the worker host; Plan 88 contracts 3.8.5)
 3. Handles exit codes (1 = findings for some tools, not failure)
 4. Converts non-SARIF output to SARIF 2.1.0 (for scan capabilities)
 5. Strips secret values if spec.redact_output is True
@@ -18,10 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +34,17 @@ from modules.backend.agents.security.tool_registry import (
     ToolCapability,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.core.redaction import redact_secrets
 from modules.backend.core.utils import utc_now
 
 logger = get_logger(__name__)
 
 
 # Use the platform's CommandResult — single definition, no duplication.
-from modules.backend.services.execution_environment import CommandResult  # noqa: E402
+from modules.backend.services.execution_environment import (  # noqa: E402
+    CommandResult,
+    run_in_environment,
+)
 
 # ---------------------------------------------------------------------------
 # Async subprocess helper
@@ -52,91 +54,23 @@ from modules.backend.services.execution_environment import CommandResult  # noqa
 async def _run_tool_subprocess(
     cmd: list[str],
     timeout: int,
-    cwd: str | None = None,
     environment_handle: Any | None = None,
 ) -> CommandResult:
-    """Run a security tool binary and return structured result.
+    """Run a security tool binary inside the environment handle.
 
-    When environment_handle is set, delegates to ExecutionEnvironmentService
-    which routes to the correct backend (container via Docker SDK, worktree,
-    or local). Otherwise runs locally via subprocess.
+    Delegates to ``run_in_environment``, the platform's single command path.
+    A ``None`` handle raises ``ExecutionEnvironmentError``: security tools never
+    run on the worker host (Plan 88 contracts 3.8.5).
     """
-    if environment_handle is not None:
-        logger.info(
-            "Running tool in container",
-            extra={
-                "cmd": " ".join(cmd[:3]),
-                "mode": getattr(environment_handle, "mode", "unknown"),
-                "container_id": getattr(environment_handle, "container_id", None),
-            },
-        )
-        return await _run_via_environment_service(
-            cmd,
-            environment_handle,
-            timeout,
-        )
-
-    start = time.monotonic()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(),
-            timeout=timeout,
-        )
-        return CommandResult(
-            exit_code=proc.returncode or 0,
-            stdout=stdout_bytes.decode(errors="replace"),
-            stderr=stderr_bytes.decode(errors="replace"),
-            duration_seconds=time.monotonic() - start,
-        )
-    except asyncio.TimeoutError:
-        return CommandResult(
-            exit_code=-1,
-            stdout="",
-            stderr=f"Tool subprocess timed out after {timeout}s",
-            duration_seconds=time.monotonic() - start,
-        )
-    except OSError as e:
-        return CommandResult(
-            exit_code=-1,
-            stdout="",
-            stderr=str(e),
-            duration_seconds=time.monotonic() - start,
-        )
-
-
-_env_service = None
-
-
-def _get_env_service():
-    """Get or create a cached ExecutionEnvironmentService with container backend."""
-    global _env_service
-    if _env_service is None:
-        from modules.backend.services.container_backend import ContainerBackend
-        from modules.backend.services.execution_environment import ExecutionEnvironmentService
-
-        _env_service = ExecutionEnvironmentService()
-        _env_service.register_backend("container", ContainerBackend())
-    return _env_service
-
-
-async def _run_via_environment_service(
-    cmd: list[str],
-    handle: Any,
-    timeout: int,
-) -> CommandResult:
-    """Execute a command via ExecutionEnvironmentService.
-
-    Reuses the platform's container/worktree/local backend dispatch.
-    The service and Docker client are cached across calls.
-    """
-    service = _get_env_service()
-    return await service.execute(handle, cmd, timeout_seconds=timeout)
+    logger.info(
+        "Running tool in container",
+        extra={
+            "cmd": " ".join(cmd[:3]),
+            "mode": getattr(environment_handle, "mode", None),
+            "container_id": getattr(environment_handle, "container_id", None),
+        },
+    )
+    return await run_in_environment(environment_handle, cmd, timeout_seconds=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +106,8 @@ def probe_engine_version(spec: SecurityToolSpec) -> str:
 def strip_secret_values(sarif_path: str) -> None:
     """Remove matched secret values from SARIF output.
 
-    Replaces the 'message.text' and 'snippet' fields that contain
-    raw secret values with redacted placeholders. The raw unredacted
+    Passes the 'message.text' and 'snippet' fields through
+    core/redaction.redact_secrets, the platform's only secret redactor. The raw unredacted
     output is preserved in the .raw file for encrypted evidence storage.
 
     Phase 1: strip values. Phase 2: AES encrypt the .raw file.
@@ -187,28 +121,14 @@ def strip_secret_values(sarif_path: str) -> None:
         for result in run.get("results", []):
             msg = result.get("message", {})
             if "text" in msg:
-                msg["text"] = _redact_secrets_in_text(msg["text"])
+                msg["text"] = redact_secrets(msg["text"])
             for loc in result.get("locations", []):
                 region = loc.get("physicalLocation", {}).get("region", {})
                 snippet = region.get("snippet", {})
                 if "text" in snippet:
-                    snippet["text"] = _redact_secrets_in_text(snippet["text"])
+                    snippet["text"] = redact_secrets(snippet["text"])
 
     Path(sarif_path).write_text(json.dumps(data, indent=2))
-
-
-def _redact_secrets_in_text(text: str) -> str:
-    """Replace high-entropy strings that look like secrets with <<REDACTED>>."""
-    # Common secret patterns
-    patterns = [
-        r'(?:api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*["\']?([^\s"\']{8,})',
-        r"(?:sk|pk|ak|rk)[-_](?:live|test|prod)[-_][a-zA-Z0-9]{16,}",
-        r"ghp_[a-zA-Z0-9]{20,}",
-        r"eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}",
-    ]
-    for pattern in patterns:
-        text = re.sub(pattern, "<<REDACTED>>", text, flags=re.IGNORECASE)
-    return text
 
 
 # ---------------------------------------------------------------------------

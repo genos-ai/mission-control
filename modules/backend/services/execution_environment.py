@@ -7,6 +7,10 @@ environments for agent task execution and manages their lifecycle.
 The ExecutionBackend protocol defines the interface that all backends
 implement. ExecutionEnvironmentService dispatches to the appropriate
 backend based on the requested execution mode.
+
+There is no local backend (Plan 88 contracts 3.8.5): nothing runs commands on
+the host. ``run_in_environment`` is the single path for running a command in
+an environment handle.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from modules.backend.core.exceptions import ExecutionEnvironmentError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 
@@ -39,7 +44,7 @@ class EnvironmentHandle:
     """
 
     environment_id: str
-    mode: str  # "local", "worktree", "container"
+    mode: str  # "container" (the only registered backend)
     working_dir: Path  # container-internal path (used by execute())
     host_working_dir: Path | None = None  # host-side worktree (used by agent tools)
     branch_name: str | None = None
@@ -99,71 +104,6 @@ class ExecutionBackend(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Local backend (no-op — runs in-process)
-# ---------------------------------------------------------------------------
-
-
-class LocalBackend:
-    """No-op backend for local execution. Environment is the current process."""
-
-    async def create(
-        self,
-        name: str,
-        config: dict[str, Any],
-    ) -> EnvironmentHandle:
-        from modules.backend.core.config import find_project_root
-
-        return EnvironmentHandle(
-            environment_id=f"local-{name}",
-            mode="local",
-            working_dir=find_project_root(),
-        )
-
-    async def execute(
-        self,
-        handle: EnvironmentHandle,
-        command: list[str],
-        timeout_seconds: int = 300,
-        env_vars: dict[str, str] | None = None,
-    ) -> CommandResult:
-        import asyncio
-        import time
-
-        start = time.monotonic()
-        proc = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=str(handle.working_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env_vars,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            return CommandResult(
-                exit_code=-1,
-                stdout="",
-                stderr=f"Command timed out after {timeout_seconds}s",
-                duration_seconds=time.monotonic() - start,
-            )
-
-        return CommandResult(
-            exit_code=proc.returncode or 0,
-            stdout=stdout.decode(errors="replace"),
-            stderr=stderr.decode(errors="replace"),
-            duration_seconds=time.monotonic() - start,
-        )
-
-    async def cleanup(self, handle: EnvironmentHandle) -> None:
-        pass  # Nothing to clean up for local execution
-
-
-# ---------------------------------------------------------------------------
 # ExecutionEnvironmentService
 # ---------------------------------------------------------------------------
 
@@ -183,9 +123,7 @@ class ExecutionEnvironmentService:
     """
 
     def __init__(self, db_session: Any = None) -> None:
-        self._backends: dict[str, ExecutionBackend] = {
-            "local": LocalBackend(),
-        }
+        self._backends: dict[str, ExecutionBackend] = {}
         self._db = db_session
 
     def register_backend(self, mode: str, backend: ExecutionBackend) -> None:
@@ -196,7 +134,7 @@ class ExecutionEnvironmentService:
     async def get_or_create_for_mission(
         self,
         mission_id: str,
-        mode: str = "local",
+        mode: str,
         config: dict[str, Any] | None = None,
     ) -> EnvironmentHandle:
         """Get an existing environment for this mission or create a new one.
@@ -207,14 +145,16 @@ class ExecutionEnvironmentService:
 
         Args:
             mission_id: Mission ID to scope the environment to
-            mode: Execution mode — "local", "worktree", or "container"
+            mode: Execution mode with a registered backend ("container")
             config: Backend-specific configuration (only used on create)
 
         Returns:
             EnvironmentHandle for the environment
+
+        Raises:
+            ExecutionEnvironmentError: no backend is registered for ``mode``.
         """
-        if mode == "local":
-            return await self.resolve_or_create(f"local-{mission_id}", mode, config)
+        self._backend_for(mode)
 
         # Check DB for existing running environment
         existing = await self._find_running_environment(mission_id, mode)
@@ -243,18 +183,14 @@ class ExecutionEnvironmentService:
     async def resolve_or_create(
         self,
         name: str,
-        mode: str = "local",
+        mode: str,
         config: dict[str, Any] | None = None,
     ) -> EnvironmentHandle:
         """Create a new execution environment (no DB persistence).
 
         For persistent environments, use get_or_create_for_mission() instead.
         """
-        backend = self._backends.get(mode)
-        if backend is None:
-            available = ", ".join(self._backends.keys())
-            raise ValueError(f"No backend registered for mode '{mode}'. " f"Available: {available}")
-
+        backend = self._backend_for(mode)
         handle = await backend.create(name, config or {})
         logger.info(
             "Execution environment created",
@@ -274,10 +210,18 @@ class ExecutionEnvironmentService:
         env_vars: dict[str, str] | None = None,
     ) -> CommandResult:
         """Execute a command in the given environment."""
-        backend = self._backends.get(handle.mode)
-        if backend is None:
-            raise ValueError(f"No backend for mode '{handle.mode}'")
+        backend = self._backend_for(handle.mode)
         return await backend.execute(handle, command, timeout_seconds, env_vars)
+
+    def _backend_for(self, mode: str) -> ExecutionBackend:
+        """The backend registered for ``mode``; an unregistered mode fails closed."""
+        backend = self._backends.get(mode)
+        if backend is None:
+            available = ", ".join(sorted(self._backends)) or "none"
+            raise ExecutionEnvironmentError(
+                f"no execution backend registered for mode '{mode}' (available: {available})"
+            )
+        return backend
 
     async def cleanup(self, handle: EnvironmentHandle) -> None:
         """Destroy an environment and free its resources."""
@@ -596,3 +540,44 @@ class ExecutionEnvironmentService:
             {"eid": environment_id},
         )
         await self._db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Single command path (Plan 88 contracts 3.8.5)
+# ---------------------------------------------------------------------------
+
+_command_service: ExecutionEnvironmentService | None = None
+
+
+def _get_command_service() -> ExecutionEnvironmentService:
+    """The cached service ``run_in_environment`` executes through.
+
+    ContainerBackend is imported lazily because container_backend imports
+    this module.
+    """
+    global _command_service
+    if _command_service is None:
+        from modules.backend.services.container_backend import ContainerBackend
+
+        service = ExecutionEnvironmentService()
+        service.register_backend("container", ContainerBackend())
+        _command_service = service
+    return _command_service
+
+
+async def run_in_environment(
+    handle: EnvironmentHandle | None,
+    argv: list[str],
+    *,
+    timeout_seconds: int,
+) -> CommandResult:
+    """Run ``argv`` inside the environment ``handle`` names.
+
+    The only way platform code runs a command for an agent. A ``None`` handle
+    raises ``ExecutionEnvironmentError``: there is no host fallback.
+    """
+    if handle is None:
+        raise ExecutionEnvironmentError(
+            "no execution environment: commands never run on the worker host"
+        )
+    return await _get_command_service().execute(handle, argv, timeout_seconds=timeout_seconds)

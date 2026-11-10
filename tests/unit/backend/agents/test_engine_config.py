@@ -43,14 +43,6 @@ class TestEngineValidation:
         config = AgentConfigSchema(**_make_config(engine="claude_code"))
         assert config.engine == "claude_code"
 
-    def test_engine_codex_accepted(self):
-        config = AgentConfigSchema(**_make_config(engine="codex"))
-        assert config.engine == "codex"
-
-    def test_engine_copilot_accepted(self):
-        config = AgentConfigSchema(**_make_config(engine="copilot"))
-        assert config.engine == "copilot"
-
     def test_engine_invalid_raises(self):
         with pytest.raises(ValidationError, match="engine must be one of"):
             AgentConfigSchema(**_make_config(engine="invalid_engine"))
@@ -145,29 +137,3 @@ class TestCliEngineInterfaceValidator:
             )
         )
         assert config.interface.output == {"summary": "str"}
-
-    def test_codex_engine_with_output_fields_raises(self):
-        """Codex engine also cannot have output fields."""
-        with pytest.raises(ValidationError, match="CLI engines return unstructured output"):
-            AgentConfigSchema(
-                **_make_config(
-                    engine="codex",
-                    interface={
-                        "input": {},
-                        "output": {"result": "str"},
-                    },
-                )
-            )
-
-    def test_copilot_engine_with_output_fields_raises(self):
-        """Copilot engine also cannot have output fields."""
-        with pytest.raises(ValidationError, match="CLI engines return unstructured output"):
-            AgentConfigSchema(
-                **_make_config(
-                    engine="copilot",
-                    interface={
-                        "input": {},
-                        "output": {"result": "str"},
-                    },
-                )
-            )

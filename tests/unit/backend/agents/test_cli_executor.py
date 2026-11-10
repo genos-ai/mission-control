@@ -6,6 +6,7 @@ in agent_executor.py.
 """
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic_ai import UsageLimits
@@ -105,7 +106,7 @@ def _make_fake_agent_config(engine: str = "pydantic_ai", effort: str | None = No
     config.model = "anthropic:claude-haiku-4-5"
     config.invocation.tier = "user"
     config.scope.read = ["src/"]
-    config.scope.write = ["src/"]
+    config.scope.write = []
     config.agent_name = "test.dummy.agent"
     config.tools = []
     config.cache_ttl = None
@@ -115,6 +116,14 @@ def _make_fake_agent_config(engine: str = "pydantic_ai", effort: str | None = No
     config.artifact_type = None
     config.agent_type = "user"
     return config
+
+
+def _make_fake_handle():
+    """A fake environment handle with a host worktree (Plan 88 contracts 3.8.5)."""
+    handle = MagicMock()
+    handle.host_working_dir = Path("/tmp/worktrees/test/workspace")
+    handle.working_dir = Path("/workspace")
+    return handle
 
 
 class TestEngineRoutingClaudeCode:
@@ -163,6 +172,7 @@ class TestEngineRoutingClaudeCode:
                 event_bus,
                 session_id="test-session",
                 mission_id="test-mission",
+                environment_handle=_make_fake_handle(),
             )
 
             result = await execute_agent(
@@ -244,6 +254,7 @@ class TestEngineRoutingPydanticAI:
                 event_bus,
                 session_id="test-session",
                 mission_id="test-mission",
+                environment_handle=_make_fake_handle(),
             )
 
             result = await execute_agent(

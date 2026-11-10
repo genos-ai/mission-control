@@ -151,7 +151,7 @@ class AppConfig:
         self._gateway = _load_validated(GatewaySchema, "gateway.yaml")
         self._events = _load_validated_optional(EventsSchema, "events.yaml")
         self._sessions = _load_validated_optional(SessionsSchema, "sessions.yaml")
-        self._executions = _load_validated_optional(ExecutionsSchema, "executions.yaml")
+        self._executions = _load_validated(ExecutionsSchema, "executions.yaml")
         self._temporal = _load_validated_optional(TemporalSchema, "temporal.yaml")
         self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")

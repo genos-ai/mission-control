@@ -12,6 +12,10 @@ and context services, which the planner needs) and
 ``provision_dispatch_runtime`` (environment and executor).
 ``handle_mission`` runs the first before planning and the second once the
 plan is valid; ``build_dispatch_runtime`` runs both.
+
+Provisioning fails closed (Plan 88 88.2.3a, contracts 3.8.5): a non-local
+mode that cannot get an isolated workspace raises ``ExecutionEnvironmentError``
+instead of running on the host.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from modules.backend.agents.mission_control.helpers import _emit, _make_agent_executor
+from modules.backend.agents.mission_control.helpers import _make_agent_executor
 from modules.backend.agents.mission_control.models import (
     ContextAssemblerProtocol,
     ContextCuratorProtocol,
@@ -29,8 +33,8 @@ from modules.backend.agents.mission_control.models import (
 )
 from modules.backend.agents.mission_control.roster import Roster, derive_roster_from_team
 from modules.backend.core.config import find_project_root
+from modules.backend.core.exceptions import ExecutionEnvironmentError
 from modules.backend.core.logging import get_logger
-from modules.backend.events.types import SystemEvent
 from modules.backend.services.code_map.loader import CodeMapLoader
 from modules.backend.services.context_assembler import ContextAssembler
 from modules.backend.services.context_curator import ContextCurator
@@ -39,6 +43,8 @@ from modules.backend.services.mission_context import MissionContextManager
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from modules.backend.services.execution_environment import EnvironmentHandle
 
 logger = get_logger(__name__)
 
@@ -105,9 +111,7 @@ async def provision_dispatch_runtime(
     """
     env_handle = await _provision_environment(
         db_session=db_session,
-        event_bus=event_bus,
         mission_id=mission_id,
-        session_id=session_id,
         execution_mode=execution_mode,
         mission_repo_root=mission_repo_root,
         container_image=container_image,
@@ -166,17 +170,22 @@ async def build_dispatch_runtime(
 async def _provision_environment(
     *,
     db_session: AsyncSession,
-    event_bus: EventBusProtocol,
     mission_id: str,
-    session_id: str,
     execution_mode: str,
     mission_repo_root: str | None,
     container_image: str | None,
     extra_volumes: list[dict[str, str]] | None,
-) -> object | None:
-    """Provision the execution environment for a non-local mode; None means local."""
+) -> EnvironmentHandle | None:
+    """Provision the execution environment for a non-local mode; None means local.
+
+    Fails closed (contracts 3.8.5): a non-local mode without a repo root, any
+    provisioning error, or a git-aware handle without a host worktree raises
+    ``ExecutionEnvironmentError``. There is no fallback to local execution.
+    """
     if execution_mode == "local":
         return None
+    if not mission_repo_root:
+        raise ExecutionEnvironmentError(f"execution mode '{execution_mode}' requires repo_root")
     try:
         from modules.backend.services.container_backend import ContainerBackend
         from modules.backend.services.execution_environment import ExecutionEnvironmentService
@@ -184,11 +193,10 @@ async def _provision_environment(
         env_service = ExecutionEnvironmentService(db_session=db_session)
         env_service.register_backend("container", ContainerBackend())
 
-        repo_root = mission_repo_root or str(find_project_root())
         container_config: dict[str, Any] = {
             "image": container_image or "code-workspace:latest",
             "git_aware": True,
-            "repo_root": repo_root,
+            "repo_root": mission_repo_root,
             "branch_name": f"agent/{mission_id[:8]}/dispatch",
         }
         if extra_volumes:
@@ -196,28 +204,26 @@ async def _provision_environment(
         env_handle = await env_service.get_or_create_for_mission(
             mission_id=mission_id, mode=execution_mode, config=container_config
         )
-        logger.info(
-            "Execution environment ready",
-            extra={
-                "mode": execution_mode,
-                "environment_id": env_handle.environment_id,
-                "reused": env_handle.metadata.get("execution_count", 0) > 1,
-            },
-        )
-        return env_handle
+    except ExecutionEnvironmentError:
+        raise
     except Exception as exc:
-        logger.warning(
-            "Failed to provision execution environment, falling back to local",
-            extra={"mission_id": mission_id},
-            exc_info=True,
+        # Catch-all justified: provisioning spans Docker, git and the DB, whose
+        # exception surface is unbounded. Every failure is re-raised typed, with
+        # the original as __cause__; nothing continues without an environment.
+        raise ExecutionEnvironmentError(
+            f"execution environment provisioning failed for mode '{execution_mode}': "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if env_handle.host_working_dir is None:
+        raise ExecutionEnvironmentError(
+            f"execution environment '{env_handle.environment_id}' has no host worktree"
         )
-        await _emit(
-            event_bus,
-            SystemEvent,
-            session_id=session_id,
-            source="mission_dispatch",
-            level="warning",
-            message=f"Environment provisioning failed, falling back to local: {exc}",
-            mission_id=mission_id,
-        )
-        return None
+    logger.info(
+        "Execution environment ready",
+        extra={
+            "mode": execution_mode,
+            "environment_id": env_handle.environment_id,
+            "reused": env_handle.metadata.get("execution_count", 0) > 1,
+        },
+    )
+    return env_handle

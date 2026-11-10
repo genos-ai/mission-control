@@ -16,14 +16,9 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from modules.backend.agents.mission_control.helpers.cli_executor import (
-    execute_claude_code,
-    execute_codex,
-    execute_copilot,
-)
+from modules.backend.agents.mission_control.helpers.cli_executor import execute_claude_code
 from modules.backend.agents.mission_control.helpers.prompt_builder import load_agent_system_prompt
 from modules.backend.agents.mission_control.models import EventBusProtocol
-from modules.backend.core.config import find_project_root
 from modules.backend.core.logging import get_logger
 from modules.backend.core.protocols import SessionServiceProtocol
 from modules.backend.events.types import (
@@ -36,12 +31,6 @@ from modules.backend.events.types import (
 from modules.backend.schemas.session import SessionMessageCreate
 
 logger = get_logger(__name__)
-
-_ENGINE_FNS = {
-    "claude_code": execute_claude_code,
-    "codex": execute_codex,
-    "copilot": execute_copilot,
-}
 
 
 def _serialize_history(messages: list) -> str:
@@ -126,26 +115,21 @@ async def handle_cli_chat(
 
         full_message = await _prepend_mission_context(mission_id, full_message)
 
-    # 6. Load system prompt and execute
-    system_prompt = load_agent_system_prompt(agent_name)
-    engine_fn = _ENGINE_FNS[engine]
-
-    engine_kwargs: dict = {
-        "agent_name": agent_name,
-        "instructions": full_message,
-        "inputs": {},
-        "system_prompt": system_prompt,
-        "working_dir": str(find_project_root()),
-        "event_bus": event_bus,
-        "session_id": session_id,
-    }
-    if engine == "claude_code":
-        if getattr(agent_config, "effort", None):
-            engine_kwargs["effort"] = agent_config.effort
-        engine_kwargs["scope_read"] = agent_config.scope.read
-        engine_kwargs["scope_write"] = agent_config.scope.write
-
-    result = await engine_fn(**engine_kwargs)
+    # 6. Load system prompt and execute. Chat has no environment handle, so a
+    # CLI-engine chat raises ExecutionEnvironmentError until CLI engines run
+    # inside the container (Plan 88 contracts 3.8.5 and 3.8.7).
+    result = await execute_claude_code(
+        agent_name=agent_name,
+        instructions=full_message,
+        inputs={},
+        system_prompt=load_agent_system_prompt(agent_name),
+        environment_handle=None,
+        effort=getattr(agent_config, "effort", None),
+        event_bus=event_bus,
+        session_id=session_id,
+        scope_read=agent_config.scope.read,
+        scope_write=agent_config.scope.write,
+    )
     output = result.get("output", "")
 
     # 7. Yield AgentResponseCompleteEvent

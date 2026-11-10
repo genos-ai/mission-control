@@ -140,14 +140,24 @@ def extract_default_agent_output(
     return {"output": output_ref}
 
 
+@dataclass(frozen=True)
+class DispatchParams:
+    """What ``handle_mission`` needs to dispatch one workflow step."""
+
+    execution_mode: str
+    roster_name: str
+    mission_repo_root: str | None
+
+
 async def resolve_dispatch_params(
     db_session: AsyncSession,
     mission_id: str | None,
     step: WorkflowStepSchema,
-) -> tuple[str, str]:
-    """Resolve execution mode and roster name for a workflow step.
+) -> DispatchParams:
+    """Resolve execution mode, roster name and mission repo root for a workflow step.
 
-    Returns (execution_mode, roster_name).
+    Raises ``ExecutionEnvironmentError`` when the resolved mode needs a
+    repo_root the mission does not have (contracts 3.8.5).
     """
     from modules.backend.agents.mission_control.dispatch.environment import (
         resolve_execution_mode,
@@ -185,7 +195,11 @@ async def resolve_dispatch_params(
         if os.path.exists(tier_roster):
             roster_name = f"{step.roster}-{step.complexity_tier}"
 
-    return resolved_mode, roster_name
+    return DispatchParams(
+        execution_mode=resolved_mode,
+        roster_name=roster_name,
+        mission_repo_root=mission_repo_root,
+    )
 
 
 def extract_first_task_failure(execution: Any) -> str | None:

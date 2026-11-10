@@ -603,12 +603,6 @@ class WorkflowRunWavesMixin:
         from modules.backend.core.config import get_default_budget_usd
         from modules.backend.services.session import SessionService
 
-        resolved_mode, roster_name = await resolve_dispatch_params(
-            ctx.db,
-            run.mission_id,
-            step,
-        )
-
         session_svc = SessionService(ctx.db)
         if self._event_bus is None:
             raise RuntimeError(
@@ -655,19 +649,23 @@ class WorkflowRunWavesMixin:
         try:
             from modules.backend.agents.mission_control.mission_dispatch import handle_mission
 
+            # Inside the try (contracts 3.8.5): an ExecutionEnvironmentError
+            # from mode resolution fails the step through the handler below.
+            params = await resolve_dispatch_params(ctx.db, run.mission_id, step)
             outcome = await handle_mission(
                 execution_label=f"mission-{session_id}",
                 mission_brief=objective,
                 session_service=session_svc,
                 event_bus=event_bus,
-                roster_name=roster_name,
+                roster_name=params.roster_name,
                 mission_budget_usd=budget,
                 upstream_context=upstream,
                 session_id=session_id,
                 mission_id=run.mission_id,
                 db_session=ctx.db,
                 gate=gate,
-                execution_mode=resolved_mode,
+                execution_mode=params.execution_mode,
+                mission_repo_root=params.mission_repo_root,
                 precomputed_plan=precomputed_plan,
                 container_image=step.container_image,
                 extra_volumes=step.extra_volumes,

@@ -1,26 +1,30 @@
 """CLI agent executor — dispatches tasks to CLI coding agents.
 
 Counterpart to agent_executor.py which handles PydanticAI in-process agents.
-Each engine function spawns a subprocess, passes the system prompt and task
+The engine function runs the agent, passes the system prompt and task
 instructions, and returns the agent's output as a dict matching the _meta
 structure expected by retry_handler.py.
+
+Only ``claude_code`` exists, read-only. ``codex`` and ``copilot`` were deleted
+because they write regardless of ``scope.write`` (Plan 88 contracts 3.8.5);
+the repair-loop plan restores CLI engines inside the container (3.8.7).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-from pathlib import Path
 from typing import Any
 
 from modules.backend.agents.mission_control.models import EventBusProtocol
-from modules.backend.core.config import find_project_root
+from modules.backend.core.exceptions import ExecutionEnvironmentError
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-CLI_SUBPROCESS_TIMEOUT_SECONDS = 600
+# Read-only tool set for claude_code until CLI engines run inside the
+# container (Plan 88 contracts 3.8.5 and 3.8.7).
+CLAUDE_CODE_READ_TOOLS: list[str] = ["Read", "Grep", "Glob"]
 
 
 def _make_emitter(
@@ -125,58 +129,13 @@ def _compose_user_message(instructions: str, inputs: dict) -> str:
     return message
 
 
-async def _run_subprocess(
-    cmd: list[str],
-    *,
-    cwd: str,
-    env: dict[str, str] | None = None,
-    timeout: float = CLI_SUBPROCESS_TIMEOUT_SECONDS,
-    agent_name: str = "",
-    engine_label: str = "",
-) -> str:
-    """Run a CLI subprocess with timeout and cleanup."""
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=cwd,
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        logger.error(
-            f"{engine_label} subprocess timed out",
-            extra={"agent": agent_name, "timeout": timeout},
-        )
-        return f"ERROR: {engine_label} subprocess timed out after {timeout}s"
-
-    if proc.returncode != 0:
-        logger.error(
-            f"{engine_label} subprocess failed",
-            extra={
-                "agent": agent_name,
-                "returncode": proc.returncode,
-                "stderr": stderr.decode("utf-8", errors="replace")[:500],
-            },
-        )
-
-    return stdout.decode("utf-8", errors="replace").strip()
-
-
 async def execute_claude_code(
     agent_name: str,
     instructions: str,
     inputs: dict,
     *,
     system_prompt: str,
-    working_dir: str | Path | None = None,
+    environment_handle: Any | None,
     effort: str | None = None,
     max_turns: int = 50,
     event_bus: EventBusProtocol | None = None,
@@ -184,7 +143,24 @@ async def execute_claude_code(
     scope_read: list[str] | None = None,
     scope_write: list[str] | None = None,
 ) -> dict:
-    """Execute a task via Claude Code Agent SDK."""
+    """Execute a task via Claude Code Agent SDK, read-only, in the handle's worktree.
+
+    The session runs on the worker host, so a worktree sets its working
+    directory but does not contain it. Until CLI engines run inside the
+    container (contracts 3.8.7) it fails closed (contracts 3.8.5): a non-empty
+    ``scope_write``, a ``None`` handle or a handle without ``host_working_dir``
+    raises ``ExecutionEnvironmentError``. It gets only read tools and loads no
+    settings or hooks from the target repository (``setting_sources=[]``).
+    """
+    if scope_write:
+        raise ExecutionEnvironmentError(
+            f"agent '{agent_name}': claude_code cannot write until CLI engines run "
+            "inside the container (contracts 3.8.7)"
+        )
+    if environment_handle is None or environment_handle.host_working_dir is None:
+        raise ExecutionEnvironmentError(
+            f"agent '{agent_name}': claude_code needs an environment handle with a host worktree"
+        )
     try:
         from claude_agent_sdk import ClaudeAgentOptions, query
         from claude_agent_sdk.types import (
@@ -202,14 +178,12 @@ async def execute_claude_code(
 
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
-        cwd=str(working_dir or find_project_root()),
+        cwd=str(environment_handle.host_working_dir),
         max_turns=max_turns,
+        tools=list(CLAUDE_CODE_READ_TOOLS),
+        allowed_tools=list(CLAUDE_CODE_READ_TOOLS),
+        setting_sources=[],
     )
-
-    allowed_tools = ["Read", "Grep", "Glob"]
-    if scope_write:
-        allowed_tools.extend(["Write", "Edit", "Bash"])
-    options.allowed_tools = allowed_tools
 
     if effort:
         os.environ["CLAUDE_CODE_EFFORT_LEVEL"] = effort
@@ -256,76 +230,3 @@ async def execute_claude_code(
 
     output = "\n".join(response_parts)
     return _cli_result_from_sdk(output, result_msg)
-
-
-async def execute_codex(
-    agent_name: str,
-    instructions: str,
-    inputs: dict,
-    *,
-    system_prompt: str,
-    working_dir: str | Path | None = None,
-    event_bus: EventBusProtocol | None = None,
-    session_id: str | None = None,
-) -> dict:
-    """Execute a task via OpenAI Codex CLI (codex exec)."""
-    cwd = str(working_dir or find_project_root())
-    user_message = _compose_user_message(instructions, inputs)
-
-    cmd = [
-        "codex",
-        "exec",
-        user_message,
-        "--approval-mode",
-        "never",
-        "--full-auto",
-    ]
-    if system_prompt:
-        cmd.extend(["--config", f"developer_instructions={system_prompt}"])
-
-    output = await _run_subprocess(
-        cmd,
-        cwd=cwd,
-        agent_name=agent_name,
-        engine_label="Codex",
-    )
-    return _cli_result(output)
-
-
-async def execute_copilot(
-    agent_name: str,
-    instructions: str,
-    inputs: dict,
-    *,
-    system_prompt: str,
-    working_dir: str | Path | None = None,
-    event_bus: EventBusProtocol | None = None,
-    session_id: str | None = None,
-) -> dict:
-    """Execute a task via GitHub Copilot CLI (copilot -p)."""
-    cwd = str(working_dir or find_project_root())
-    agents_md = Path(cwd) / "AGENTS.md"
-    agents_md_backup = None
-
-    try:
-        if system_prompt:
-            if agents_md.exists():
-                agents_md_backup = agents_md.read_text(encoding="utf-8")
-            agents_md.write_text(system_prompt, encoding="utf-8")
-
-        user_message = _compose_user_message(instructions, inputs)
-        cmd = ["copilot", "-p", user_message, "-s"]
-
-        output = await _run_subprocess(
-            cmd,
-            cwd=cwd,
-            agent_name=agent_name,
-            engine_label="Copilot",
-        )
-    finally:
-        if agents_md_backup is not None:
-            agents_md.write_text(agents_md_backup, encoding="utf-8")
-        elif system_prompt and agents_md.exists():
-            agents_md.unlink()
-
-    return _cli_result(output)

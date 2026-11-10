@@ -33,7 +33,7 @@ from modules.backend.agents.mission_control.helpers.prompt_builder import (
 from modules.backend.agents.mission_control.models import EventBusProtocol, ExecuteAgentFn
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root
-from modules.backend.core.exceptions import ValidationError
+from modules.backend.core.exceptions import ExecutionEnvironmentError, ValidationError
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
     AgentResponseChunkEvent,
@@ -97,46 +97,40 @@ def _make_agent_executor(
             environment_handle if environment_handle is not None and agent_tier == "user" else None
         )
 
+        # ── Write guard (Plan 88 contracts 3.8.5) ───────────────────
+        # A write-capable agent runs only in an isolated workspace. It reads
+        # effective_handle, never deps, and uses no path containment: an
+        # isolated worktree under the platform repo passes, and FileScope
+        # confines file tools under host_working_dir.
+        if agent_config.scope.write and (
+            effective_handle is None or effective_handle.host_working_dir is None
+        ):
+            raise ExecutionEnvironmentError(f"agent '{agent_name}' needs an isolated workspace")
+
         # ── Engine routing (Plan 55) ────────────────────────────────
+        # AgentConfigSchema admits only pydantic_ai and claude_code.
         engine = getattr(agent_config, "engine", "pydantic_ai")
 
-        if engine != "pydantic_ai":
+        if engine == "claude_code":
             from modules.backend.agents.mission_control.helpers.cli_executor import (
                 execute_claude_code,
-                execute_codex,
-                execute_copilot,
             )
             from modules.backend.agents.mission_control.helpers.prompt_builder import (
                 load_agent_system_prompt,
             )
 
-            system_prompt = load_agent_system_prompt(agent_name)
-            working_dir = None
-            if effective_handle is not None:
-                working_dir = getattr(effective_handle, "host_working_dir", None)
-
-            engine_fn = {
-                "claude_code": execute_claude_code,
-                "codex": execute_codex,
-                "copilot": execute_copilot,
-            }[engine]
-
-            engine_kwargs: dict = {
-                "agent_name": agent_name,
-                "instructions": instructions,
-                "inputs": inputs,
-                "system_prompt": system_prompt,
-                "working_dir": working_dir,
-                "event_bus": event_bus,
-                "session_id": session_id,
-            }
-            if engine == "claude_code":
-                if getattr(agent_config, "effort", None):
-                    engine_kwargs["effort"] = agent_config.effort
-                engine_kwargs["scope_read"] = agent_config.scope.read
-                engine_kwargs["scope_write"] = agent_config.scope.write
-
-            result = await engine_fn(**engine_kwargs)
+            result = await execute_claude_code(
+                agent_name=agent_name,
+                instructions=instructions,
+                inputs=inputs,
+                system_prompt=load_agent_system_prompt(agent_name),
+                environment_handle=effective_handle,
+                effort=getattr(agent_config, "effort", None),
+                event_bus=event_bus,
+                session_id=session_id,
+                scope_read=agent_config.scope.read,
+                scope_write=agent_config.scope.write,
+            )
             cumulative_cost_usd += result.get("_meta", {}).get("cost_usd", 0.0)
             return result
 

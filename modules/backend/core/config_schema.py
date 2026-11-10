@@ -317,6 +317,7 @@ class ExecutionsSchema(_StrictBase):
     persist_thinking_trace: bool = True
     persist_verification_details: bool = True
     tier3_min_evaluation_score: float = Field(default=0.8, ge=0.0, le=1.0)
+    run_tests_timeout_seconds: int = Field(..., ge=1)
 
 
 # =============================================================================

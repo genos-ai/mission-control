@@ -73,7 +73,10 @@ class MissionCreate(BaseModel):
     execution_environment: str | None = Field(
         None,
         pattern=r"^(local|worktree|container)$",
-        description="Default execution environment for this mission. NULL = local.",
+        description=(
+            "Default execution environment for this mission. NULL = local. "
+            "'worktree' is rejected: no worktree backend is registered."
+        ),
     )
     gate_mode: GateMode = Field(..., description="Plan gate mode")
 
@@ -93,7 +96,10 @@ class MissionUpdate(BaseModel):
     execution_environment: str | None = Field(
         None,
         pattern=r"^(local|worktree|container)$",
-        description="Default execution environment. Set to 'container' for Docker isolation.",
+        description=(
+            "Default execution environment. Set to 'container' for Docker isolation "
+            "(needs repo_root). 'worktree' is rejected: no worktree backend is registered."
+        ),
     )
 
 
