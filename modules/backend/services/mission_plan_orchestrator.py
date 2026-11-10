@@ -195,6 +195,7 @@ class MissionPlanOrchestrator(BaseService):
                 ),
                 refinement_instructions=refinement_prompt,
                 plan_version=next_version,
+                mission_run_id=mission_run_id,
             )
 
             # Validate schema

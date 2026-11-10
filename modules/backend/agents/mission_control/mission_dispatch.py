@@ -62,6 +62,7 @@ async def handle_mission(
     execution_record_id: str | None = None,
     container_image: str | None = None,
     extra_volumes: list[dict[str, str]] | None = None,
+    mission_run_id: str | None = None,
 ) -> ExecutionOutcome:
     """Dispatch entry point for complex multi-agent missions.
 
@@ -80,6 +81,9 @@ async def handle_mission(
     skipped — the caller is responsible for producing a valid TaskPlan.
     The plan still flows through validate_plan before dispatch so the
     same 11 rules apply.
+
+    `mission_run_id` tags the planner and agent ledger rows with the run so
+    its cost is recorded at finalise; None when the call is not part of a run.
     """
     mission_budget_usd = mission_budget_usd or get_default_budget_usd()
 
@@ -244,6 +248,7 @@ async def handle_mission(
                     mission_id=mission_id or execution_label,
                     project_context=project_context,
                     recent_failures=recent_failures,
+                    mission_run_id=mission_run_id,
                 )
                 thinking_trace = planning_result.get("thinking_trace")
 
@@ -423,6 +428,7 @@ async def handle_mission(
             mission_id=mission_id or execution_label,
             environment_handle=env_handle,
             current_user_id=None,  # Plan 55: resolved in Phase B
+            mission_run_id=mission_run_id,
         ),
         mission_budget_usd=mission_budget_usd,
         gate=gate,

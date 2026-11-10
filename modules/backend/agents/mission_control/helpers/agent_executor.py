@@ -56,8 +56,13 @@ def _make_agent_executor(
     mission_id: str,
     environment_handle: object | None = None,
     current_user_id: str | None = None,
+    mission_run_id: str | None = None,
 ) -> ExecuteAgentFn:
-    """Create the execute_agent_fn closure for the dispatch loop."""
+    """Create the execute_agent_fn closure for the dispatch loop.
+
+    mission_run_id tags every ledger row so the run's cost is summed at
+    finalise; None when the dispatch is not part of a mission run.
+    """
     cumulative_cost_usd = 0.0
 
     async def execute_agent(
@@ -342,6 +347,7 @@ def _make_agent_executor(
                 cost_usd=cost_usd,
                 latency_ms=0,
                 tool_count=len(agent_config.tools),
+                mission_run_id=mission_run_id,
             )
         except Exception:
             logger.warning(
@@ -438,6 +444,7 @@ async def _call_planning_agent(
     plan_version: int = 1,
     project_context: dict | None = None,
     recent_failures: list | None = None,
+    mission_run_id: str | None = None,
 ) -> dict:
     """Call the Planning Agent using incremental tool calls (Plan 69).
 
@@ -631,6 +638,7 @@ async def _call_planning_agent(
             cost_usd=planning_cost,
             latency_ms=0,
             tool_count=len(build_session.tasks),
+            mission_run_id=mission_run_id,
         )
     except Exception:
         logger.warning(

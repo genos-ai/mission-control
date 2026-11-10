@@ -175,6 +175,7 @@ async def dispatch_approved(
         mission_repo_root=mission.repo_root,
         prior_outputs=prior_outputs,
         execution_record_id=execution_record_id,
+        mission_run_id=mission_run_id,
     )
 
     # Write back task states from outcome (Plan 42 §10.5 batch write-back)

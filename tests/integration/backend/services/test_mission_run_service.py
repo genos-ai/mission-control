@@ -37,6 +37,7 @@ from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.mission_run import MissionRunService
 from modules.backend.services.mission_run_lifecycle import RUN_SUCCEEDED
+from modules.backend.services.token_economics import TokenEconomicsService
 from modules.backend.temporal.mission_run_models import TasksApprovedSignal
 from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway, WorkflowState
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
@@ -607,6 +608,42 @@ async def test_finalise_writes_ledger_cost(db_session_factory, gateway, owner) -
     assert result.notification.kind == RUN_SUCCEEDED
     assert result.notification.subject_id == run.id
     assert (await _run(db_session_factory, run.id)).cost_usd == pytest.approx(0.75)
+
+
+async def test_finalise_sums_rows_tagged_through_record_call(
+    db_session_factory, gateway, owner
+) -> None:
+    """A ledger write tagged through record_call is counted in the run's cost."""
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+    async with db_session_factory() as session:
+        for cost, run_id in ((0.40, run.id), (2.00, None)):
+            await TokenEconomicsService(session).record_call(
+                session_id=None,
+                mission_id=mission.id,
+                agent_name="test.agent",
+                agent_role="worker",
+                model="test-model",
+                provider="test",
+                input_tokens=1,
+                output_tokens=1,
+                cache_read_tokens=0,
+                cache_write_5m_tokens=0,
+                cache_write_1h_tokens=0,
+                thinking_tokens=0,
+                cost_usd=cost,
+                mission_run_id=run_id,
+            )
+        await session.commit()
+
+    async with db_session_factory() as session:
+        result = await _svc(session).finalise(
+            run.id, MissionRunStatus.SUCCEEDED, MissionRunStatusReason.NO_FURTHER_WORK, None
+        )
+
+    assert result.cost_usd == pytest.approx(0.40)
+    assert (await _run(db_session_factory, run.id)).cost_usd == pytest.approx(0.40)
 
 
 async def test_approval_racing_finalise_starts_next_run(db_session_factory, gateway, owner) -> None:

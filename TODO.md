@@ -67,7 +67,7 @@ open on purpose.
 
 **Agents, gate and diagnostics**
 
-- [ ] **Run cost is always $0 (scheduled for Plan 88 step 88.2.3).**
+- [x] **Run cost is always $0 (scheduled for Plan 88 step 88.2.3).**
   No `llm_calls` row carries `mission_run_id` or `task_id`:
   `record_llm_call` (`helpers/cost_recorder.py:47`) and
   `TokenEconomicsService.record_call` (`services/token_economics.py:75`)
@@ -76,6 +76,14 @@ open on purpose.
   is 0 (live run #5 spent $0.0437 across planner, officer and
   supervisor). 88.2.3 threads the run id through `build_dispatch_runtime`;
   make sure it also tags the planner and supervisor ledger writes.
+  **Fixed 2026-11-10:** `record_llm_call` and `record_call` take
+  `mission_run_id` and `task_id`; `dispatch_approved` passes the run id
+  through `handle_mission` (new keyword) to the agent executor, and
+  `refine` passes it to the planner, so every existing ledger write in a
+  run is tagged. Still open: `task_id` stays None until the per-task
+  activity in 88.2.3; the supervisor classifier (`gate_post_run.py`) and
+  CLI-engine agents (`claude_code`, `codex`, `copilot`) write no
+  `llm_calls` row at all, so their spend is missing from run cost.
 
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards

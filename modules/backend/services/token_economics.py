@@ -92,12 +92,20 @@ class TokenEconomicsService(BaseService):
         tool_count: int = 0,
         tool_schema_tokens: int = 0,
         execution_record_id: str | None = None,
+        mission_run_id: str | None = None,
+        task_id: str | None = None,
     ) -> LlmCall:
-        """Persist an LlmCall row. Caller commits (or use via factory())."""
+        """Persist an LlmCall row. Caller commits (or use via factory()).
+
+        mission_run_id tags the call to a run so MissionRunLifecycle.finalise
+        can sum the run's cost; None for calls outside a run (chat).
+        """
         call = LlmCall(
             session_id=session_id,
             mission_id=mission_id,
             execution_record_id=execution_record_id,
+            mission_run_id=mission_run_id,
+            task_id=task_id,
             agent_name=agent_name,
             agent_role=agent_role,
             model=model,

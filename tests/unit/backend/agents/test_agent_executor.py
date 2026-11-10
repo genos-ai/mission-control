@@ -151,6 +151,43 @@ class TestExecuteAgentCostRecording:
         assert recorded.agent_name == "platform.health.agent"
         assert recorded.cost_usd >= 0.0
         assert recorded.input_tokens >= 0
+        assert recorded.mission_run_id is None
+
+    @pytest.mark.asyncio
+    async def test_cost_tagged_with_mission_run_id(
+        self, monkeypatch, _route_llm_calls_to_test_db, executor_ids, db_session_factory
+    ):
+        """A run's executor tags every ledger row so finalise can sum the run's cost."""
+        monkeypatch.setattr(
+            agent_executor_module,
+            "_build_model",
+            lambda model_ref: TestModel(call_tools=[]),
+        )
+        run_id = str(uuid.uuid4())
+        executor = _make_agent_executor(
+            NoOpEventBus(),
+            session_id=executor_ids["session_id"],
+            mission_id=executor_ids["mission_id"],
+            mission_run_id=run_id,
+        )
+
+        await executor(
+            agent_name="platform.health.agent",
+            instructions="check system health",
+            inputs={},
+            usage_limits=UsageLimits(request_limit=5),
+        )
+
+        async with db_session_factory() as session:
+            rows = (
+                (await session.execute(select(LlmCall).where(LlmCall.mission_run_id == run_id)))
+                .scalars()
+                .all()
+            )
+
+        assert len(rows) == 1
+        assert rows[0].mission_id == executor_ids["mission_id"]
+        assert rows[0].task_id is None
 
 
 # ---------------------------------------------------------------------------
