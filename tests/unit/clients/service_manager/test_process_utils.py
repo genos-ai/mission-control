@@ -87,6 +87,16 @@ def test_unrelated_ancestors_are_not_foreground():
         assert find_foreground_supervisor([1]) is None
 
 
+def test_foreground_check_skips_ancestors_it_may_not_inspect():
+    unreadable = MagicMock(pid=1)
+    unreadable.cmdline.side_effect = psutil.AccessDenied(1)
+    session = SimpleNamespace(pid=200, cmdline=lambda: ["python", "services.py", "start"])
+    proc = MagicMock()
+    proc.parents.return_value = [unreadable, session]
+    with patch.object(psutil, "Process", return_value=proc):
+        assert find_foreground_supervisor([1]) == 200
+
+
 def test_foreground_check_ignores_processes_that_already_exited():
     with patch.object(psutil, "Process", side_effect=psutil.NoSuchProcess(1)):
         assert find_foreground_supervisor([1]) is None

@@ -142,7 +142,8 @@ def find_foreground_supervisor(pids: list[int]) -> int | None:
         for ancestor in ancestors:
             try:
                 cmdline = ancestor.cmdline()
-            except psutil.NoSuchProcess:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Gone, or owned by another user (launchd, sshd): not our session.
                 continue
             runs_services = any(Path(arg).name == "services.py" for arg in cmdline)
             is_foreground = bool({"start", "restart"} & set(cmdline)) and "--daemon" not in cmdline
