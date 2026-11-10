@@ -92,3 +92,9 @@ foundry_project:
   scope: https://ai.azure.com/.default
   endpoint_paths:
     openai_responses: /openai/v1/
+
+# Copilot SDK client health: how often the shared client is pinged and how long
+# one ping may take before the client is treated as unhealthy.
+copilot_client:
+  health_check_interval_seconds: 300
+  ping_timeout_seconds: 10

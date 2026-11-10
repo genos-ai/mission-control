@@ -150,21 +150,29 @@ class TestRegistrySchema:
             _models(registry=old_shape)
 
 
+_COPILOT_CLIENT = {"health_check_interval_seconds": 300, "ping_timeout_seconds": 10}
+
+
 class TestProvidersSchema:
     def test_an_endpoint_path_for_an_unknown_protocol_is_rejected(self):
         with pytest.raises(PydanticValidationError, match="unknown protocol 'nope'"):
-            ProvidersSchema(foundry={"endpoint_paths": {"nope": "/x"}})
+            ProvidersSchema(
+                copilot_client=_COPILOT_CLIENT, foundry={"endpoint_paths": {"nope": "/x"}}
+            )
 
     def test_a_deployment_format_mapped_to_an_unknown_protocol_is_rejected(self):
         with pytest.raises(PydanticValidationError, match="unknown protocol 'nope'"):
-            ProvidersSchema(foundry={"deployment_protocols": {"Acme": "nope"}})
+            ProvidersSchema(
+                copilot_client=_COPILOT_CLIENT, foundry={"deployment_protocols": {"Acme": "nope"}}
+            )
 
     def test_known_protocols_are_accepted(self):
         providers = ProvidersSchema(
+            copilot_client=_COPILOT_CLIENT,
             foundry={
                 "endpoint_paths": {OPENAI_CHAT: "/a/", ANTHROPIC_MESSAGES: "/b"},
                 "deployment_protocols": {"Acme": OPENAI_CHAT},
-            }
+            },
         )
 
         assert providers.foundry.endpoint_paths[ANTHROPIC_MESSAGES] == "/b"

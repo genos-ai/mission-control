@@ -23,6 +23,7 @@ mission_run:
   refine_wait_seconds: 600
   tick_execution_timeout_seconds: 300
   task_heartbeat_interval_seconds: 20
+  max_run_duration_seconds: 43200   # 12h of active execution; human waits excluded (88.2.6)
   activities:
     claim:             {start_to_close_seconds: 60,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 2, backoff_coefficient: 2.0, maximum_interval_seconds: 30,  maximum_attempts: 5}}
     persistence:       {start_to_close_seconds: 30,   heartbeat_timeout_seconds: null, retry: {initial_interval_seconds: 1, backoff_coefficient: 2.0, maximum_interval_seconds: 30,  maximum_attempts: 5}}

@@ -355,6 +355,7 @@ class MissionRunSchema(_StrictBase):
     refine_wait_seconds: int = Field(..., ge=1)
     tick_execution_timeout_seconds: int = Field(..., ge=10)
     task_heartbeat_interval_seconds: int = Field(..., ge=1)
+    max_run_duration_seconds: int = Field(..., ge=600)
     activities: MissionRunActivitiesSchema
 
     @model_validator(mode="after")
@@ -660,9 +661,17 @@ class ProviderAuthSchema(_StrictBase):
     deployment_protocols: dict[str, str] = Field(default_factory=dict)
 
 
+class CopilotClientSchema(_StrictBase):
+    """Copilot SDK client health check settings (providers.yaml copilot_client)."""
+
+    health_check_interval_seconds: int = Field(..., ge=30)
+    ping_timeout_seconds: int = Field(..., ge=1, le=60)
+
+
 class ProvidersSchema(_StrictBase):
     """Provider authentication configuration (providers.yaml)."""
 
+    copilot_client: CopilotClientSchema
     anthropic: ProviderAuthSchema = Field(
         default_factory=lambda: ProviderAuthSchema(
             auth_mode="api_key",
