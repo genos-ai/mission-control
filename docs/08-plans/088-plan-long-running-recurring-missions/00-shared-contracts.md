@@ -563,7 +563,7 @@ After a gate that timed out is decided, `MissionRunWorkflow` runs `resume_missio
 - **Spec:** `ScheduleSpec(cron_expressions=[cron_expression], time_zone_name=time_zone_name, start_at=starts_at, end_at=ends_at)`.
 - **Policy:** `SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL, catchup_window=timedelta(seconds=catch_up_window_seconds), pause_on_failure=False)`.
 - **State:** `ScheduleState(paused=effective_paused, note=note)`, where `effective_paused` follows 3.2.2 and `note` is the mission's pause reason value or the schedule's status value. `limited_actions` is not used, because max runs counts executed runs, not ticks.
-- **Action:** `ScheduleActionStartWorkflow(MissionScheduleTickWorkflow.run, MissionScheduleTickInput(mission_schedule_id=schedule.id, config=tick_config), id=f"mission-tick-{schedule.id}", task_queue=tick_config.task_queue, execution_timeout=timedelta(seconds=tick_execution_timeout_seconds))`.
+- **Action:** `ScheduleActionStartWorkflow(MissionScheduleTickWorkflow.run, MissionScheduleTickInput(mission_schedule_id=schedule.id, config=tick_config), id=f"mission-tick-{schedule.id}", task_queue=tick_config.task_queue, execution_timeout=timedelta(seconds=catch_up_window_seconds + tick_execution_timeout_seconds))`. The timeout spans the catch-up window because Temporal starts a tick on time even when no worker is running, and a tick that times out before the worker returns leaves its slot with no `mission_runs` row.
 - **Why ALLOW_ALL and not SKIP.** Decision 8's SKIP semantics are enforced by the Postgres claim, which records every skip. Temporal's own SKIP discards the fire with no hook.
 
 **`claim_occurrence` algorithm.** This runs in one transaction, with the schedule row locked `FOR UPDATE`. `W = catch_up_window_seconds`.

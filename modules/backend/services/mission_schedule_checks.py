@@ -60,8 +60,14 @@ def build_tick_schedule(
     paused: bool,
     note: str,
 ) -> Schedule:
-    """The Temporal Schedule for one mission_schedules row (contract 3.3.2)."""
-    timeout = get_app_config().temporal.mission_run.tick_execution_timeout_seconds
+    """The Temporal Schedule for one mission_schedules row (contract 3.3.2).
+
+    The tick's execution timeout spans the catch-up window plus the run time, so a
+    tick Temporal starts while the worker is down survives until the worker returns
+    and claims its slot as MISSED or SUPERSEDED instead of timing out unrecorded.
+    """
+    run_timeout = get_app_config().temporal.mission_run.tick_execution_timeout_seconds
+    timeout = catch_up_window_seconds + run_timeout
     return Schedule(
         action=ScheduleActionStartWorkflow(
             TICK_WORKFLOW_TYPE,
