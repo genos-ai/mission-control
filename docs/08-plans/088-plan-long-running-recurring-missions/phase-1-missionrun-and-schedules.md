@@ -632,7 +632,7 @@ Other repositories:
 1. **Workflow id (`temporal/workflow_ids.py`).** `mission_run_workflow_id(mission_run_id: str) -> str` returns `f"mission-run-{mission_run_id}"`. Every call site in this plan passes a run id; the plan-keyed call sites are deleted in 88.1.7, 88.1.8, 88.1.10a and 88.1.11. The 88.0.3 Done-when grep stays valid: no other module writes the `mission-run-{` literal.
 2. **Gateway (`temporal/workflow_gateway.py`).** Add `async def start_mission_run(self, inp: MissionRunWorkflowInput) -> None`. It calls `self._client.start_workflow(MissionRunWorkflow.run, inp, id=mission_run_workflow_id(inp.mission_run_id), task_queue=inp.config.task_queue, id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE)` and raises `ExternalServiceError` on `RPCError` or `WorkflowAlreadyStartedError`. 88.1.9 adds `signal`.
 2a. **Start rejection (`core/exceptions.py`).** Add `class RunStartRejectedError(ValidationError)`. `begin` raises it for an invalid gate mode (`FAILED/INVALID_GATE_MODE`) and for an owner who is not a platform user (`FAILED/START_FAILED`). `NON_RETRYABLE` in `temporal/activity_options.py` (3.3.4) already carries the string `"RunStartRejectedError"` since 88.0.2. There is no `GateModeInvalidError`.
-2b. **`handle_mission` rename (P3, no alias).** Rename the first parameter of `handle_mission` from `mission_run_id` to `execution_label`, and every use inside the function body. Change every `mission_run_id=` argument at the `handle_mission(` call sites to `execution_label=` (`services/mission_plan_dispatch.py:292`, `services/workflow_run_waves.py:656`, `agents/mission_control/mission_control.py:166`, `api/v1/endpoints/executions.py:300`, `clients/cli/execution_cmds.py:153,216`, `clients/tui/services/service_bridge.py:156`; `mission_plan_supervisor.py:211` is deleted below). 88.3.5 adds a separate keyword `mission_run_id: str | None` for the real run id.
+2b. **`handle_mission` rename (P3, no alias).** Rename the first parameter of `handle_mission` from `mission_run_id` to `execution_label`, and every use inside the function body. Change every `mission_run_id=` argument at the `handle_mission(` call sites to `execution_label=` (`services/mission_plan_dispatch.py:292`, `services/workflow_run_waves.py:656`, `agents/mission_control/mission_control.py:166`, `api/v1/endpoints/executions.py:300`, `clients/cli/execution_cmds.py:153,216`, `clients/tui/services/service_bridge.py:156`; `mission_plan_supervisor.py:211` is deleted below). A separate keyword-only `mission_run_id: str | None = None` carries the real run id; `dispatch_approved` passes it so ledger writes are attributed to the run (added during the Phase 1 live check, 2026-11-10).
 3. **`schemas/mission_run.py`.** Enum fields use lowercase values on the wire (contracts 3.0.2).
    - `MissionRunCreate{objective: str}`, length 1 to `recurrence.objective_template_max_chars`.
    - `MissionRunResponse`, with every column of the run.
@@ -727,13 +727,13 @@ Other repositories:
   - `test_finalise_fails_inflight_tasks_and_sets_counts`.
   - `test_finalise_writes_ledger_cost`: two `llm_calls` rows with the run id (0.25 and 0.50) and one without give `cost_usd == 0.75`, and the result returns it.
   - `test_approval_racing_finalise_starts_next_run`: an APPROVED task in the run when `finalise(SUCCEEDED, NO_FURTHER_WORK)` runs returns to the backlog, and `gateway.start_mission_run` is awaited for a new run with sequence + 1.
-- `tests/unit/backend/mission_control/test_mission_dispatch.py::test_handle_mission_takes_execution_label` (create): `inspect.signature(handle_mission).parameters` starts with `execution_label` and has no `mission_run_id`.
+- `tests/unit/backend/mission_control/test_mission_dispatch.py::test_handle_mission_takes_execution_label` (create): `inspect.signature(handle_mission).parameters` starts with `execution_label`, and `mission_run_id` is keyword-only with default None.
 
 **Done when:**
 - The test files above pass.
 - `grep -rn --exclude-dir=migrations "dispatch_autonomous\|start_temporal_run_workflow\|create_early_execution_record\|skip_post_run_supervisor\|mission_plan_supervisor\|MissionPlanDispatchedEvent\|GateModeInvalidError" modules scripts` returns nothing.
 - `rg -n "start_workflow|get_workflow_handle" modules --glob '!modules/backend/migrations/**' --glob '!modules/backend/temporal/workflow_gateway.py' --glob '!modules/backend/temporal/schedule_gateway.py' | rg -i "MissionRun|MissionTick|MissionScheduleTick|Reconciler|Retention|mission_run_workflow_id"` is empty; run workflows are started only through `TemporalWorkflowGateway`.
-- `grep -rn -A3 "handle_mission(" modules | grep "mission_run_id="` is empty.
+- `grep -rn -A3 "handle_mission(" modules | grep "mission_run_id="` matches only `services/mission_plan_dispatch.py` (`dispatch_approved`, the real run id).
 
 ---
 

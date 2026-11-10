@@ -95,6 +95,25 @@ open on purpose.
   `mission_run_id`. Fix: add `mission_run_id` to `DirectorTurnInput` and
   `ChatTurnInput` (data models only) and pass it into `handle()`.
 
+- [ ] **A worker restart mid-run fails the run (Plan 88 step 88.2.3).**
+  Live run #46: the worker died 13s into `execute_mission`; Temporal
+  retried the activity about 22 minutes later, and the retry failed with
+  "No tasks are approved for dispatch" because the first attempt had
+  already moved the task out of `APPROVED`. The run ended
+  `failed/task_failures` with no agent output. `execute_mission` is not
+  idempotent; 88.2.3/88.2.4 replace it with a per-task heartbeating
+  activity and an idempotency key. Check the 22-minute retry delay
+  against the activity's timeouts at the same time.
+- [ ] **Ticks already waiting at deploy keep the old 300s timeout.**
+  The tick timeout now covers the catch-up window, but Temporal applies
+  an updated schedule action only to workflows it starts afterwards.
+  Ticks started while the worker is down for the deploy (or waiting when
+  a schedule's `catch_up_window_seconds` is raised) still time out and
+  leave no `mission_runs` row; the 15:55/16:00/16:05 slots from the
+  2026-11-10 live test are lost the same way. If they must be recorded,
+  the reconciler can insert MISSED rows for slots between the watermark
+  and `now - catch_up_window` that have no row. No service-level test
+  yet shows `update_schedule` sends the new timeout to the gateway.
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no

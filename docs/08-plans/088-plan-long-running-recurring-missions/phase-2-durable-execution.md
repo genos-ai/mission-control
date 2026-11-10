@@ -204,7 +204,7 @@ No key is deleted in this step. The keys read only by `AgentMissionWorkflow` are
        task_id: str | None,
    ) -> DispatchRuntime: ...
    ```
-   - The body moves out of `mission_dispatch.py` without changing behaviour: roster (`:116`), context services (`:125-138`), environment (`:364-412`) and executor (`:418-424`). `handle_mission` calls it and passes `mission_run_id=None, task_id=None` for its in-process callers. Its legacy positional `execution_label` (renamed in 88.1.7) is a label, never a run id, and is not passed as `mission_run_id`.
+   - The body moves out of `mission_dispatch.py` without changing behaviour: roster (`:116`), context services (`:125-138`), environment (`:364-412`) and executor (`:418-424`). `handle_mission` calls it and passes its keyword `mission_run_id` (set only by `dispatch_approved`, None for other in-process callers) and `task_id=None`. Its legacy positional `execution_label` (renamed in 88.1.7) is a label, never a run id, and is not passed as `mission_run_id`.
    - `_make_agent_executor` gains the keyword-only arguments `mission_run_id: str | None` and `task_id: str | None`, and passes both to every `record_llm_call` (`helpers/agent_executor.py:335`, `:624`).
    - `record_llm_call` gains the keyword-only arguments `mission_run_id: str | None` and `task_id: str | None` and writes them to `llm_calls` (columns since `plan88_002`). This delivers the `task_id` attribution in 3.1.9 rule 2. If `models/llm_call.py` lacks the two mapped columns, add them here as `mapped_column(PgUUID(as_uuid=False), nullable=True)`.
 2. **`dispatch/task_runner.py`:**

@@ -13,7 +13,7 @@ Run N must start knowing what run N-1 did, what changed in the Mission Context D
   - `mc runs digest SEQ` (88.1.13) and `GET /missions/{id}/runs/{run_id_or_seq}` returning `MissionRunDetailResponse.digest` (88.1.7, 88.1.12);
   - `MissionRunWorkflow._end_run(status, reason, detail)`, the module-level `_exec(fn, arg, p)` and `_cause_type(e)`, and `@workflow.init` (88.1.8);
   - `temporal/activity_options.py` with `activity_kwargs(p)` (88.0.2);
-  - `DispatchRuntime`, `build_dispatch_runtime(..., mission_run_id, task_id)` in `agents/mission_control/runtime.py`, with `handle_mission` passing `mission_run_id=None`, and `run_single_task` with `_inject_context` in `agents/mission_control/dispatch/task_runner.py` (88.2.3);
+  - `DispatchRuntime`, `build_dispatch_runtime(..., mission_run_id, task_id)` in `agents/mission_control/runtime.py`, with `handle_mission` passing its keyword `mission_run_id` (None except from `dispatch_approved`), and `run_single_task` with `_inject_context` in `agents/mission_control/dispatch/task_runner.py` (88.2.3);
   - `execute_plan_task` and `RunTaskExecutionService.record`, which applies MCD updates through `MissionContextManager.apply_updates`, and the `mission_run_id` keyword on `apply_updates` (88.2.4);
   - `record_llm_call(..., mission_run_id=..., task_id=...)` (88.2.3);
   - `temporal/versioning.PATCH_IDS`, `tests/unit/backend/temporal/test_patch_ids.py`, the replay harness `tests/unit/backend/temporal/test_replay_histories.py` with its seven Phase 2 fixtures (88.2.9 item 3) under `tests/fixtures/temporal_histories/mission_run/`, and `tests/unit/backend/temporal/test_no_config_in_workflows.py` over `*workflow*.py` (88.2.2, 88.2.8, 88.2.9).
@@ -478,11 +478,11 @@ async def merge_evidence(self, learning_id: str, new_evidence: dict, *, kind: st
 - **Learnings budget ignored.** `_assemble_learnings` (`:223-276`) ignores `remaining_budget` and `context_assembler_reserve_tokens`. It reaches into `self._context_manager._context_repo.session` (`:233`) and swallows every exception (`:274-276`).
 - **Magic thresholds.** `> 300` (`:161`) and `> 500` (`:174`) gate the learnings and history layers.
 - **Prior outputs unbounded.** `load_prior_outputs(orchestrator, mission_plan_id)` (`mission_plan_taskio.py:123-148`) loads every COMPLETED task of the plan, with no run bound.
-- **Run id at dispatch.** `build_dispatch_runtime` takes `mission_run_id` (88.2.3) but `DispatchRuntime` does not carry it. `handle_mission` (its legacy positional renamed `execution_label` in 88.1.7) passes `mission_run_id=None`, because its in-process callers hold no `MissionRun` id; `execute_plan_task` (88.2.4) passes the real one.
+- **Run id at dispatch.** `build_dispatch_runtime` takes `mission_run_id` (88.2.3) but `DispatchRuntime` does not carry it. `handle_mission` (its legacy positional renamed `execution_label` in 88.1.7) passes its keyword `mission_run_id`, which only `dispatch_approved` sets; other in-process callers hold no `MissionRun` id. `execute_plan_task` (88.2.4) passes the real one.
 
 **Change**
 
-1. **Run id on the runtime.** `DispatchRuntime` gains the field `mission_run_id: str | None`, set by `build_dispatch_runtime` from its existing parameter. `handle_mission` is unchanged and keeps passing `mission_run_id=None`. `run_single_task` passes `mission_run_id=runtime.mission_run_id` to `_inject_context`, which gains a keyword-only `mission_run_id: str | None`.
+1. **Run id on the runtime.** `DispatchRuntime` gains the field `mission_run_id: str | None`, set by `build_dispatch_runtime` from its existing parameter. `handle_mission` is unchanged and keeps passing its keyword `mission_run_id`. `run_single_task` passes `mission_run_id=runtime.mission_run_id` to `_inject_context`, which gains a keyword-only `mission_run_id: str | None`.
 
 2. **Schemas** (`schemas/run_memory.py`, pydantic):
 
