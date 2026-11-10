@@ -216,6 +216,27 @@ class TestPlanSwitch:
                 provider="foundry", model_map={"claude-opus-4-6": "gpt-5.4"}
             )
 
+    async def test_an_output_mode_the_target_cannot_honour_blocks_the_whole_switch(
+        self, db_session: AsyncSession
+    ):
+        """Caught at planning, so PATCH never refuses an agent mid-switch."""
+        await _add_agent(db_session, "test.mode_ok.agent", {"name": "foundry:gpt-5-mini"})
+        await _add_agent(
+            db_session,
+            "test.mode_native.agent",
+            {"name": "foundry:gpt-5.4", "output_mode": "native"},
+        )
+
+        with pytest.raises(ValidationError) as raised:
+            await ModelProviderService(db_session).plan_switch(
+                provider="anthropic",
+                model_map={"gpt-5-mini": "claude-haiku-4-5", "gpt-5.4": "claude-opus-4-6"},
+            )
+
+        message = str(raised.value)
+        assert "test.mode_native.agent" in message and "output_mode" in message
+        assert "test.mode_ok.agent:" not in message
+
     async def test_agent_naming_an_alias_is_refused(self, db_session: AsyncSession):
         alias = next(iter(get_app_config().models.aliases))
         await _add_agent(db_session, "test.switch_alias.agent", {"name": alias})

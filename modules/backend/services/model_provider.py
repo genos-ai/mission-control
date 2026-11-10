@@ -33,7 +33,7 @@ from modules.backend.schemas.model_provider import (
     ProviderModel,
     ProviderSwitchChange,
 )
-from modules.backend.services.agent_catalog import AgentCatalogService
+from modules.backend.services.agent_catalog import AgentCatalogService, validated_model_config
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -332,12 +332,20 @@ class ModelProviderService(BaseService):
             if new_bare is None:
                 problems.append(f"{entry.agent_name}: no {provider} model for '{current}'")
                 continue
+            new_model = f"{provider}:{new_bare}"
+            try:
+                # The rest of the block (output_mode) must suit the new model too,
+                # else PATCH refuses this agent after earlier ones were switched.
+                new_config = validated_model_config({**entry.model_config_json, "name": new_model})
+            except ValidationError as exc:
+                problems.append(f"{entry.agent_name}: {exc.message}")
+                continue
             changes.append(
                 ProviderSwitchChange(
                     agent_name=entry.agent_name,
                     current_model=current,
-                    new_model=f"{provider}:{new_bare}",
-                    new_config={**entry.model_config_json, "name": f"{provider}:{new_bare}"},
+                    new_model=new_model,
+                    new_config=new_config,
                 )
             )
 
