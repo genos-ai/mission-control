@@ -145,6 +145,19 @@ open on purpose.
   - `scripts/trace_execution.py` and `scripts/verify_unified_execution.py`
     still read `mission_plans.total_spent_usd`, which nothing updates
     now. 88.4.1 drops the column; update the scripts then.
+- [ ] **Plan 88 Phase 2 batch 3 review minors (2026-11-11).**
+  - `test_can_does_not_repeat_without_progress` never exercises the
+    `iteration <= last_can_iteration` guard; deleting it leaves all tests
+    green. Drive the server-suggested path with a patched
+    `is_continue_as_new_suggested`.
+  - After continue-as-new, `MissionRunWorkflow.__init__` reports phase
+    `planning` until the next layer starts. Derive it from `inp.state`.
+  - Doc 29 says `test_patch_ids.py` enforces rule 2.5, but nothing asserts
+    `PATCH_IDS` is a subset of `REQUIRED` in `test_replay_histories.py`.
+  - `test_patch_ids.py` misses aliased imports
+    (`from temporalio.workflow import patched as p`).
+  - `docs/10-reference-architecture/00-overview.md` still lists Optional
+    Platform as 20-28 with no row for doc 29.
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
