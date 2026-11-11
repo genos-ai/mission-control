@@ -168,6 +168,14 @@ open on purpose.
     task_activities -> agents`.
   - core must not import services: `core.dependencies ->
     services.mission`, `services.session`.
+- [ ] **Crash recovery takes ~5 minutes, not ~70 seconds (2026-11-11).**
+  Phase 2 crash drill (p88-crash run #2): worker killed 13:53:00 while
+  task 2's `execute_plan_task` was in its agent call; replacement worker
+  up 13:53:06; attempt 2 started only at 13:57:51 (lastFailure
+  `TIMEOUT_TYPE_HEARTBEAT`). Expected heartbeat timeout 60s plus 10s
+  retry. Find where the ~3.5 extra minutes go (server heartbeat-timeout
+  detection on the dev server, SDK heartbeat throttling, or retry
+  scheduling) before tuning `execute_task.heartbeat_timeout_seconds`.
 - [ ] **`missions.recurrence.enabled` ships as `true` (2026-11-11).**
   There is no per-environment config overlay, so production gets the
   committed value. Plan 88 requires schedules off in production until
