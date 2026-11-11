@@ -216,10 +216,9 @@ class CliGateReviewer:
 
         return self._prompt(
             ctx,
-            actions="r/m/s/a/v",
+            actions="r/s/a/v",
             help_text={
                 "r": "retry \u2014 retry with feedback (default)",
-                "m": "modify \u2014 accept output despite failure",
                 "s": "skip \u2014 skip this task",
                 "a": "abort \u2014 cancel execution",
                 "v": "verification \u2014 show full details",
@@ -326,10 +325,6 @@ class CliGateReviewer:
 
             if choice == "c":
                 return GateDecision(action=GateAction.CONTINUE, reviewer="human")
-            elif choice == "m":
-                return GateDecision(
-                    action=GateAction.MODIFY, reason="Accepted despite failure", reviewer="human"
-                )
             elif choice == "a":
                 reason = input("Reason (optional): ").strip() or None
                 return GateDecision(action=GateAction.ABORT, reason=reason, reviewer="human")

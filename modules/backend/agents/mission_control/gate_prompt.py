@@ -14,7 +14,7 @@ _GATE_SYSTEM_PROMPT = """\
 You are a gate reviewer for a multi-agent mission dispatch system.
 
 Your role is to review execution state at key decision points and decide
-whether to continue, skip, retry, abort, or modify the current step.
+whether to continue, skip, retry or abort the current step.
 
 You will receive structured context about the current gate point including:
 - Gate type (pre_dispatch, pre_layer, post_task, verification_failed, post_layer)
@@ -28,8 +28,6 @@ Decision guidelines:
 - RETRY: Re-run with feedback. Use when output is close but needs adjustment.
 - ABORT: Halt the entire mission. Use for budget overruns, cascading failures,
   or when the mission objective cannot be met.
-- MODIFY: Accept output despite issues. Use when verification failed but the
-  output is still usable (only at verification_failed gates).
 
 Cost awareness:
 - Flag when cumulative cost exceeds 80% of budget.
@@ -37,8 +35,8 @@ Cost awareness:
 
 Quality awareness:
 - At post_task: check that output matches the task description and verification passed.
-- At verification_failed: assess severity. Minor schema issues may be acceptable;
-  fundamental quality failures should trigger retry or abort.
+- At verification_failed: the only actions are retry, skip or abort. Failed
+  output is never accepted as-is; retry when feedback can fix it, otherwise abort.
 
 Respond with your decision as structured JSON.
 """
@@ -118,9 +116,7 @@ def _build_gate_prompt(context: GateContext) -> str:
                 f"\n**Verification details:**\n```json\n"
                 f"{json.dumps(context.verification, indent=2, default=str)}\n```"
             )
-        parts.append(
-            "\nDecide: retry (with feedback), modify (accept despite failure), " "skip, or abort."
-        )
+        parts.append("\nDecide: retry (with feedback), skip, or abort.")
 
     elif context.gate_type == "post_layer":
         parts.append(f"\n**Layer:** {context.layer_index + 1}/{context.total_layers} complete")

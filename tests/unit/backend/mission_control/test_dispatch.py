@@ -27,6 +27,7 @@ from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task
 from modules.backend.models.task import TaskStatus as DbTaskStatus
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskPlan
 
 
@@ -1249,12 +1250,12 @@ class TestWorkflowTaskDispatch:
 # ---------------------------------------------------------------------------
 
 
-class TestRetryModifyAction:
-    """Tests for GateAction.MODIFY in verification failure path."""
+class TestVerificationFailedGateActions:
+    """Gate actions at verification_failed (Plan 88.2.3c, contracts 3.3.6)."""
 
     @pytest.mark.asyncio
-    async def test_modify_action_accepts_output_as_is(self, db_session_factory):
-        """MODIFY gate action accepts the task output without re-running."""
+    async def test_noop_gate_verification_failure_retries(self, db_session_factory):
+        """NoOpGate returns CONTINUE at verification_failed, which retries."""
         plan = _db_plan([_task("t1")])
         roster = Roster(agents=[_entry("agent_a")])
 
@@ -1263,7 +1264,31 @@ class TestRetryModifyAction:
         async def mock_execute(agent_name, instructions, inputs, usage_limits):
             nonlocal call_count
             call_count += 1
-            # Return output missing required "confidence" field → verification fails
+            # First call misses required "confidence" -> verification fails
+            if call_count == 1:
+                return {"result": "partial", "_meta": {}}
+            return {"result": "done", "confidence": 0.9, "_meta": {}}
+
+        outcome = await _dispatch_seeded(db_session_factory, plan, roster, mock_execute, 10.0)
+
+        assert call_count == 2
+        assert len(outcome.task_results) == 1
+        result = outcome.task_results[0]
+        assert result.status == TaskStatus.SUCCESS
+        assert result.retry_count == 1
+
+    @pytest.mark.asyncio
+    async def test_modify_at_verification_failed_aborts(self, db_session_factory):
+        """MODIFY is not a verification_failed action: it aborts, never accepts output."""
+        plan = _db_plan([_task("t1")])
+        roster = Roster(agents=[_entry("agent_a")])
+
+        call_count = 0
+
+        async def mock_execute(agent_name, instructions, inputs, usage_limits):
+            nonlocal call_count
+            call_count += 1
+            # Return output missing required "confidence" field -> verification fails
             return {
                 "result": "partial",
                 "_meta": {
@@ -1273,7 +1298,6 @@ class TestRetryModifyAction:
                 },
             }
 
-        # Gate that returns MODIFY on verification_failed
         modify_gate = MagicMock()
         modify_gate.review = AsyncMock(
             return_value=GateDecision(
@@ -1286,12 +1310,17 @@ class TestRetryModifyAction:
             db_session_factory, plan, roster, mock_execute, 10.0, gate=modify_gate
         )
 
-        # MODIFY means: accept the output as-is (status=SUCCESS), no retry
+        assert call_count == 1
         assert len(outcome.task_results) == 1
         result = outcome.task_results[0]
-        assert result.status == TaskStatus.SUCCESS
-        # Agent was called only once (no retry)
-        assert call_count == 1
+        assert result.status == TaskStatus.FAILED
+        assert result.failure is not None
+        assert result.failure.failure_class == FailureClass.CANCELLED
+        assert result.failure.summary == "aborted at verification_failed gate"
+        assert result.output_reference == {}
+        gate_types = [c.args[0].gate_type for c in modify_gate.review.await_args_list]
+        assert gate_types.count("verification_failed") == 1
+        assert "post_task" not in gate_types
 
     @pytest.mark.asyncio
     async def test_modified_instructions_override_feedback(self, db_session_factory):

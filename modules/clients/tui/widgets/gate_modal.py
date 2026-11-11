@@ -36,7 +36,7 @@ _GATE_ACTIONS: dict[str, list[GateAction]] = {
     "pre_dispatch": [GateAction.CONTINUE, GateAction.ABORT],
     "pre_layer": [GateAction.CONTINUE, GateAction.SKIP, GateAction.ABORT],
     "post_task": [GateAction.CONTINUE, GateAction.RETRY, GateAction.SKIP, GateAction.ABORT],
-    "verification_failed": [GateAction.RETRY, GateAction.MODIFY, GateAction.SKIP, GateAction.ABORT],
+    "verification_failed": [GateAction.RETRY, GateAction.SKIP, GateAction.ABORT],
     "post_layer": [GateAction.CONTINUE, GateAction.ABORT],
 }
 
@@ -176,7 +176,6 @@ class GateReviewModal(ModalScreen[GateDecision]):
         Binding("c", "gate_continue", "Continue", show=False),
         Binding("s", "gate_skip", "Skip", show=False),
         Binding("r", "gate_retry", "Retry", show=False),
-        Binding("m", "gate_modify", "Modify", show=False),
         Binding("a", "gate_abort", "Abort", show=False),
         Binding("escape", "gate_continue", "Continue", show=False),
     ]
@@ -203,7 +202,7 @@ class GateReviewModal(ModalScreen[GateDecision]):
                     id="gate-body",
                 )
 
-            # Retry/modify instructions input (hidden by default)
+            # Retry instructions input (hidden by default)
             with Vertical(id="retry-section"):
                 yield Label(
                     "[bold]Instructions / feedback for retry:[/bold]",
@@ -242,7 +241,7 @@ class GateReviewModal(ModalScreen[GateDecision]):
             action = GateAction.CONTINUE
 
         modified_instructions: str | None = None
-        if action in (GateAction.RETRY, GateAction.MODIFY):
+        if action == GateAction.RETRY:
             try:
                 text_area = self.query_one("#retry-input", TextArea)
                 text = text_area.text.strip()
@@ -277,9 +276,6 @@ class GateReviewModal(ModalScreen[GateDecision]):
         except NoMatches:
             logger.debug("Retry section widget not found — resolving immediately")
         self._resolve(GateAction.RETRY)
-
-    def action_gate_modify(self) -> None:
-        self._resolve(GateAction.MODIFY)
 
     def action_gate_abort(self) -> None:
         self._resolve(GateAction.ABORT)

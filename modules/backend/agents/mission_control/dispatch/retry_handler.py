@@ -282,28 +282,16 @@ async def _handle_verification_failure(
                 budget_usd=budget_usd,
             )
         )
-        if gate_decision.action == GateAction.ABORT:
+        # CONTINUE (NoOpGate) and RETRY retry; SKIP skips; ABORT, MODIFY
+        # and any other action abort (contracts 3.3.6).
+        if gate_decision.action == GateAction.SKIP:
+            return skipped_result(task, gate_decision.reason, execution_id=execution_id)
+        if gate_decision.action not in (GateAction.CONTINUE, GateAction.RETRY):
             return failed_result(
                 task,
                 get_failure_classifier().control(
                     FailureClass.CANCELLED, "aborted at verification_failed gate"
                 ),
-                retry_count=attempt,
-                retry_history=retry_history,
-                execution_id=execution_id,
-            )
-        if gate_decision.action == GateAction.SKIP:
-            return skipped_result(task, gate_decision.reason, execution_id=execution_id)
-        if gate_decision.action == GateAction.MODIFY:
-            return TaskResult(
-                task_id=task.task_id,
-                agent_name=task.agent,
-                status=TaskStatus.SUCCESS,
-                output_reference=output,
-                token_usage=token_usage,
-                cost_usd=cost_usd,
-                duration_seconds=round(duration, 2),
-                verification_outcome=build_verification_outcome(verification),
                 retry_count=attempt,
                 retry_history=retry_history,
                 execution_id=execution_id,

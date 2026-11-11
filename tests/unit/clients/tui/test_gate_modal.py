@@ -128,9 +128,8 @@ class TestGateConfig:
 
     def test_verification_failed_actions(self):
         actions = _GATE_ACTIONS["verification_failed"]
-        assert GateAction.RETRY in actions
-        assert GateAction.MODIFY in actions
-        assert GateAction.ABORT in actions
+        assert actions == [GateAction.RETRY, GateAction.SKIP, GateAction.ABORT]
+        assert GateAction.MODIFY not in actions
 
 
 # ── Modal widget tests (Textual Pilot) ───────────────────────────────
@@ -279,8 +278,8 @@ class TestGateReviewModal:
             assert "gate-btn-retry" in button_ids
 
     @pytest.mark.asyncio
-    async def test_verification_failed_has_modify(self):
-        """verification_failed modal should have modify action."""
+    async def test_verification_failed_has_no_modify(self):
+        """verification_failed modal offers retry, skip and abort; never modify."""
         from textual.app import App, ComposeResult
         from textual.containers import Vertical
         from textual.widgets import Button
@@ -297,7 +296,7 @@ class TestGateReviewModal:
 
             buttons = pilot.app.screen.query(Button)
             button_ids = [b.id for b in buttons]
-            assert "gate-btn-modify" in button_ids
+            assert "gate-btn-modify" not in button_ids
             assert "gate-btn-retry" in button_ids
 
     @pytest.mark.asyncio
