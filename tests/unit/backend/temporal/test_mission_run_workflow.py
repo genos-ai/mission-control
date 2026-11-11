@@ -65,6 +65,7 @@ class _Fake:
     actions: list[str] = field(default_factory=list)
     finalised: list[FinaliseRunInput] = field(default_factory=list)
     director_prompts: list[str] = field(default_factory=list)
+    director_started: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 _fake = _Fake()
@@ -153,6 +154,7 @@ async def approve_fake(mission_run_id: str) -> int:
 @activity.defn(name="start_director_turn")
 async def director_fake(inp: DirectorTurnInput) -> str:
     _fake.director_prompts.append(inp.prompt)
+    _fake.director_started.set()
     return "director-turn"
 
 
@@ -366,6 +368,22 @@ async def test_refine_without_new_tasks_escalates(env: WorkflowEnvironment):
 
     async with _started(env) as handle:
         assert await handle.result() == "failed"
+
+    _ends(("failed", "supervisor_escalated"))
+    assert _fake.finalised[0].detail == "refine produced no tasks"
+
+
+async def test_refine_turn_signalled_without_new_tasks_fails(env: WorkflowEnvironment):
+    # A refine turn that ends without calling refine_plan (or errors) still
+    # signals refinement_complete; the signal must not count as a refine.
+    _fake.graphs = [_graph(0, 1), _graph(0, 0)]
+    _fake.actions = ["advance_refine"]
+
+    with env.auto_time_skipping_disabled():
+        async with _started(env) as handle:
+            await asyncio.wait_for(_fake.director_started.wait(), timeout=10)
+            await handle.signal(MissionRunWorkflow.refinement_complete)
+            assert await asyncio.wait_for(handle.result(), timeout=4) == "failed"
 
     _ends(("failed", "supervisor_escalated"))
     assert _fake.finalised[0].detail == "refine produced no tasks"

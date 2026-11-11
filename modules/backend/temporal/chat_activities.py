@@ -48,7 +48,7 @@ async def persist_user_message(input: ChatTurnInput) -> str:
             content=input.message,
             sender_id=input.sender_id,
         )
-        await svc.add_message(input.session_id, msg)
+        await svc.add_message(input.session_id, msg, target_agent=input.agent_id)
         await db.commit()
 
     return input.session_id
@@ -114,6 +114,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
                 event_bus=event_bus,
                 channel=input.channel,
                 sender_id=input.sender_id,
+                target_agent=input.agent_id,
                 db_session=db,
                 skip_persistence=True,
             ):

@@ -18,6 +18,9 @@ class ChatTurnInput:
     mission_id: str
     message: str
     sender_id: str | None = None
+    # Agent that answers the turn. None routes by the session's agent_id
+    # (handle() target_agent). A run session belongs to the supervisor, so
+    # Director turns on it must set this.
     agent_id: str | None = None
     channel: str = "api"
     parent_workflow_id: str | None = None

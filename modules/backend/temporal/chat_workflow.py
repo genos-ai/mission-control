@@ -88,7 +88,9 @@ class ChatTurnWorkflow:
         # Step 3: Signal parent workflow if this chat turn was spawned
         # by MissionRunWorkflow's advance_refine path. The signal wakes
         # the parent immediately instead of requiring it to poll for new
-        # tasks on a timer.
+        # tasks on a timer. It reports that the turn ended, not that it
+        # refined: the parent reads the task graph and fails the run when
+        # the turn produced no tasks.
         if input.parent_workflow_id:
             try:
                 parent = workflow.get_external_workflow_handle(

@@ -130,7 +130,12 @@ class MissionRunWorkflow:
 
     @workflow.signal
     def refinement_complete(self) -> None:
-        """Signal from ChatTurnWorkflow when the Director finishes refining."""
+        """Signal from ChatTurnWorkflow when the Director's refine turn ends.
+
+        It means the turn ended, not that it refined: a turn that errored or
+        never called refine_plan signals too. _refine only wakes on it and
+        fetch_run_task_graph decides; no new tasks fails the run.
+        """
         self._refinement_done = True
 
     @workflow.query
