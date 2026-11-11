@@ -410,6 +410,10 @@ class CopilotModel(Model):
         # detect quota/auth/etc. failures that arrive as events rather
         # than as exceptions from send().
         self._session_error_text: str | None = None
+        # The shared client the active session was created on. A transport
+        # failure resets the shared client only while it is still this one,
+        # so a late failure on a dead client never stops its replacement.
+        self._session_client: Any = None
 
     @property
     def model_name(self) -> str:
@@ -479,13 +483,19 @@ class CopilotModel(Model):
             cls._last_health_check = time.monotonic()
 
     @classmethod
-    async def _reset_on_transient(cls, classified: BaseException) -> None:
-        """Drop the shared client after a transient provider error.
+    async def _reset_on_transient(cls, classified: BaseException, failed_client: Any) -> None:
+        """Drop the shared client after a transient transport failure on it.
 
-        The next call then starts a new client.
+        The next call then starts a new client. Transient errors on the
+        Copilot path are transport loss only (see `_classify_session_error`),
+        so every other session on that client is already dead; resetting
+        costs them nothing. The identity check stops N concurrent failures on
+        one dead client from stopping the replacement N-1 times.
         """
-        if isinstance(classified, TransientProviderError):
-            async with cls._get_lock():
+        if not isinstance(classified, TransientProviderError) or failed_client is None:
+            return
+        async with cls._get_lock():
+            if cls._client is failed_client:
                 await cls._reset_client()
 
     async def _ensure_client(self) -> None:
@@ -521,7 +531,17 @@ class CopilotModel(Model):
         classification home, no duplicate regexes. Only the Copilot
         SDK's own request-ID format is Copilot-specific and stays local.
         """
+        # The SDK's JSON-RPC errors are not exported from the package root.
+        from copilot._jsonrpc import ProcessExitedError
+
         msg = str(exc)
+        # Transport loss to the CLI subprocess: the process exited (pending
+        # requests fail with ProcessExitedError), the stdio pipe broke
+        # (ConnectionError covers BrokenPipe/ConnectionReset) or the read
+        # loop hit end of stream. JsonRpcError is deliberately excluded: it
+        # is an error response from a live CLI, not a dead transport.
+        if isinstance(exc, (ProcessExitedError, ConnectionError, EOFError)):
+            return TransientProviderError(msg, provider="copilot", model=self._model_id, raw=msg)
         classified = classify_provider_error(exc, provider="copilot", model=self._model_id)
         if isinstance(classified, QuotaExhaustedError):
             rid_match = _REQUEST_ID_PATTERN.search(msg)
@@ -693,7 +713,8 @@ class CopilotModel(Model):
                 },
             }
 
-        self._active_session = await CopilotModel._client.create_session(
+        self._session_client = CopilotModel._client
+        self._active_session = await self._session_client.create_session(
             **session_kwargs,
         )
 
@@ -710,7 +731,11 @@ class CopilotModel(Model):
                 await self._cleanup_session()
                 log_provider_error(logger, classified)
                 raise classified from exc
-            await CopilotModel._reset_on_transient(classified)
+            if isinstance(classified, TransientProviderError):
+                await self._cleanup_session()
+                await CopilotModel._reset_on_transient(classified, self._session_client)
+                log_provider_error(logger, classified)
+                raise classified from exc
             raise
         return await self._wait_for_response()
 
@@ -725,7 +750,10 @@ class CopilotModel(Model):
                 if isinstance(classified, CopilotQuotaExhaustedError):
                     log_provider_error(logger, classified)
                     raise classified from exc
-                await CopilotModel._reset_on_transient(classified)
+                if isinstance(classified, TransientProviderError):
+                    await CopilotModel._reset_on_transient(classified, self._session_client)
+                    log_provider_error(logger, classified)
+                    raise classified from exc
                 raise
             return self._extract_final_response()
         finally:
@@ -855,7 +883,8 @@ class CopilotModel(Model):
             if isinstance(classified, CopilotQuotaExhaustedError):
                 log_provider_error(logger, classified)
                 raise classified
-            await CopilotModel._reset_on_transient(classified)
+            # No client reset here: a SESSION_ERROR event was delivered, so
+            # the CLI transport is alive and the shared client is healthy.
             # Unknown SESSION_ERROR — surface as a transient provider
             # failure so the retry handler retries while the operator
             # still sees the underlying message in the structured log.

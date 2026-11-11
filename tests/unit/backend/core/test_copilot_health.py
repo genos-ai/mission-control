@@ -10,10 +10,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic_ai.exceptions import ModelHTTPError
+from copilot._jsonrpc import JsonRpcError, ProcessExitedError
+from pydantic_ai.messages import ModelRequest, UserPromptPart
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.tools import ToolDefinition
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.copilot_model import CopilotModel
+from modules.backend.core.exceptions import TransientProviderError
 
 
 class _FakeClient:
@@ -154,33 +158,112 @@ async def test_healthy_client_kept():
     assert CopilotModel._last_health_check > 0.0
 
 
+def _model_on(client: _FakeClient, session: MagicMock) -> CopilotModel:
+    model = CopilotModel(model_id="test-model")
+    model._active_session, model._session_client = session, client
+    return model
+
+
 @pytest.mark.asyncio
 async def test_transient_error_resets_client():
+    """The CLI process dying mid-request resets the shared client (send_and_wait path)."""
     client = _FakeClient()
     _install(client)
-    error = ModelHTTPError(status_code=503, model_name="test-model", body="upstream unavailable")
-    model = CopilotModel(model_id="test-model")
-    model._active_session = MagicMock(
-        send_and_wait=AsyncMock(side_effect=error), disconnect=AsyncMock()
+    error = ProcessExitedError("CLI process exited with code 1")
+    model = _model_on(
+        client, MagicMock(send_and_wait=AsyncMock(side_effect=error), disconnect=AsyncMock())
     )
 
-    with pytest.raises(ModelHTTPError) as raised:
+    with pytest.raises(TransientProviderError) as raised:
         await model._simple_request("hello")
 
-    assert raised.value is error
+    assert raised.value.__cause__ is error
     client.force_stop.assert_awaited_once()
     assert CopilotModel._client is None
     assert CopilotModel._started is False
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        ProcessExitedError("CLI process exited with code 1"),
+        BrokenPipeError("Broken pipe"),
+        EOFError("Unexpected end of stream while reading JSON-RPC message"),
+    ],
+)
+async def test_transient_error_on_send_resets_client(error):
+    """The tool path's send() hitting a dead transport resets the shared client."""
+    client = _FakeClient()
+    session = MagicMock(send=AsyncMock(side_effect=error), disconnect=AsyncMock())
+    client.create_session = AsyncMock(return_value=session)
+    _install(client)
+    model = CopilotModel(model_id="test-model")
+    tool = ToolDefinition(
+        name="lookup", parameters_json_schema={"type": "object", "properties": {}}
+    )
+
+    with pytest.raises(TransientProviderError) as raised:
+        await model._handle_new_turn(
+            [ModelRequest(parts=[UserPromptPart(content="hello")])],
+            ModelRequestParameters(function_tools=[tool]),
+        )
+
+    assert raised.value.__cause__ is error
+    client.force_stop.assert_awaited_once()
+    session.disconnect.assert_awaited_once()
+    assert CopilotModel._client is None
+    assert model._active_session is None
+
+
+@pytest.mark.asyncio
+async def test_transient_error_on_replaced_client_keeps_replacement():
+    """A late failure from a session on a dead client does not stop its replacement."""
+    dead, replacement = _FakeClient(), _FakeClient()
+    _install(replacement)
+    model = _model_on(
+        dead,
+        MagicMock(
+            send_and_wait=AsyncMock(side_effect=ProcessExitedError("exited")),
+            disconnect=AsyncMock(),
+        ),
+    )
+
+    with pytest.raises(TransientProviderError):
+        await model._simple_request("hello")
+
+    dead.force_stop.assert_not_awaited()
+    replacement.force_stop.assert_not_awaited()
+    assert CopilotModel._client is replacement
+
+
+@pytest.mark.asyncio
+async def test_jsonrpc_error_response_keeps_client():
+    """An error response from a live CLI is not transport loss."""
+    client = _FakeClient()
+    _install(client)
+    error = JsonRpcError(-32602, "Invalid params")
+    model = _model_on(
+        client, MagicMock(send_and_wait=AsyncMock(side_effect=error), disconnect=AsyncMock())
+    )
+
+    with pytest.raises(JsonRpcError):
+        await model._simple_request("hello")
+
+    client.force_stop.assert_not_awaited()
+    assert CopilotModel._client is client
+
+
+@pytest.mark.asyncio
 async def test_non_transient_error_keeps_client():
     client = _FakeClient()
     _install(client)
-    model = CopilotModel(model_id="test-model")
-    model._active_session = MagicMock(
-        send_and_wait=AsyncMock(side_effect=Exception("tool schema rejected")),
-        disconnect=AsyncMock(),
+    model = _model_on(
+        client,
+        MagicMock(
+            send_and_wait=AsyncMock(side_effect=Exception("tool schema rejected")),
+            disconnect=AsyncMock(),
+        ),
     )
 
     with pytest.raises(Exception, match="tool schema rejected"):
