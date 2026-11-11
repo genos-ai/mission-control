@@ -28,7 +28,7 @@ This phase delivers decisions 11, 12 and 15. Before the per-task activity exists
   - the `temporal.yaml` blocks `mission_run`, `reconciler` and `system_schedules` and their schema classes (88.0.2);
   - `reconcile_mission_runs` running over `mission_runs` (88.1.10a).
 - `temporal/run_objective_workflow.py` and `temporal/scheduled_workflow.py` are deleted (88.1.8). `temporal/workflow.py` still exists; 88.2.6 deletes it.
-- **Operational rule (until Phase 4 is complete).** Production keeps mission schedules disabled (`missions.recurrence.enabled: false`, added by 88.1.1; `MissionScheduleService.create_schedule` and the tick workflow refuse while it is false) and does not dispatch MANUAL or AI_ASSISTED missions, because budget enforcement and durable gates arrive in Phase 4 (Risk 6).
+- **Operational rule (until Phase 4 is complete).** Production keeps mission schedules disabled (`missions.recurrence.enabled: false`; the flag is added by 88.1.1 and set false on production in 88.2.10 step 1). The flag is read once per process, so a change takes effect only after a worker and API restart; the worker's startup and reconciler sync then deletes every mission schedule, which is the effective control (`MissionScheduleService.create_schedule` and the tick workflow also refuse while it is false) and does not dispatch MANUAL or AI_ASSISTED missions, because budget enforcement and durable gates arrive in Phase 4 (Risk 6).
 - If any item above is missing, stop. Do not start this phase.
 
 **Baseline:** file:line references were verified at `a28ca771` (backend and config identical to `9adaa69d` and `777cd5c5`; frontend lines re-verified at `a28ca771`). Phases 0 and 1 edit several of these files first, so line numbers in those files are positions at `a28ca771`: locate the code by the symbol named next to each reference. Paths are relative to `modules/backend/` unless they start with `config/`, `tests/`, `scripts/`, `docs/`, `.github/` or `modules/frontend/`.
@@ -1195,31 +1195,20 @@ async def ensure_healthy(cls) -> None:
 
 **Files:**
 - modify `docs/10-reference-architecture/29-opt-temporal-workflow-versioning.md` (add a "Drain procedure" section holding this runbook).
-- No code change.
+- modify `config/settings/missions.yaml` (comment only: sync deletes, not pauses, mission schedules when recurrence is disabled).
 
 **Current state:** Phase 1 `MissionRunWorkflow` executions carry the wave-activity graph and no Phase 2 state fields, so replaying them on Phase 2 code raises `NondeterminismError`. `ChatTurnWorkflow`, `PlanRefineWorkflow`, `DesignWorkflowWorkflow` and `RunWorkflowWorkflow` inputs gained a required `timeouts` field, so an execution started before the deploy cannot decode its input on Phase 2 code. `AgentMissionWorkflow` no longer exists on the worker.
 
-**Change.** The deploy runbook, run once for the Phase 2 release in this order:
-1. Set `missions.recurrence.enabled: false` (`config/settings/missions.yaml`) on the running deployment, then run `python admin.py schedules sync` (in-process service call, contracts 3.0.2). Every `mission-schedule-*` Temporal schedule is now deleted; the `mission_schedules` rows are unchanged. Step 5 recreates the schedules on the dev stack; production recreates them when the Phase 4 release sets `missions.recurrence.enabled: true`.
-2. Count open executions of the affected types:
-   ```
-   temporal workflow count --query "ExecutionStatus='Running' AND WorkflowType IN ('MissionRunWorkflow','ChatTurnWorkflow','PlanRefineWorkflow','DesignWorkflowWorkflow','RunWorkflowWorkflow','AgentMissionWorkflow')"
-   ```
-   Repeat every 5 minutes for up to 2 hours.
-3. Cancel whatever is still running:
-   ```
-   temporal workflow list --query "ExecutionStatus='Running' AND WorkflowType IN ('MissionRunWorkflow','ChatTurnWorkflow','PlanRefineWorkflow','DesignWorkflowWorkflow','RunWorkflowWorkflow','AgentMissionWorkflow')" -o json | jq -r '.[].execution.workflowId' | xargs -I{} temporal workflow cancel --workflow-id {}
-   ```
-   Wait until the count from step 2 is 0. Each cancelled `MissionRunWorkflow` finalises itself as `CANCELLED` through its cancellation handler; a run that does not is failed by the reconciler (88.1.10a) after `orphan_grace_seconds`.
-4. Stop the worker, deploy, and start the worker. Phase 2 has no migration; `python admin.py migrate current` still shows `plan88_003`.
-5. On the dev stack, set `missions.recurrence.enabled: true` and run `python admin.py schedules sync`. Production keeps `missions.recurrence.enabled: false` until Phase 4 is complete (Risk 6).
-6. Check that `temporal schedule list` shows every expected `mission-schedule-*` unpaused on the dev stack.
+**Change.** The deploy runbook is doc 29 section 5 (preconditions 5.1, steps 5.2, done-when 5.3). That section is authoritative; this step does not restate it. The points the dev-stack drill established, which any edit to the runbook must keep:
+1. **Preconditions.** Old code stays on disk until step 4; set `TEMPORAL_ADDRESS` before step 1.
+2. **Flag changes need a restart.** `get_app_config` is cached per process and the reconciler syncs mission schedules every 5 minutes, so steps 1 and 5 restart the worker and the API. The worker's startup sync deletes or recreates the schedules; `python admin.py schedules sync` only confirms.
+3. **Stuck runs need a terminate.** `RunReconciliationService` skips a run whose workflow Temporal reports RUNNING, so a run that cannot process the cancel is terminated in step 3; the reconciler then fails its row as orphaned after `orphan_grace_seconds`.
+4. **Deploy time is exported.** Step 4 runs `export DEPLOY_TIME=...` before stopping the worker and the API.
+5. **Production carries `enabled: false` in its release.** There is no per-environment config overlay, so the production release's `config/settings/missions.yaml` sets the flag false, and `temporal schedule list | grep -c mission-schedule` prints `0` after the step 4 start.
 
 **Tests:** run the runbook once on the dev stack with one active hourly mission. Record in the commit message the workflow count before and after, and the run statuses.
 
-**Done when:**
-- After step 6, the next scheduled tick on the dev stack produces a `MissionRun` that reaches `SUCCEEDED`.
-- `temporal workflow count --query "WorkflowType='MissionRunWorkflow' AND ExecutionStatus='Running' AND StartTime < '$DEPLOY_TIME'"`, with `DEPLOY_TIME` set to the RFC 3339 time of step 4, returns 0.
+**Done when:** doc 29 section 5.3 holds on the dev stack: the next scheduled tick produces a `MissionRun` that reaches `SUCCEEDED`, and the `StartTime < '$DEPLOY_TIME'` count, with `DEPLOY_TIME` exported in step 4, returns 0.
 
 ### Verification
 
@@ -1240,7 +1229,8 @@ grep -rn "_run_local\|falling back to local\|Avoid this error\|Task failed durin
 grep -n "find_project_root" modules/backend/agents/mission_control/helpers/cli_executor.py   # expect no output
 grep -n "repo_root.*find_project_root" modules/backend/agents/mission_control/runtime.py   # expect no output
 python scripts/record_workflow_history.py tree
-MISSION_SLUG=replay-fixture python scripts/trace_execution.py --mission "$MISSION_SLUG" --last --filter errors,transitions
+export MISSION_SLUG=p88-e2e   # the dev-stack drill mission
+python scripts/trace_execution.py --mission "$MISSION_SLUG" --last --filter errors,transitions
 ```
 
 Then run a crash drill on the dev stack:
@@ -1275,7 +1265,7 @@ Then run a failure drill on the dev stack:
 5. **Stall detection reads the wrong unit.** Stall detection (`gate_post_run.py:141-153`) reads `recent_run_outcomes` per ExecutionRecord. With one record per run, it measures runs, not waves. **Mitigation (88.2.6 review follow-up):** `MissionRunWorkflowState.zero_completion_waves` counts consecutive waves of the run with no completed task; `evaluate_post_run` passes it as `plan_task_summary["zero_completion_waves"]` and breaker #3 escalates at the stall threshold. The per-record check remains and now reads consecutive runs.
 6. **Phases 2 and 3 run without budget enforcement or in-run gates.** contracts 3.0.1 places budget enforcement in 88.4.6 and durable gates in 88.4.8. From 88.2.6, the Temporal path has no plan-ceiling check (it lived in `dispatch_approved`), and the `post_task`, `verification_failed` and `post_layer` gates return `continue` for every gate mode. MANUAL and AI_ASSISTED missions keep human control only through task approval (PROPOSED→APPROVED). **Mitigation:**
    - post-run breaker #1 still escalates a run when the plan's summed task cost reaches `budget_usd_ceiling` (88.2.6 item 8);
-   - **Operational rule** (also a Phase 2 entry criterion): until Phase 4 is complete, production keeps mission schedules disabled (`missions.recurrence.enabled: false`, set in 88.2.10 step 1; `MissionScheduleService.create_schedule` and the tick workflow refuse while it is false, 88.1.1) and does not dispatch MANUAL or AI_ASSISTED missions.
+   - **Operational rule** (also a Phase 2 entry criterion): until Phase 4 is complete, production keeps mission schedules disabled (`missions.recurrence.enabled: false`, set in 88.2.10 step 1 and carried in the production release, 88.2.10 step 4). The flag is read once per process: a change takes effect only after a worker and API restart, when the worker's sync deletes every mission schedule. That deletion is the effective control; `MissionScheduleService.create_schedule` and the tick workflow also refuse while it is false (88.1.1) and does not dispatch MANUAL or AI_ASSISTED missions.
 7. **Fail-closed boundary breaks work that relied on the silent fallback.** From 88.2.3a, the following fail with `ENV_UNAVAILABLE` instead of running locally:
    - the two write-capable security agents in a local-mode mission (the default), through the write guard;
    - container missions without Docker or without `repo_root`;

@@ -180,27 +180,15 @@ source_modules = ["modules.backend.services"]
 forbidden_modules = ["modules.backend.agents"]
 ignore_imports = [
     # Dispatch cycle — services call into agent dispatch (needs service layer split)
-    "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.mission_control",
-    "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.gate",
-    "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.gate_post_run",
-    "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.adapters.supervisor_introspection",
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.helpers.agent_executor",
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.plan_validator",
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.roster",
     "modules.backend.services.mission_plan_orchestrator -> modules.backend.agents.mission_control.helpers.prompt_builder",
-    "modules.backend.services.execution -> modules.backend.agents.mission_control.dispatch_adapter",
     "modules.backend.services.session_memory -> modules.backend.agents.system.summarization.agent",
     # Agent wrapper services — coupled by design (they ARE agent orchestrators)
-    "modules.backend.services.workflow_architect -> modules.backend.agents.mission.workflow.agent",
-    "modules.backend.services.workflow_architect -> modules.backend.agents.mission.workflow.deps",
-    "modules.backend.services.workflow_architect -> modules.backend.agents.deps.base",
-    "modules.backend.services.workflow_architect -> modules.backend.agents.mission_control.helpers",
     "modules.backend.services.workshop -> modules.backend.agents.mission_control.helpers",
     "modules.backend.services.workshop -> modules.backend.agents.mission_control.cost",
     # Transitive through temporal (lazy imports inside activities)
-    "modules.backend.services.mission_learning -> modules.backend.temporal.knowledge_activities",
-    "modules.backend.services.mission_plan_orchestrator -> modules.backend.temporal.mission_run_workflow",
-    "modules.backend.services.execution_dispatch -> modules.backend.temporal.workflow",
 ]
 
 # Rule 2: core must not import from services (auth DI is the exception)

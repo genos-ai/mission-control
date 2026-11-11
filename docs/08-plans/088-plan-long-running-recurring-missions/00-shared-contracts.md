@@ -1174,7 +1174,7 @@ system_schedules:            # sole source of system crons; registered by the wo
 
 ```yaml
 recurrence:                                 # 88.1.1
-  enabled: true                             # false: schedule create rejected; sync pauses every mission schedule
+  enabled: true                             # false: schedule create rejected; sync deletes every mission schedule
   default_catch_up_window_seconds: 21600    # 6h (decision 8)
   max_catch_up_window_seconds: 604800
   min_interval_seconds: 300                 # cron firing more often than this is rejected (validate_spec over 8 days)

@@ -119,7 +119,7 @@ Run once for the Plan 88 Phase 2 release, in this order. Phase 1 `MissionRunWork
 
 ### 5.1 Preconditions
 
-**Old code stays on disk until step 4.** The Temporal workflow sandbox re-imports workflow modules from the code directory each time it creates a workflow instance. A worker whose code directory has already moved to the new release is not running the old release: it fails every new or evicted workflow task with an import error, and it cannot finalise a cancelled run. Steps 1 to 3 must run while the old release is both loaded and on disk. On the dev stack, that means before checking out the new commit; with immutable images it holds by construction.
+**Old code stays on disk until step 4.** The Temporal workflow sandbox re-reads each workflow module from disk per workflow instance, while passthrough modules (models, activities) keep the versions loaded at worker start. Once the code directory changes, the two disagree and the import fails: the worker fails every new or evicted workflow task, and it cannot finalise a cancelled run. Steps 1 to 3 must run while the old release is both loaded and on disk. On the dev stack, that means before checking out the new commit; with immutable images it holds by construction.
 
 **A flag change needs a worker restart.** The worker syncs every mission schedule at startup and every 5 minutes through the reconciler (`sync_mission_schedules`), and both read `missions.recurrence.enabled` from the process's cached `get_app_config()`. Editing the YAML and running `admin.py schedules sync` alone is undone within 5 minutes: a worker that cached `true` recreates the schedules, and one that cached `false` deletes them again.
 
@@ -127,7 +127,7 @@ Run once for the Plan 88 Phase 2 release, in this order. Phase 1 `MissionRunWork
 
 ### 5.2 Steps
 
-1. Set `missions.recurrence.enabled: false` (`config/settings/missions.yaml`) on the running deployment, restart the worker and the API on the old release, then run `python admin.py schedules sync`. Every `mission-schedule-*` Temporal schedule is deleted; the `mission_schedules` rows are unchanged. Confirm with `temporal schedule list | grep -c mission-schedule`, which must print `0`, and again 5 minutes later.
+1. Set `missions.recurrence.enabled: false` (`config/settings/missions.yaml`) on the running deployment, then restart the worker and the API on the old release (dev stack: `python services.py restart worker api`). The worker's startup sync deletes every `mission-schedule-*` Temporal schedule; the `mission_schedules` rows are unchanged. `python admin.py schedules sync` afterwards is a confirmation, not the step that does the work. Confirm with `temporal schedule list | grep -c mission-schedule`, which must print `0`, and again 5 minutes later.
 2. Count open executions of the affected types, every 5 minutes for up to 2 hours:
    ```bash
    AFFECTED="ExecutionStatus='Running' AND WorkflowType IN ('MissionRunWorkflow','ChatTurnWorkflow','PlanRefineWorkflow','DesignWorkflowWorkflow','RunWorkflowWorkflow','AgentMissionWorkflow')"
@@ -138,13 +138,15 @@ Run once for the Plan 88 Phase 2 release, in this order. Phase 1 `MissionRunWork
    temporal workflow list --query "$AFFECTED" -o json | jq -r '.[].execution.workflowId' | xargs -I{} temporal workflow cancel --workflow-id {}
    ```
    Each cancelled `MissionRunWorkflow` finalises itself as `CANCELLED` through its cancellation handler on the old worker. An execution whose workflow task is already failing (section 5.1) never processes the cancel; terminate it with `temporal workflow terminate --workflow-id <id> --reason "Plan 88 Phase 2 drain"`. The reconciler (Plan 88 step 88.1.10a) then fails its `mission_runs` row as orphaned after `temporal.reconciler.orphan_grace_seconds`. Until then the row is active, so every scheduled tick of that mission is recorded as skipped for overlap.
-4. Record `DEPLOY_TIME` (RFC 3339, UTC). Stop the worker and the API, deploy, and start both. Phase 2 has no migration; `python admin.py migrate current` still shows `plan88_003`.
-5. On the dev stack, set `missions.recurrence.enabled: true`, restart the worker and the API, and run `python admin.py schedules sync`. Production keeps `missions.recurrence.enabled: false` until Plan 88 Phase 4 is complete (Plan 88 Phase 2 Risk 6).
+4. Record the deploy time with `export DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)`. Stop the worker and the API, deploy, and start both. Phase 2 has no migration; `python admin.py migrate current` still shows `plan88_003`.
+   - **Production.** Settings come only from `config/settings/*.yaml`; there is no per-environment overlay, and the repository default is `missions.recurrence.enabled: true`. The release deployed to production must therefore carry `enabled: false` in its `config/settings/missions.yaml`, or the worker's startup sync recreates every schedule unpaused. After the start, `temporal schedule list | grep -c mission-schedule` on production must print `0`.
+   - **Dev stack.** The step 1 edit is a local change to a tracked file, so `git checkout` of a release that touches the same line aborts. Discard it first (`git checkout -- config/settings/missions.yaml` or `git stash`), check out the release, then set the flag explicitly before starting.
+5. On the dev stack, set `missions.recurrence.enabled: true`, run `python services.py restart worker api` (startup sync recreates the schedules), and confirm with `python admin.py schedules sync`. Production keeps `missions.recurrence.enabled: false`, set in its release as in step 4, until Plan 88 Phase 4 is complete (Plan 88 Phase 2 Risk 6).
 6. Check that `temporal schedule list` shows every expected `mission-schedule-*` with `Paused` false on the dev stack.
 
 ### 5.3 Done When
 
-- The next scheduled tick on the dev stack produces a `MissionRun` that reaches `SUCCEEDED`.
+- The next scheduled tick on the dev stack produces a `MissionRun` that reaches `SUCCEEDED`: check with `python mc.py runs list --limit 1` on that mission.
 - This count returns 0:
   ```bash
   temporal workflow count --query "WorkflowType='MissionRunWorkflow' AND ExecutionStatus='Running' AND StartTime < '$DEPLOY_TIME'"
@@ -162,7 +164,7 @@ The residual effect of skipping the drain is therefore a stuck execution, not a 
 
 ### 5.5 Dev-Stack Drill (2026-11-11)
 
-Run on the dev stack with the `p88-e2e` mission, one hourly schedule (`drain-hourly`, `0 * * * *`) and one manual run started on the Phase 1 API and worker after the Phase 2 code was already checked out.
+Run on the dev stack with the `p88-e2e` mission, one hourly schedule (`drain-hourly`, `0 * * * *`) and one manual run started on the Phase 1 API and worker after the Phase 2 code was already checked out. Run #71 was started after checkout on purpose, in breach of section 5.1, to show the failure mode. `DEPLOY_TIME` was `2026-11-11T10:32:45Z`.
 
 | Check | Result |
 |-------|--------|
@@ -175,3 +177,7 @@ Run on the dev stack with the `p88-e2e` mission, one hourly schedule (`drain-hou
 | Schedule after step 5, without a worker restart | deleted again by the Phase 2 worker, which had cached `false` at its 10:32 start; the 11:00 tick never fired |
 | `mission-schedule-*` after step 6, with the worker restarted | 1, not paused |
 | 12:00 tick | run #72 `SKIPPED` for overlap: run #71 is still `PENDING` behind a workflow that is running but cannot decode its input; the reconciler leaves it because Temporal reports it running |
+| Run #71 terminated (step 3 fallback) | `mission-run-76577daa` terminated at 12:19:25Z |
+| Run #71 after the terminate | `FAILED`, orphaned, by the reconciler |
+| 13:00 tick | run #73 `SUCCEEDED` (`mission-run-1f2c0409` completed 13:00:32Z, $0.0383) |
+| Section 5.3 count with `DEPLOY_TIME=2026-11-11T10:32:45Z` | 1 before the terminate, 0 after |
