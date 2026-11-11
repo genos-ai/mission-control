@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from modules.backend.agents.mission_control.gate_models import GateAction, GateDecision
 from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 from modules.backend.models.execution_record import ExecutionRecord
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_run import MissionRun, MissionRunTrigger
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.task import TaskRepository
@@ -96,11 +97,12 @@ async def test_post_run_context_carries_failure_digests(
     await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "again")
 
     result = await evaluate_post_run(
-        PostRunEvalInput(mission.id, run.id, begun.execution_record_id, 2, begun.session_id)
+        PostRunEvalInput(mission.id, run.id, begun.execution_record_id, 2, begun.session_id, 1)
     )
 
     assert result.action == "wait"
     [context] = contexts
+    assert context.plan_task_summary["zero_completion_waves"] == 1
     failures = context.plan_task_summary["failures"]
     assert [(f["summary"], f["occurrences"]) for f in failures] == [("first", 2), ("other", 1)]
     assert failures[0]["origin"] == "agent"
@@ -114,3 +116,45 @@ async def test_post_run_context_carries_failure_digests(
         record = await session.get(ExecutionRecord, begun.execution_record_id)
     assert stored_run.iteration_count == 3
     assert record.failed_task_count == 3
+
+
+async def test_stall_escalates_within_run_after_early_success(
+    db_session_factory: Factory, committed_owner, gateway, activity_sessions
+) -> None:
+    """A completed task keeps the run's record above zero; failing waves still stall."""
+    user, mission, plan = await committed_owner()
+    async with db_session_factory() as session:
+        (await session.get(MissionPlan, plan.id)).gate_mode = GateMode.AUTONOMOUS
+        await session.commit()
+    async with db_session_factory() as session:
+        run = await MissionRunService(session, RecordingBus()).start_run(
+            mission.id,
+            trigger=MissionRunTrigger.MANUAL,
+            objective=None,
+            user_id=user.id,
+            session_id=None,
+        )
+    async with db_session_factory() as session:
+        begun = await MissionRunService(session, RecordingBus()).begin(run.id)
+    async with db_session_factory() as session:
+        await TaskRepository(session).create_task(
+            plan_id=plan.id,
+            mission_id=mission.id,
+            agent=AGENT,
+            description="early success",
+            status=TaskStatus.COMPLETED,
+            mission_run_id=run.id,
+        )
+        await session.commit()
+    for fingerprint in ("f1", "f2", "f3"):
+        await _failed_task(db_session_factory, plan.id, mission.id, run.id, fingerprint, "boom")
+
+    result = await evaluate_post_run(
+        PostRunEvalInput(mission.id, run.id, begun.execution_record_id, 3, begun.session_id, 3)
+    )
+
+    assert result.action == "escalate"
+    assert "Stall detected" in result.reason
+    async with db_session_factory() as session:
+        record = await session.get(ExecutionRecord, begun.execution_record_id)
+    assert record.completed_task_count == 1

@@ -146,6 +146,7 @@ class MissionRunWorkflowState:
     pause_requested: bool
     paused: bool
     decision: GateDecisionUpdate | None
+    zero_completion_waves: int = 0  # consecutive waves with no completed task (stall rule)
 
 
 @dataclass
@@ -237,7 +238,9 @@ class FailureItem(Protocol):
     def failure_reason(self) -> str | None: ...
 
 
-_UNKNOWN = "unknown"  # FailureOrigin.UNKNOWN and FailureClass.UNKNOWN values
+# FailureOrigin.UNKNOWN and FailureClass.UNKNOWN values; a literal keeps this module free of
+# schema imports for the workflow sandbox, and test_failure_digests pins it to the enums.
+_UNKNOWN = "unknown"
 
 
 def digest_failures(items: Iterable[FailureItem], cap: int) -> tuple[list[TaskFailureDigest], int]:
@@ -246,14 +249,17 @@ def digest_failures(items: Iterable[FailureItem], cap: int) -> tuple[list[TaskFa
     The only grouping rule for failure digests (contracts 3.3.4, 3.8.6). Each
     group keeps its first item's task_id and summary and counts its items.
     Returns the kept digests and the number of groups dropped. Pure, so the
-    workflow sandbox may call it. A row without a classification (written
-    before 88.2.3b) groups under an empty fingerprint as unknown.
+    workflow sandbox may call it. Rows without a classification (written
+    before 88.2.3b) group by failure_reason, with an empty fingerprint, as unknown.
     """
-    order: list[str] = []
-    first: dict[str, FailureItem] = {}
-    counts: dict[str, int] = {}
+    order: list[tuple[str, str]] = []
+    first: dict[tuple[str, str], FailureItem] = {}
+    counts: dict[tuple[str, str], int] = {}
     for item in items:
-        key = item.failure_fingerprint or ""
+        if item.failure_fingerprint:
+            key = (item.failure_fingerprint, "")
+        else:
+            key = ("", item.failure_reason or "")
         if key not in first:
             order.append(key)
             first[key] = item
@@ -264,7 +270,7 @@ def digest_failures(items: Iterable[FailureItem], cap: int) -> tuple[list[TaskFa
             task_id=first[key].task_id,
             origin=first[key].failure_origin or _UNKNOWN,
             failure_class=first[key].failure_class or _UNKNOWN,
-            fingerprint=key,
+            fingerprint=key[0],
             summary=first[key].failure_reason or "",
             occurrences=counts[key],
         )

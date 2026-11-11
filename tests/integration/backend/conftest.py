@@ -8,7 +8,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from modules.backend.core import security
-from modules.backend.models.execution_record import ExecutionRecord, TaskExecution
+from modules.backend.models.execution_record import (
+    ExecutionDecision,
+    ExecutionRecord,
+    TaskExecution,
+)
 from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
@@ -67,9 +71,8 @@ async def committed_owner(
             # Rows without a CASCADE FK to missions would outlive them; remove them first.
             # Runs and schedules hold RESTRICT FKs to workflow definitions.
             records = select(ExecutionRecord.id).where(ExecutionRecord.mission_id.in_(missions))
-            await session.execute(
-                delete(TaskExecution).where(TaskExecution.execution_record_id.in_(records))
-            )
+            for child in (TaskExecution, ExecutionDecision):
+                await session.execute(delete(child).where(child.execution_record_id.in_(records)))
             for model in (
                 ExecutionRecord,
                 LlmCall,

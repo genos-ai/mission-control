@@ -39,6 +39,7 @@ class PostRunEvalInput:
     execution_record_id: str
     supervisor_iteration_count: int
     session_id: str
+    zero_completion_waves: int = 0  # consecutive waves of this run with no completed task
 
 
 @dataclass
@@ -127,7 +128,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             run = await runs.get_run(input.mission_id, input.mission_run_id)
             gate_mode = GateMode(run.gate_mode)
             mission = await MissionService(db).get_mission(input.mission_id)
-            # The stall rule reads the record's counts; refresh them from the run's tasks.
+            # The stall rule's across-runs check reads the record's counts; refresh them.
             await ExecutionPersistenceService(db).record_run_task_counts(
                 input.execution_record_id, input.mission_run_id
             )
@@ -153,6 +154,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
                 "failed": sum(1 for s in task_states if s.status == TaskStatus.FAILED),
                 "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
                 "execution_record_id": input.execution_record_id,
+                "zero_completion_waves": input.zero_completion_waves,
                 "failures": [
                     {
                         "origin": d.origin,

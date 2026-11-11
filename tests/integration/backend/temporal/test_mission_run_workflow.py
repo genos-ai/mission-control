@@ -376,6 +376,20 @@ async def test_no_iteration_cap(env: WorkflowEnvironment):
     assert stubs.calls("evaluate_post_run")[-1].supervisor_iteration_count == 40
 
 
+async def test_zero_completion_waves_counted_per_wave(env: WorkflowEnvironment):
+    """One early success, then failing waves: the count the stall rule reads climbs."""
+    stubs.SCRIPT.graphs = [graph(["a"])]
+    stubs.SCRIPT.actions = ["advance_approved"] * 3 + ["escalate"]
+    stubs.SCRIPT.task_results = {"a": [completed("a")] + [failed("a")] * 3}
+
+    async with _started(env) as handle:
+        assert await handle.result() == "failed"
+
+    _ends("failed", "supervisor_escalated")
+    waves = [inp.zero_completion_waves for inp in stubs.calls("evaluate_post_run")]
+    assert waves == [0, 1, 2, 3]
+
+
 async def test_get_run_state_query(env: WorkflowEnvironment):
     stubs.SCRIPT.graphs = [graph(["a"])]
     stubs.SCRIPT.actions = ["wait", "propose_complete"]

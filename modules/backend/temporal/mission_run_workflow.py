@@ -245,6 +245,10 @@ class MissionRunWorkflow:
         results = list(self._wave_results.values())
         failed_results = [r for r in results if r.status == "failed"]
         self._wave_status = "failed" if failed_results else "completed"
+        if any(r.status == "completed" for r in results):
+            self._state.zero_completion_waves = 0
+        else:
+            self._state.zero_completion_waves += 1
         self._wave_cost_usd = sum(r.cost_usd for r in results)
         self._wave_failure_reason = failed_results[0].failure_reason if failed_results else None
         self._wave_failures, self._wave_failures_truncated = digest_failures(
@@ -347,6 +351,7 @@ class MissionRunWorkflow:
                     s.execution_record_id,
                     s.iteration - 1,
                     s.session_id,
+                    s.zero_completion_waves,
                 ),
                 c.evaluate_post_run,
             )

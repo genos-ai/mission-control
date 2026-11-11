@@ -36,6 +36,7 @@ def _context(
     approved: int = 0,
     proposed: int = 0,
     total_completed: int = 0,
+    zero_completion_waves: int = 0,
     execution_record_id: str | None = None,
     mission_brief: str | None = None,
 ) -> GateContext:
@@ -44,6 +45,7 @@ def _context(
         "approved": approved,
         "proposed": proposed,
         "total_completed": total_completed,
+        "zero_completion_waves": zero_completion_waves,
     }
     if execution_record_id:
         summary["execution_record_id"] = execution_record_id
@@ -136,6 +138,38 @@ class TestBreakerStall:
 
         assert decision.action == GateAction.ESCALATE
         assert decision.rule == 3
+
+    @pytest.mark.asyncio
+    async def test_stall_within_run_after_early_success(self, db_session: AsyncSession):
+        """The run's record shows a completion, yet three waves in a row completed nothing."""
+        reviewer = AutonomousPostRunReviewer(
+            db_session, gate_mode=GateMode.AUTONOMOUS, stall_threshold=3
+        )
+        ctx = _context(
+            recent_run_outcomes=[{"completed_task_count": 1}],
+            zero_completion_waves=3,
+            proposed=1,
+        )
+
+        decision = await reviewer.review(ctx)
+
+        assert decision.action == GateAction.ESCALATE
+        assert decision.rule == 3
+
+    @pytest.mark.asyncio
+    async def test_no_stall_below_wave_threshold(self, db_session: AsyncSession):
+        reviewer = AutonomousPostRunReviewer(
+            db_session, gate_mode=GateMode.AUTONOMOUS, stall_threshold=3
+        )
+        ctx = _context(
+            recent_run_outcomes=[{"completed_task_count": 1}],
+            zero_completion_waves=2,
+            proposed=1,
+        )
+
+        decision = await reviewer.review(ctx)
+
+        assert decision.rule != 3
 
     @pytest.mark.asyncio
     async def test_no_stall_when_some_completions(self, db_session: AsyncSession):

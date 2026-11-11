@@ -45,7 +45,7 @@ async def get_plan_state(
         "status": plan.status,
         "gate_mode": plan.gate_mode,
         "budget_usd_ceiling": plan.budget_usd_ceiling,
-        "total_spent_usd": plan.total_spent_usd,
+        "total_spent_usd": await svc.total_task_cost_usd(plan.id),
         "supervisor_iteration_count": plan.supervisor_iteration_count,
         "summary": plan.summary,
         "estimated_cost_usd": plan.estimated_cost_usd,

@@ -46,7 +46,7 @@ async def refine_plan(
     """
     from modules.backend.core.config import get_app_config
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
+    from modules.backend.services.mission_plan import MissionPlanService
     from modules.backend.temporal.client import get_temporal_client
     from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
@@ -55,6 +55,7 @@ async def refine_plan(
     mission = await MissionService(db_session).get_mission(mission_id)
     plan_svc = MissionPlanService(db_session)
     plan = await plan_svc.get_or_create_plan(mission_id)
+    remaining_budget_usd = await plan_svc.remaining_budget_usd(plan)
     await db_session.commit()
 
     # Save what the workflow needs before the commit above expires the
@@ -70,7 +71,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=instructions,
             user_id=mission.owner_id,
-            mission_budget_usd=remaining_plan_budget_usd(plan),
+            mission_budget_usd=remaining_budget_usd,
             timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,

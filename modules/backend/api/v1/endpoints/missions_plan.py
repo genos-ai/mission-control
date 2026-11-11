@@ -13,7 +13,7 @@ Phase 1.0: CRUD + state transitions only. Refinement and dispatch arrive
 in Phase 1.5 and 1.6 respectively.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
@@ -39,7 +39,7 @@ from modules.backend.schemas.mission_plan import (
     TaskTransitionResponse,
 )
 from modules.backend.schemas.mission_run import MissionRunResponse, MissionRunTrigger
-from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
+from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run import MissionRunService
 
 # Plan 42 §3.5: every mutating endpoint gets an event bus so
@@ -49,6 +49,13 @@ EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+async def _plan_response(service: MissionPlanService, plan: Any) -> MissionPlanResponse:
+    """The plan, with spend read from its task costs (the column is stale since 88.2.6)."""
+    response = MissionPlanResponse.model_validate(plan)
+    response.total_spent_usd = await service.total_task_cost_usd(plan.id)
+    return response
 
 
 # ── Plan-level endpoints ─────────────────────────────────────────────────
@@ -76,7 +83,7 @@ async def get_plan(
     service = MissionPlanService(db)
     plan = await service.get_or_create_plan(mission_id)
 
-    response = MissionPlanResponse.model_validate(plan)
+    response = await _plan_response(service, plan)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -122,7 +129,7 @@ async def update_plan(
 
     # Refetch to include updated tasks relationship
     plan = await service.get_or_create_plan(mission_id)
-    response = MissionPlanResponse.model_validate(plan)
+    response = await _plan_response(service, plan)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -168,6 +175,7 @@ async def refine_plan(
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
+    remaining_budget_usd = await service.remaining_budget_usd(plan)
 
     client = await get_temporal_client()
     config = get_app_config().temporal
@@ -180,7 +188,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=data.instructions,
             user_id=current_user.id,
-            mission_budget_usd=remaining_plan_budget_usd(plan),
+            mission_budget_usd=remaining_budget_usd,
             timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,
@@ -268,7 +276,7 @@ async def add_plan_task(
     )
     return ApiResponse(
         success=True,
-        data=MissionPlanResponse.model_validate(updated).model_dump(),
+        data=(await _plan_response(service, updated)).model_dump(),
         metadata={"request_id": request_id},
     )
 

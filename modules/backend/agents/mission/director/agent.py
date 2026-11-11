@@ -155,9 +155,8 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             if counts:
                 parts.append("Status: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
             if plan.budget_usd_ceiling:
-                parts.append(
-                    f"Budget: ${plan.total_spent_usd:.2f} / ${plan.budget_usd_ceiling:.2f}"
-                )
+                spent = await plan_svc.total_task_cost_usd(plan.id)
+                parts.append(f"Budget: ${spent:.2f} / ${plan.budget_usd_ceiling:.2f}")
 
             # Active runs
             from modules.backend.services.execution_persistence import (

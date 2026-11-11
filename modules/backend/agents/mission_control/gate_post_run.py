@@ -15,7 +15,7 @@ that branch. Phase C stubs it as ``ESCALATE`` (safe default).
 
 Three circuit breakers (§4.6) fire before any rule evaluation:
 1. Budget exhausted
-3. Stall (N consecutive zero-completion waves)
+3. Stall (N consecutive zero-completion waves in this run, or N runs in a row)
 4. Budget headroom (proactive — estimated next-wave cost > remaining)
 Breaker #2, the supervisor iteration cap, was removed by Plan 88 step
 88.2.6; the numbers are kept because audit rows record them.
@@ -136,7 +136,17 @@ class AutonomousPostRunReviewer:
                 rule=1,
             )
 
-        # Breaker #3: Stall detection
+        # Breaker #3: Stall detection. Within a run the workflow counts consecutive
+        # zero-completion waves; recent_run_outcomes holds one record per run.
+        zero_waves = context.plan_task_summary.get("zero_completion_waves", 0)
+        if zero_waves >= self._stall_threshold:
+            return self._decide(
+                GateAction.ESCALATE,
+                f"Stall detected: {zero_waves} consecutive waves of this run "
+                "with zero completed tasks.",
+                execution_record_id=execution_record_id,
+                rule=3,
+            )
         recent = context.recent_run_outcomes
         if len(recent) >= self._stall_threshold:
             last_n = recent[: self._stall_threshold]
@@ -144,7 +154,7 @@ class AutonomousPostRunReviewer:
                 return self._decide(
                     GateAction.ESCALATE,
                     f"Stall detected: {self._stall_threshold} consecutive "
-                    "waves with zero completed tasks.",
+                    "runs with zero completed tasks.",
                     execution_record_id=execution_record_id,
                     rule=3,
                 )
