@@ -27,8 +27,13 @@ DIRECTOR = "mission.director.agent"
 SUPERVISOR = "mission.supervisor.agent"
 
 
-async def _director_turn_input() -> ChatTurnInput:
-    """The ChatTurnInput start_director_turn sends for a run's refine turn."""
+RUN_ID = str(uuid.uuid4())
+
+
+async def _director_turn_input(
+    signal_workflow_id: str | None = "mission-run-parent",
+) -> ChatTurnInput:
+    """The ChatTurnInput start_director_turn sends; a refine turn when it signals the run."""
     client = MagicMock(start_workflow=AsyncMock())
     with patch(
         "modules.backend.temporal.client.get_temporal_client", AsyncMock(return_value=client)
@@ -37,13 +42,32 @@ async def _director_turn_input() -> ChatTurnInput:
             start_director_turn,
             DirectorTurnInput(
                 str(uuid.uuid4()),
-                str(uuid.uuid4()),
+                RUN_ID,
                 str(uuid.uuid4()),
                 "Please call refine_plan",
-                "mission-run-parent",
+                signal_workflow_id,
             ),
         )
     return client.start_workflow.await_args.args[1]
+
+
+async def _run_turn(inp: ChatTurnInput, director) -> tuple:
+    """execute_chat_turn with handle() replaced by ``director(kwargs)``."""
+    handle_kwargs: dict = {}
+
+    async def fake_handle(session_id: str, message: str, **kwargs):
+        handle_kwargs.update(kwargs)
+        director(kwargs)
+        yield SimpleNamespace(agent_id=DIRECTOR, full_content="done")
+
+    with (
+        patch("modules.backend.agents.mission_control.mission_control.handle", fake_handle),
+        patch("redis.asyncio.Redis.from_url", return_value=MagicMock(aclose=AsyncMock())),
+        patch("modules.backend.core.config.get_redis_url", return_value="redis://test"),
+        patch("modules.backend.core.database.get_async_session", _db),
+    ):
+        result = await ActivityEnvironment().run(execute_chat_turn, inp)
+    return result, handle_kwargs
 
 
 @asynccontextmanager
@@ -91,3 +115,29 @@ async def test_director_followup_user_message_targets_director():
 
     assert add_message.await_args.kwargs["target_agent"] == DIRECTOR
     assert add_message.await_args.args[1].sender_id == SUPERVISOR
+
+
+async def test_refine_turn_carries_objective_met_declaration_to_result():
+    # declare_objective_met writes into the turn's RunRefineTurn; the result
+    # carries it so ChatTurnWorkflow can put it in refinement_complete.
+    inp = await _director_turn_input()
+    assert inp.refine_mission_run_id == RUN_ID
+
+    def declare(kwargs: dict) -> None:
+        kwargs["run_refine"].objective_met_reason = "poem task completed"
+
+    result, handle_kwargs = await _run_turn(inp, declare)
+
+    assert handle_kwargs["run_refine"].mission_run_id == RUN_ID
+    assert result.objective_met_reason == "poem task completed"
+
+
+async def test_turn_that_does_not_signal_a_run_has_no_run_refine():
+    # COMPLETE/ESCALATE turns do not signal the run, so no declaration can bind.
+    inp = await _director_turn_input(signal_workflow_id=None)
+    assert inp.refine_mission_run_id is None
+
+    result, handle_kwargs = await _run_turn(inp, lambda kwargs: None)
+
+    assert handle_kwargs["run_refine"] is None
+    assert result.objective_met_reason is None

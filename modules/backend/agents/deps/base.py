@@ -78,6 +78,21 @@ class BaseAgentDeps:
 
 
 @dataclass
+class RunRefineTurn:
+    """A Director turn that answers a mission run's refine request (Plan 88 Phase 2).
+
+    Built by execute_chat_turn only for the turn MissionRunWorkflow starts on
+    advance_refine, so the run's id travels with the turn. The run waits for
+    that turn to end. declare_objective_met writes its reason here, and
+    execute_chat_turn returns it in ChatTurnResult, from where ChatTurnWorkflow
+    puts it in the run's refinement_complete signal.
+    """
+
+    mission_run_id: str
+    objective_met_reason: str | None = None
+
+
+@dataclass
 class QaAgentDeps(BaseAgentDeps):
     """QA compliance agent deps — adds progress callback for streaming."""
 

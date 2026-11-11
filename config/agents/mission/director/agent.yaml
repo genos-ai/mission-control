@@ -53,6 +53,7 @@ tools:
   - get_artifacts
   - query_knowledge
 
+  - declare_objective_met
 max_input_length: 64000
 max_budget_usd: 5.00
 

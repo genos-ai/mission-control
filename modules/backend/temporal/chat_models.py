@@ -24,6 +24,9 @@ class ChatTurnInput:
     agent_id: str | None = None
     channel: str = "api"
     parent_workflow_id: str | None = None
+    # The mission run whose advance_refine started this turn (set together
+    # with parent_workflow_id). Binds declare_objective_met to that run.
+    refine_mission_run_id: str | None = None
     timeouts: WorkflowTimeoutsSnapshot = field(kw_only=True)
 
 
@@ -40,3 +43,5 @@ class ChatTurnResult:
     model: str = ""
     error: str | None = None
     thinking: str | None = None
+    # Set when the Director called declare_objective_met in a run's refine turn.
+    objective_met_reason: str | None = None

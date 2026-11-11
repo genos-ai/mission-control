@@ -195,6 +195,8 @@ open on purpose.
     p88-faildrill-b3 run #1 the wave-2 task completed, the reviewer still
     chose `advance_refine`, the Director replied "objective met" and did
     not refine, and the run ended `FAILED` "refine produced no tasks".
+    Resolved: Director tool `declare_objective_met` (owner decision
+    2026-11-11, phase-2 88.2.6).
 - [ ] **Plan 88 Phase 2 refine fix review minors (90d242b2,
   2026-11-11).**
   - Timeouts are not tied: the Director turn (600s) now contains the

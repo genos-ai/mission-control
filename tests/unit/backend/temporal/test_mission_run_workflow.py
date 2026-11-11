@@ -416,6 +416,40 @@ async def test_refine_turn_outcome_is_the_end_detail_cause(env: WorkflowEnvironm
     )
 
 
+async def test_objective_met_declared_by_a_failed_turn_is_not_trusted(env: WorkflowEnvironment):
+    # A turn that errored after declare_objective_met fails the run with the error.
+    _fake.graphs = [_graph(0, 1), _graph(0, 0)]
+    _fake.actions = ["advance_refine"]
+
+    with env.auto_time_skipping_disabled():
+        async with _started(env) as handle:
+            await asyncio.wait_for(_fake.director_started.wait(), timeout=10)
+            await handle.signal(
+                MissionRunWorkflow.refinement_complete,
+                RefinementOutcome(
+                    error="Director turn failed: provider down",
+                    reply="",
+                    objective_met_reason="poem completed",
+                ),
+            )
+            assert await asyncio.wait_for(handle.result(), timeout=4) == "failed"
+
+    _ends(("failed", "supervisor_escalated"))
+    assert _fake.finalised[0].detail == (
+        "refine produced no tasks: Director turn failed: provider down"
+    )
+
+
+def test_refinement_outcome_without_declaration_field_decodes():
+    # A refinement_complete payload sent before objective_met_reason existed.
+    from temporalio.converter import DataConverter
+
+    converter = DataConverter.default
+    [payload] = converter.payload_converter.to_payloads([{"error": None, "reply": "hi"}])
+    [outcome] = converter.payload_converter.from_payloads([payload], [RefinementOutcome])
+    assert outcome == RefinementOutcome(error=None, reply="hi", objective_met_reason=None)
+
+
 async def test_cancel_finalises_cancelled(env: WorkflowEnvironment):
     _fake.graphs = [_graph(0, 1)]
     _fake.execute_block = True

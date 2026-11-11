@@ -75,6 +75,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     """
     from redis.asyncio import Redis as AsyncRedis
 
+    from modules.backend.agents.deps.base import RunRefineTurn
     from modules.backend.agents.mission_control.mission_control import handle
     from modules.backend.core.config import get_redis_url
     from modules.backend.core.database import get_async_session
@@ -101,6 +102,12 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     model = ""
     error: str | None = None
     thinking: str | None = None
+    # A run's refine turn: declare_objective_met records into this object.
+    run_refine = (
+        RunRefineTurn(mission_run_id=input.refine_mission_run_id)
+        if input.refine_mission_run_id
+        else None
+    )
 
     try:
         async with get_async_session() as db:
@@ -117,6 +124,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
                 target_agent=input.agent_id,
                 db_session=db,
                 skip_persistence=True,
+                run_refine=run_refine,
             ):
                 # Extract metadata from the complete event
                 if hasattr(event, "full_content") and event.full_content:
@@ -189,6 +197,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
         model=model,
         error=error,
         thinking=thinking,
+        objective_met_reason=run_refine.objective_met_reason if run_refine else None,
     )
 
 

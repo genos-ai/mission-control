@@ -71,6 +71,9 @@ class DecisionType(str, enum.Enum):
     SKIP = "skip"
     ESCALATE = "escalate"
     POST_RUN_SUPERVISOR = "post_run_supervisor"  # Plan 51 Phase C
+    # Plan 88 Phase 2: the Director ended a run's refine turn with
+    # declare_objective_met instead of refining.
+    OBJECTIVE_MET = "objective_met"
 
 
 class FailureTier(str, enum.Enum):
@@ -504,7 +507,7 @@ class ExecutionDecision(UUIDMixin, TimestampMixin, Base):
         Enum(DecisionType, native_enum=False),
         nullable=False,
         index=True,
-        comment="retry, fail, pass, re_plan, skip, escalate",
+        comment="retry, fail, pass, re_plan, skip, escalate, post_run_supervisor, objective_met",
     )
 
     task_id: Mapped[str | None] = mapped_column(

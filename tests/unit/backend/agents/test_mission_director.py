@@ -51,10 +51,10 @@ class TestMissionDirectorAgent:
         ), f"Missing action tools: {expected_action_tools - tool_names}"
 
     def test_agent_tool_count(self):
-        """Agent should have exactly 19 tools."""
+        """Agent should have exactly 20 tools."""
         agent = create_agent(TestModel())
         tool_names = {t.name for t in agent._function_toolset.tools.values()}
-        assert len(tool_names) == 19, f"Expected 19 tools, got {len(tool_names)}: {tool_names}"
+        assert len(tool_names) == 20, f"Expected 20 tools, got {len(tool_names)}: {tool_names}"
 
     def test_gate_tools_not_registered(self):
         """Gate tools should NOT be registered (deferred to Phase 2)."""

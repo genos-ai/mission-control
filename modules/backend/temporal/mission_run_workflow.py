@@ -72,7 +72,10 @@ REFINE_PROMPT = (
     "The supervisor decided to advance the plan after wave {iteration}. "
     "Failures in that wave:\n{failures}\n"
     "Please call refine_plan to generate the next wave of tasks "
-    "based on the outcomes, then approve them."
+    "based on the outcomes, then approve them. "
+    "If you judge that the mission objective is already met and no further "
+    "tasks are needed, call declare_objective_met with your reason instead "
+    "of refine_plan; do not just say so in your reply, and do not call both."
 )
 COMPLETE_PROMPT = (
     "The supervisor believes the mission objective may be met after {iteration} waves. "
@@ -138,7 +141,8 @@ class MissionRunWorkflow:
         never called refine_plan signals too. refine_plan waits for its
         refinement to commit or fail while a run is active, so the turn ends
         after it. _refine only wakes on this and fetch_run_task_graph
-        decides; no new tasks fails the run with the outcome as the cause.
+        decides; no new tasks fails the run with the outcome as the cause,
+        unless the Director declared the objective met (objective_met_reason).
         """
         self._refinement_outcome = outcome
         self._refinement_done = True
@@ -428,12 +432,28 @@ class MissionRunWorkflow:
                 "refinement signal not received", extra={"mission_id": inp.mission_id}
             )
         after = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
+        has_tasks = after.proposed > 0 or after.approved > 0
+        outcome = self._refinement_outcome if self._refinement_done else None
+        declared = outcome.objective_met_reason if outcome is not None else None
+        if declared is not None and has_tasks:
+            # The Director said there is nothing left to do while the run has
+            # new work: neither reading is safe to act on, so stop loudly.
+            detail = (
+                "refine contradiction: the Director declared the objective met "
+                f"and the run has new tasks; Director's reason: {declared}"
+            )
+            return await self._end_run("failed", "supervisor_escalated", detail[:500])
         if after.proposed > 0:
             await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
-        if after.proposed == 0 and after.approved == 0:
-            detail = f"refine produced no tasks: {self._refine_cause()}"
-            return await self._end_run("failed", "supervisor_escalated", detail[:500])
-        return None
+        if has_tasks:
+            return None
+        # A turn that failed after declaring is not trusted: the run fails
+        # below with the turn's error as the cause, as for any failed turn.
+        if declared is not None and not outcome.error:
+            detail = f"Director declared the objective met: {declared}"
+            return await self._end_run("succeeded", "objective_met", detail[:500])
+        detail = f"refine produced no tasks: {self._refine_cause()}"
+        return await self._end_run("failed", "supervisor_escalated", detail[:500])
 
     def _refine_cause(self) -> str:
         """Why the refine turn added no tasks, from the refinement_complete payload."""

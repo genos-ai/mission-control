@@ -13,6 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from modules.backend.core.decision_reasoning import decode_decision_reasoning
 from modules.backend.models.execution_record import DecisionType
 
+# Decision types whose reasoning carries a decision_reasoning metadata tail.
+_DECISIONS_WITH_METADATA = frozenset(
+    {DecisionType.POST_RUN_SUPERVISOR.value, DecisionType.OBJECTIVE_MET.value}
+)
+
 
 class TaskAttemptResponse(BaseModel):
     """API response for a single task attempt."""
@@ -69,9 +74,10 @@ class ExecutionDecisionResponse(BaseModel):
 
     @model_validator(mode="after")
     def _drop_stored_metadata(self) -> Self:
-        # A post-run supervisor row stores its metadata after the reason in the
-        # same column; clients display `reasoning`, so they get the reason only.
-        if self.decision_type == DecisionType.POST_RUN_SUPERVISOR.value:
+        # Post-run supervisor and Director objective-met rows store their
+        # metadata after the reason in the same column; clients display
+        # `reasoning`, so they get the reason only.
+        if self.decision_type in _DECISIONS_WITH_METADATA:
             self.reasoning = decode_decision_reasoning(self.reasoning).human
         return self
 

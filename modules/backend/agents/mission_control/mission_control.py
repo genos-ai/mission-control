@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from modules.backend.agents.deps.base import RunRefineTurn
 from modules.backend.agents.mission_control.cost import compute_cost_usd, estimate_cost
 from modules.backend.agents.mission_control.helpers import (
     _build_agent_deps,
@@ -141,6 +142,7 @@ async def handle(
     mission_brief: str | None = None,
     db_session: Any | None = None,
     skip_persistence: bool = False,
+    run_refine: RunRefineTurn | None = None,
 ) -> AsyncIterator[SessionEvent]:
     """Universal streaming mission control entry point.
 
@@ -155,6 +157,9 @@ async def handle(
     Yields SessionEvent instances as the agent works.
     Error handling yields events instead of throwing — the stream
     always terminates cleanly.
+
+    ``run_refine`` marks a mission run's refine turn; it reaches the Mission
+    Director's deps, where declare_objective_met records into it.
     """
     sid = uuid.UUID(session_id) if not isinstance(session_id, uuid.UUID) else session_id
     source = "mission_control"
@@ -275,6 +280,7 @@ async def handle(
             mission_id=mission_id,
             db_session=db_session,
             event_bus=event_bus,
+            run_refine=run_refine,
         )
         limits = _get_usage_limits(agent_name)
 

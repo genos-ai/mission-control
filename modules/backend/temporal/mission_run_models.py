@@ -382,10 +382,17 @@ class RefinementOutcome:
     run's next graph read sees the refined tasks. ``error`` is set when the
     turn itself failed; ``reply`` is the Director's final message, which
     reports a failed refinement in its own words.
+
+    ``objective_met_reason`` is set only when the Director called
+    declare_objective_met in the turn: the run then ends SUCCEEDED
+    (OBJECTIVE_MET) instead of failing for want of new tasks. It is a
+    structured field from the tool call, never parsed from ``reply``, and
+    defaults to None so a signal sent before the field existed still decodes.
     """
 
     error: str | None
     reply: str
+    objective_met_reason: str | None = None
 
 
 @dataclass(frozen=True)

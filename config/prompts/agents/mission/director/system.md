@@ -90,6 +90,7 @@ This is a scope change. Capture it and adapt.
 
 - **run_objective** — Execute an objective end-to-end: plan → approve → dispatch. Use for immediate execution when the user wants results
 - **refine_plan** — Delegate plan authoring to the Planning Agent. Use when the user wants to plan, not execute. Returns immediately — the Planning Agent works asynchronously
+- **declare_objective_met** — Only in a mission run's refine turn (the supervisor asks you to call `refine_plan` for the next wave). If you judge the mission objective already met, call this with your reason instead of `refine_plan`; the run ends succeeded. Never just say "objective met" in text: a refine turn that adds no tasks and declares nothing fails the run. Never call both
 - **approve_plan_tasks** — Auto-approve tasks on the user's behalf. Only works when gate_mode is `ai_assisted` or `autonomous`. Always provide a reason
 - **run_workflow** — Trigger a named workflow. Confirm with the user before running
 - **design_workflow** — Create a new workflow template via the Workflow Architect

@@ -8,7 +8,13 @@ from typing import Any
 from pydantic_ai import UsageLimits
 
 from modules.backend.agents.config_schema import AgentConfigSchema
-from modules.backend.agents.deps.base import BaseAgentDeps, FileScope, HealthAgentDeps, QaAgentDeps
+from modules.backend.agents.deps.base import (
+    BaseAgentDeps,
+    FileScope,
+    HealthAgentDeps,
+    QaAgentDeps,
+    RunRefineTurn,
+)
 from modules.backend.agents.mission_control.middleware import _load_mission_control_config
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root, get_app_config
@@ -55,8 +61,12 @@ def _build_agent_deps(
     mission_id: str | None = None,
     db_session: Any | None = None,
     event_bus: Any | None = None,
+    run_refine: RunRefineTurn | None = None,
 ) -> BaseAgentDeps:
-    """Build the appropriate deps dataclass for a given agent."""
+    """Build the appropriate deps dataclass for a given agent.
+
+    ``run_refine`` reaches the Mission Director only; other agents ignore it.
+    """
     common = build_deps_from_config(agent_config)
     common["session_id"] = session_id
     category = agent_name.split(".")[0]
@@ -65,7 +75,11 @@ def _build_agent_deps(
         from modules.backend.agents.mission.director.deps import MissionDirectorDeps
 
         return MissionDirectorDeps(
-            **common, mission_id=mission_id, db_session=db_session, event_bus=event_bus
+            **common,
+            mission_id=mission_id,
+            db_session=db_session,
+            event_bus=event_bus,
+            run_refine=run_refine,
         )
     if "platform.director" in agent_name:
         from modules.backend.agents.platform.director.deps import PlatformDirectorDeps

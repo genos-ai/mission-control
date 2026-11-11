@@ -1,4 +1,4 @@
-"""Director tools: mission plan read/refine/approve and objective execution.
+"""Director tools: mission plan read/refine/approve, objective execution and run end.
 
 Registration only. Each tool lives in its own module under `tools/`,
 holding its implementation as a plain async function plus the thin
@@ -12,6 +12,7 @@ from pydantic_ai import Agent
 
 from modules.backend.agents.mission.director.tools import (
     approve_plan_tasks,
+    declare_objective_met,
     get_plan,
     refine_plan,
     run_objective,
@@ -24,3 +25,4 @@ def register_plan_tools(agent: Agent) -> None:
     refine_plan.register(agent)
     approve_plan_tasks.register(agent)
     run_objective.register(agent)
+    declare_objective_met.register(agent)

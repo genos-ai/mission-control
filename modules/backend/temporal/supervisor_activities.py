@@ -347,6 +347,8 @@ async def start_director_turn(input: DirectorTurnInput) -> str:
         agent_id="mission.director.agent",
         channel="followup",
         parent_workflow_id=input.signal_workflow_id,
+        # Only the refine turn signals the run, so only it is bound to the run.
+        refine_mission_run_id=input.mission_run_id if input.signal_workflow_id else None,
         timeouts=build_workflow_timeouts_snapshot(),
     )
 

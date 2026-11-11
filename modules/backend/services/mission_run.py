@@ -15,6 +15,7 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.decision_reasoning import encode_decision_reasoning
 from modules.backend.core.exceptions import (
     ConflictError,
     ExternalServiceError,
@@ -29,7 +30,7 @@ from modules.backend.events.mission_run_types import (
     MissionRunCreatedEvent,
     MissionRunStatusChangedEvent,
 )
-from modules.backend.models.execution_record import ExecutionRecordStatus
+from modules.backend.models.execution_record import DecisionType, ExecutionRecordStatus
 from modules.backend.models.mission import MissionStatus
 from modules.backend.models.mission_plan import GateMode
 from modules.backend.models.mission_run import (
@@ -56,6 +57,7 @@ from modules.backend.schemas.mission_run import (
     TaskSummary,
 )
 from modules.backend.services.base import BaseService
+from modules.backend.services.execution_persistence import ExecutionPersistenceService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run_lifecycle import MissionRunLifecycleMixin
 from modules.backend.temporal.config_snapshots import build_run_config_snapshot
@@ -354,6 +356,41 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
     async def failure_digests(self, run_id: str, cap: int) -> tuple[list[TaskFailureDigest], int]:
         """The run's FAILED tasks as at most ``cap`` digests, and the number dropped."""
         return digest_failures(await self._tasks.failed_tasks_for_run(run_id), cap)
+
+    async def record_director_objective_met(
+        self, mission_id: str, run_id: str, reason: str, decider: str
+    ) -> None:
+        """Record the Director's declaration that the run's objective is met.
+
+        Written in the post-run reviewer's format (execution_decisions,
+        reasoning with a metadata tail) on the run's ExecutionRecord, with the
+        Director as the decider. Only the mission's active run accepts it: a
+        declaration for an ended run would be read by nothing. The caller commits.
+
+        Raises:
+            ConflictError: run_id is not the mission's active run.
+            NotFoundError: the run has no ExecutionRecord yet.
+        """
+        active = await self.get_active_run(mission_id)
+        if active is None or active.id != run_id:
+            raise ConflictError(
+                f"Mission run {run_id} is not the active run of mission {mission_id}"
+            )
+        record = await self._records.get_by_mission_run(run_id)
+        if record is None:
+            raise NotFoundError(f"Mission run {run_id} has no execution record")
+        reasoning = encode_decision_reasoning(
+            reason,
+            {
+                "action": DecisionType.OBJECTIVE_MET.value,
+                "reviewer": decider,
+                "mission_run_id": run_id,
+                "iteration": active.iteration_count,
+            },
+        )
+        await ExecutionPersistenceService(self._session).save_decision(
+            record.id, DecisionType.OBJECTIVE_MET.value, reasoning
+        )
 
     async def record_iteration(self, run_id: str, iteration_count: int) -> None:
         """Set mission_runs.iteration_count; the caller commits."""

@@ -18,20 +18,29 @@ import asyncio
 import dataclasses
 import json
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
+from modules.backend.agents.deps.base import RunRefineTurn
+from modules.backend.agents.mission.director.tools.declare_objective_met import (
+    declare_objective_met,
+)
 from modules.backend.agents.mission.director.tools.refine_plan import refine_plan
 from modules.backend.core.config import get_app_config
+from modules.backend.core.decision_reasoning import decode_decision_reasoning
+from modules.backend.models.execution_record import DecisionType, ExecutionDecision
+from modules.backend.models.mission_run import MissionRunTrigger
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run import MissionRunService
@@ -49,9 +58,12 @@ from modules.backend.temporal.mission_run_models import (
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
 from modules.backend.temporal.plan_refine_models import PlanRefineInput, PlanRefineResult
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+from modules.backend.temporal.workflow_gateway import TemporalWorkflowGateway
+from tests.integration.backend.services.test_mission_schedule_service import RecordingBus
 from tests.integration.backend.temporal import mission_run_stubs as stubs
 from tests.integration.backend.temporal.mission_run_stubs import failed, graph
 
+Factory = async_sessionmaker[AsyncSession]
 EMPTY = RunTaskGraph(layers=[], proposed=0, approved=0, running=0)
 REFINE_SECONDS = 1.0  # longer than the rest of the Director turn, as in the drill
 
@@ -61,6 +73,8 @@ class Harness:
     client: Client | None = None
     refine: Callable[[PlanRefineInput], PlanRefineResult] | None = None
     turn_error: Exception | None = None
+    # Replaces the refine_plan Director: answers the turn as execute_chat_turn would.
+    director: Callable[[ChatTurnInput], Awaitable[ChatTurnResult]] | None = None
 
 
 HARNESS = Harness()
@@ -81,6 +95,7 @@ async def director_turn_stub(inp: DirectorTurnInput) -> str:
             agent_id="mission.director.agent",
             channel="followup",
             parent_workflow_id=inp.signal_workflow_id,
+            refine_mission_run_id=inp.mission_run_id if inp.signal_workflow_id else None,
             timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,
@@ -99,6 +114,8 @@ async def execute_chat_turn_stub(inp: ChatTurnInput) -> ChatTurnResult:
     """The Director answers the refine prompt by calling refine_plan, as run_tool runs it."""
     if HARNESS.turn_error is not None:
         raise HARNESS.turn_error
+    if HARNESS.director is not None:
+        return await HARNESS.director(inp)
     db = SimpleNamespace(commit=AsyncMock())
     try:
         output = json.dumps(await refine_plan(db, inp.mission_id, "next wave", None))
@@ -131,11 +148,25 @@ def _planner_fails(inp: PlanRefineInput) -> PlanRefineResult:
 
 
 @pytest.fixture
-async def env(monkeypatch) -> AsyncIterator[WorkflowEnvironment]:
+async def bare_env(monkeypatch) -> AsyncIterator[WorkflowEnvironment]:
+    """The Temporal test environment and the harness, with no service patched."""
     stubs.reset()
     HARNESS.__init__()
     environment = await WorkflowEnvironment.start_time_skipping()
     HARNESS.client = environment.client
+    monkeypatch.setattr(
+        "modules.backend.temporal.client.get_temporal_client",
+        AsyncMock(return_value=environment.client),
+    )
+    try:
+        yield environment
+    finally:
+        await environment.shutdown()
+
+
+@pytest.fixture
+def env(bare_env: WorkflowEnvironment, monkeypatch) -> WorkflowEnvironment:
+    """bare_env with the services refine_plan reads patched (no database)."""
     run_id = str(uuid.uuid4())
     monkeypatch.setattr(
         MissionService, "get_mission", AsyncMock(return_value=SimpleNamespace(owner_id="owner"))
@@ -149,23 +180,18 @@ async def env(monkeypatch) -> AsyncIterator[WorkflowEnvironment]:
     monkeypatch.setattr(
         MissionRunService, "get_active_run", AsyncMock(return_value=SimpleNamespace(id=run_id))
     )
-    monkeypatch.setattr(
-        "modules.backend.temporal.client.get_temporal_client",
-        AsyncMock(return_value=environment.client),
-    )
-    try:
-        yield environment
-    finally:
-        await environment.shutdown()
+    return bare_env
 
 
 @asynccontextmanager
-async def _run(env: WorkflowEnvironment) -> AsyncIterator[WorkflowHandle]:
+async def _run(
+    env: WorkflowEnvironment, *, run_id: str | None = None, mission_id: str | None = None
+) -> AsyncIterator[WorkflowHandle]:
     task_queue = get_app_config().temporal.task_queue
     snapshot = dataclasses.replace(build_run_config_snapshot(), task_queue=task_queue)
     inp = MissionRunWorkflowInput(
-        mission_run_id=str(uuid.uuid4()),
-        mission_id=str(uuid.uuid4()),
+        mission_run_id=run_id or str(uuid.uuid4()),
+        mission_id=mission_id or str(uuid.uuid4()),
         plan_id=str(uuid.uuid4()),
         config=snapshot,
     )
@@ -252,3 +278,169 @@ async def test_director_turn_failure_fails_run_without_waiting(env: WorkflowEnvi
     assert (end.status, end.reason) == ("failed", "supervisor_escalated")
     assert end.detail.startswith("refine produced no tasks: Director turn failed: ")
     assert "model provider down" in end.detail
+
+
+# ── declare_objective_met (owner decision 2026-11-11, drill p88-faildrill-b3) ──
+#
+# Drill b3: the wave-2 task completed, the reviewer still chose advance_refine,
+# the Director replied "objective met" in text and the run failed "refine
+# produced no tasks". These tests run the real declare_objective_met tool
+# against the real database inside the Director turn; the run, mission and
+# ExecutionRecord rows are real, the workflow's activities are stubs.
+
+REASON = "The brief asks for one completed poem task; wave 2 completed it."
+
+
+@dataclasses.dataclass
+class DbRun:
+    mission_id: str
+    run_id: str
+    execution_record_id: str
+
+
+@pytest.fixture
+async def db_run(db_session_factory: Factory, committed_owner, monkeypatch) -> DbRun:
+    """A begun mission run: the mission's active run, with its ExecutionRecord."""
+    monkeypatch.setattr(TemporalWorkflowGateway, "connect", AsyncMock(return_value=AsyncMock()))
+    user, mission, _plan = await committed_owner()
+    async with db_session_factory() as session:
+        run = await MissionRunService(session, RecordingBus()).start_run(
+            mission.id,
+            trigger=MissionRunTrigger.MANUAL,
+            objective=None,
+            user_id=user.id,
+            session_id=None,
+        )
+    async with db_session_factory() as session:
+        begun = await MissionRunService(session, RecordingBus()).begin(run.id)
+    return DbRun(mission.id, run.id, begun.execution_record_id)
+
+
+def _director(
+    factory: Factory, *, reply: str, declare: str | None, adds_task: bool = False
+) -> Callable[[ChatTurnInput], Awaitable[ChatTurnResult]]:
+    """A Director turn as execute_chat_turn runs it: RunRefineTurn in, its reason out."""
+
+    async def answer(inp: ChatTurnInput) -> ChatTurnResult:
+        run_refine = (
+            RunRefineTurn(mission_run_id=inp.refine_mission_run_id)
+            if inp.refine_mission_run_id
+            else None
+        )
+        output = ""
+        if declare is not None:
+            async with factory() as session:
+                try:
+                    output = json.dumps(
+                        await declare_objective_met(
+                            session, inp.mission_id, run_refine, declare, RecordingBus()
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 — run_tool's contract: errors go to the LLM
+                    output = json.dumps({"error": str(exc)})
+        if adds_task:
+            # A refine committing task b, as _commit_task_b does.
+            stubs.SCRIPT.graphs = [graph(["b"]), graph(["b"]), EMPTY]
+        stubs.CALLS.append(("director_turn_done", output))
+        return ChatTurnResult(
+            session_id=inp.session_id,
+            content=reply,
+            objective_met_reason=run_refine.objective_met_reason if run_refine else None,
+        )
+
+    return answer
+
+
+async def _decisions(factory: Factory, execution_record_id: str) -> list[ExecutionDecision]:
+    async with factory() as session:
+        result = await session.execute(
+            select(ExecutionDecision).where(
+                ExecutionDecision.execution_record_id == execution_record_id
+            )
+        )
+        return list(result.scalars().all())
+
+
+async def test_director_declares_objective_met_run_succeeds(
+    bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
+):
+    stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
+    stubs.SCRIPT.actions = ["advance_refine"]
+    HARNESS.director = _director(db_session_factory, reply="Objective met.", declare=REASON)
+
+    async with _run(bare_env, run_id=db_run.run_id, mission_id=db_run.mission_id) as handle:
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "succeeded"
+
+    [refine_turn] = stubs.calls("start_director_turn")
+    assert "declare_objective_met" in refine_turn.prompt
+    [end] = stubs.calls("finalise_mission_run")
+    assert (end.status, end.reason) == ("succeeded", "objective_met")
+    assert end.detail == f"Director declared the objective met: {REASON}"
+    [decision] = await _decisions(db_session_factory, db_run.execution_record_id)
+    assert decision.decision_type == DecisionType.OBJECTIVE_MET
+    human, meta = decode_decision_reasoning(decision.reasoning)
+    assert human == REASON
+    assert meta["reviewer"] == "mission.director.agent"
+    assert meta["action"] == "objective_met"
+    assert meta["mission_run_id"] == db_run.run_id
+
+
+async def test_declaring_objective_met_and_refining_fails_run(
+    bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
+):
+    stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
+    stubs.SCRIPT.actions = ["advance_refine", "propose_complete"]
+    HARNESS.director = _director(
+        db_session_factory, reply="Done, and one more task.", declare=REASON, adds_task=True
+    )
+
+    async with _run(bare_env, run_id=db_run.run_id, mission_id=db_run.mission_id) as handle:
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "failed"
+
+    assert _executed() == ["a"]  # the contradicting refine's task never runs
+    assert stubs.calls("approve_run_proposed_tasks") == []
+    [end] = stubs.calls("finalise_mission_run")
+    assert (end.status, end.reason) == ("failed", "supervisor_escalated")
+    assert end.detail == (
+        "refine contradiction: the Director declared the objective met and the run "
+        f"has new tasks; Director's reason: {REASON}"
+    )
+
+
+async def test_objective_met_in_text_only_still_fails_loudly(
+    bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
+):
+    # Drill b3 exactly: the Director said so in text and called no tool.
+    stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
+    stubs.SCRIPT.actions = ["advance_refine"]
+    HARNESS.director = _director(db_session_factory, reply="The objective is met.", declare=None)
+
+    async with _run(bare_env, run_id=db_run.run_id, mission_id=db_run.mission_id) as handle:
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "failed"
+
+    [end] = stubs.calls("finalise_mission_run")
+    assert (end.status, end.reason) == ("failed", "supervisor_escalated")
+    assert end.detail == (
+        "refine produced no tasks: Director turn ended without new tasks; "
+        "Director replied: The objective is met."
+    )
+    assert await _decisions(db_session_factory, db_run.execution_record_id) == []
+
+
+async def test_declaration_for_a_run_that_is_not_active_is_refused(
+    bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
+):
+    # The turn is bound to a run that is not the mission's active run: the tool
+    # refuses, nothing is recorded, and the run fails loudly as before.
+    stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
+    stubs.SCRIPT.actions = ["advance_refine"]
+    HARNESS.director = _director(db_session_factory, reply="Objective met.", declare=REASON)
+
+    async with _run(bare_env, mission_id=db_run.mission_id) as handle:
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "failed"
+
+    [(_, output)] = [c for c in stubs.CALLS if c[0] == "director_turn_done"]
+    assert "is not the active run of mission" in json.loads(output)["error"]
+    [end] = stubs.calls("finalise_mission_run")
+    assert end.detail.startswith("refine produced no tasks: ")
+    assert await _decisions(db_session_factory, db_run.execution_record_id) == []

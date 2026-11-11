@@ -106,11 +106,17 @@ class ChatTurnWorkflow:
         # refined. refine_plan waits for its refinement to commit while a
         # run is active, so by now any tasks the turn added are visible;
         # the parent reads the task graph and fails the run, with this
-        # outcome as the cause, when the turn produced none.
+        # outcome as the cause, when the turn produced none. A Director that
+        # called declare_objective_met instead carries its reason here, and
+        # the run ends SUCCEEDED (OBJECTIVE_MET) on it.
         if input.parent_workflow_id:
             await self._signal_parent(
                 input.parent_workflow_id,
-                RefinementOutcome(error=result.error, reply=result.content),
+                RefinementOutcome(
+                    error=result.error,
+                    reply=result.content,
+                    objective_met_reason=result.objective_met_reason,
+                ),
             )
 
         return result
