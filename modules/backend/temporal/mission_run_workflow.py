@@ -1,4 +1,4 @@
-"""Mission Run Workflow (Plan 88 steps 88.1.8 and 88.2.6, contract 3.3.3).
+"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6 and 88.2.7, contract 3.3.3).
 
 One durable workflow per MissionRun. It begins the run, plans it, then loops:
 fetch the run's task graph, run each approved task as its own
@@ -10,6 +10,8 @@ The workflow reads no config: every timeout and retry policy comes from the
 RunConfigSnapshot pinned in MissionRunWorkflowInput. The run is bounded by
 max_run_duration_seconds of active time; human approval waits are excluded.
 A supervisor WAIT is a durable wait_condition, not a timer, and costs nothing.
+History is bounded by continue-as-new at the loop top, carrying
+MissionRunWorkflowState and the unchanged config snapshot.
 """
 
 import asyncio
@@ -173,6 +175,7 @@ class MissionRunWorkflow:
                     pause_requested=self._pause_requested,
                     paused=self._paused,
                     decision=None,
+                    last_can_iteration=0,
                 )
                 try:
                     p = await _exec(
@@ -187,6 +190,7 @@ class MissionRunWorkflow:
                 if p.status == "failed":
                     return await self._end_run("failed", "planning_failed", p.detail)
             while True:
+                await self._maybe_continue_as_new()
                 seen = self._approved_seq  # recorded before the fetch (contracts 3.3.3)
                 graph = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
                 if graph.approved == 0:
@@ -432,6 +436,32 @@ class MissionRunWorkflow:
             ),
             inp.config.director_turn,
         )
+
+    # ── Continue-as-new ──────────────────────────────────────────────────
+
+    async def _maybe_continue_as_new(self) -> None:
+        """Hand over to a fresh run at the loop top, a layer boundary with no activity in flight.
+
+        Fires after config.continue_as_new_after_iterations waves since the last
+        hand-over, or earlier when the server suggests it, but only after
+        progress and never with a gate open. The workflow id and the config
+        snapshot are carried unchanged, and the handler-owned fields travel in
+        state, so a pending approval and the elapsed-time budget survive.
+        """
+        s = self._state
+        if s.pending_gate is not None or s.iteration <= s.last_can_iteration:
+            return
+        n = self._input.config.continue_as_new_after_iterations
+        due = s.iteration - s.last_can_iteration >= n
+        if not (due or workflow.info().is_continue_as_new_suggested()):
+            return
+        await workflow.wait_condition(workflow.all_handlers_finished)
+        s.last_can_iteration = s.iteration
+        s.approved_seq = self._approved_seq
+        s.pause_requested = self._pause_requested
+        s.paused = self._paused
+        s.decision = self._decision
+        workflow.continue_as_new(dataclasses.replace(self._input, state=s))
 
     # ── Waits and the hard stop ──────────────────────────────────────────
 

@@ -146,6 +146,7 @@ class MissionRunWorkflowState:
     pause_requested: bool
     paused: bool
     decision: GateDecisionUpdate | None
+    last_can_iteration: int  # iteration at the last continue-as-new (88.2.7)
     zero_completion_waves: int = 0  # consecutive waves with no completed task (stall rule)
 
 

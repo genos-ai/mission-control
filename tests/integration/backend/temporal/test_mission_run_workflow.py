@@ -1,4 +1,4 @@
-"""MissionRunWorkflow per-task layers, durable WAIT and hard stop (Plan 88 step 88.2.6).
+"""MissionRunWorkflow layers, durable WAIT, hard stop and continue-as-new (Plan 88 88.2.6, 88.2.7).
 
 Runs the real workflow in a time-skipping Temporal environment with stub
 activities (mission_run_stubs). The worker uses UnsandboxedWorkflowRunner so a
@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
+from temporalio import workflow
 from temporalio.client import WorkflowHandle
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
@@ -24,6 +25,7 @@ from modules.backend.temporal.mission_run_models import (
     ExecuteTaskResult,
     MissionRunWorkflowInput,
     MissionRunWorkflowState,
+    PendingGate,
     TasksApprovedSignal,
 )
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
@@ -185,7 +187,9 @@ async def test_refine_prompt_lists_failures(env: WorkflowEnvironment):
 # ── verification_failed seam ──────────────────────────────────────────────
 
 
-async def test_verification_failed_seam_continue_leaves_failed(env: WorkflowEnvironment):
+async def test_verification_failed_seam_continue_leaves_failed(
+    env: WorkflowEnvironment,
+):
     stubs.SCRIPT.graphs = [graph(["a"])]
     stubs.SCRIPT.actions = ["propose_complete"]
     stubs.SCRIPT.task_results = {"a": [failed("a", verification_failed=True)]}
@@ -200,7 +204,8 @@ async def test_verification_failed_seam_continue_leaves_failed(env: WorkflowEnvi
 
 async def test_verification_failed_retry_reruns_once(env: WorkflowEnvironment, monkeypatch):
     _patch_gate(
-        monkeypatch, lambda _, point, __: "retry" if point == "verification_failed" else "continue"
+        monkeypatch,
+        lambda _, point, __: "retry" if point == "verification_failed" else "continue",
     )
     stubs.SCRIPT.graphs = [graph(["a"])]
     stubs.SCRIPT.actions = ["propose_complete"]
@@ -216,7 +221,8 @@ async def test_verification_failed_retry_reruns_once(env: WorkflowEnvironment, m
 
 async def test_verification_failed_skip(env: WorkflowEnvironment, monkeypatch):
     _patch_gate(
-        monkeypatch, lambda _, point, __: "skip" if point == "verification_failed" else "continue"
+        monkeypatch,
+        lambda _, point, __: "skip" if point == "verification_failed" else "continue",
     )
     stubs.SCRIPT.graphs = [graph(["a"])]
     stubs.SCRIPT.actions = ["propose_complete"]
@@ -247,7 +253,11 @@ async def test_skip_clears_failure_fields(env: WorkflowEnvironment, monkeypatch)
 
     [result] = stored
     assert result.status == "skipped"
-    assert (result.failure_origin, result.failure_class, result.failure_fingerprint) == (
+    assert (
+        result.failure_origin,
+        result.failure_class,
+        result.failure_fingerprint,
+    ) == (
         None,
         None,
         None,
@@ -256,7 +266,10 @@ async def test_skip_clears_failure_fields(env: WorkflowEnvironment, monkeypatch)
 
 
 async def test_gate_abort_cancels_run(env: WorkflowEnvironment, monkeypatch):
-    _patch_gate(monkeypatch, lambda _, point, __: "abort" if point == "post_layer" else "continue")
+    _patch_gate(
+        monkeypatch,
+        lambda _, point, __: "abort" if point == "post_layer" else "continue",
+    )
     stubs.SCRIPT.graphs = [graph(["a"])]
 
     async with _started(env) as handle:
@@ -356,6 +369,7 @@ async def test_duration_exhausted_stops_before_next_chunk(env: WorkflowEnvironme
         pause_requested=False,
         paused=False,
         decision=None,
+        last_can_iteration=0,
     )
 
     async with _started(env, state=state) as handle:
@@ -403,3 +417,127 @@ async def test_get_run_state_query(env: WorkflowEnvironment):
     assert state.phase == "supervising"
     assert state.pending_gate_id is None
     assert state.last_supervisor_action == "wait"
+
+
+# ── Continue-as-new (88.2.7) ──────────────────────────────────────────────
+
+
+async def _run_ids(env: WorkflowEnvironment, handle: WorkflowHandle) -> list[str]:
+    """Every run of the workflow id, oldest first, following the continue-as-new chain."""
+    latest = (await env.client.get_workflow_handle(handle.id).describe()).run_id
+    chain = [latest]
+    while True:
+        history = await env.client.get_workflow_handle(handle.id, run_id=chain[0]).fetch_history()
+        started = history.events[0].workflow_execution_started_event_attributes
+        if not started.continued_execution_run_id:
+            return chain
+        chain.insert(0, started.continued_execution_run_id)
+
+
+async def _history_sizes(
+    env: WorkflowEnvironment, workflow_id: str, run_ids: list[str]
+) -> list[int]:
+    sizes = []
+    for run_id in run_ids:
+        history = await env.client.get_workflow_handle(workflow_id, run_id=run_id).fetch_history()
+        sizes.append(len(history.events))
+    return sizes
+
+
+async def test_continue_as_new_every_n(env: WorkflowEnvironment):
+    stubs.SCRIPT.graphs = [graph(["a"])]
+    stubs.SCRIPT.actions = ["advance_approved"] * 6 + ["propose_complete"]
+
+    async with _started(env, continue_as_new_after_iterations=3) as handle:
+        assert await handle.result() == "succeeded"
+        run_ids = await _run_ids(env, handle)
+        sizes = await _history_sizes(env, handle.id, run_ids)
+
+    assert len(run_ids) == 3  # the run id changed twice
+    assert run_ids[0] == handle.first_execution_run_id
+    assert all(size < 2000 for size in sizes)
+    _ends("succeeded", "objective_met")
+    # zero-based, as in test_no_iteration_cap: the seventh evaluation carries 6
+    assert [i.supervisor_iteration_count for i in stubs.calls("evaluate_post_run")] == list(
+        range(7)
+    )
+    assert len(stubs.calls("begin_mission_run")) == 1
+    assert len(stubs.calls("plan_mission_run")) == 1
+
+
+async def test_state_carried_across_can(env: WorkflowEnvironment, monkeypatch):
+    seen: list[tuple[str, int, object]] = []
+
+    def record(wf: MissionRunWorkflow, point: str, _task_id: str | None) -> str:
+        if point == "pre_dispatch":
+            seen.append((workflow.info().run_id, wf._approved_seq, wf._state.run_started_at))
+        return "continue"
+
+    _patch_gate(monkeypatch, record)
+    stubs.SCRIPT.graphs = [graph(["a"])]
+    stubs.SCRIPT.actions = ["wait", "propose_complete"]
+    stubs.SCRIPT.task_results = {"a": [failed("a"), failed("a")]}
+
+    async with _started(env, continue_as_new_after_iterations=1) as handle:
+        await _until(lambda: len(stubs.calls("check_plan_active")) == 1)
+        await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
+        assert await handle.result() == "succeeded"
+        run_ids = await _run_ids(env, handle)
+
+    assert len(run_ids) == 2
+    assert _executed() == [
+        "a",
+        "a",
+    ]  # the second run executed a wave with no second signal
+    (first_run, seq_1, started_1), (second_run, seq_2, started_2) = seen
+    assert (first_run, second_run) == tuple(run_ids)
+    assert (seq_1, seq_2) == (0, 1)
+    assert started_2 == started_1  # elapsed-time budget carried
+    evaluations = stubs.calls("evaluate_post_run")
+    assert [i.supervisor_iteration_count for i in evaluations] == [0, 1]
+    assert [i.zero_completion_waves for i in evaluations] == [
+        1,
+        2,
+    ]  # stall count carried
+    assert len(stubs.calls("begin_mission_run")) == 1
+    _ends("succeeded", "objective_met")
+
+
+async def test_can_does_not_repeat_without_progress(env: WorkflowEnvironment):
+    stubs.SCRIPT.graphs = [graph(["a"]), graph(["a"]), graph()]
+    stubs.SCRIPT.actions = ["advance_approved", "wait"]
+
+    async with _started(env, continue_as_new_after_iterations=2) as handle:
+        await _until(lambda: len(stubs.calls("check_plan_active")) == 2)
+        await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
+        assert await handle.result() == "succeeded"
+        run_ids = await _run_ids(env, handle)
+
+    assert len(run_ids) == 2  # exactly one continue-as-new
+    _ends("succeeded", "no_further_work")
+
+
+async def test_no_can_with_pending_gate(env: WorkflowEnvironment, monkeypatch):
+    def open_gate(wf: MissionRunWorkflow, point: str, task_id: str | None) -> str:
+        if point == "post_layer":
+            wf._state.pending_gate = PendingGate(
+                gate_request_id=str(uuid.uuid4()),
+                gate_point=point,
+                task_id=task_id,
+                opened_at=workflow.now(),
+                escalated=False,
+                timed_out=False,
+            )
+        return "continue"
+
+    _patch_gate(monkeypatch, open_gate)
+    stubs.SCRIPT.graphs = [graph(["a"])]
+    stubs.SCRIPT.actions = ["advance_approved", "advance_approved", "propose_complete"]
+
+    async with _started(env, continue_as_new_after_iterations=1) as handle:
+        assert await handle.result() == "succeeded"
+        run_ids = await _run_ids(env, handle)
+
+    assert run_ids == [handle.first_execution_run_id]
+    assert len(stubs.calls("evaluate_post_run")) == 3
+    _ends("succeeded", "objective_met")
