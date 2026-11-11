@@ -132,6 +132,19 @@ open on purpose.
     `AGENT_TOOL_ERROR` or `PLATFORM_DEPENDENCY_MISSING`.
   - Gate abort paths call `failed_result` without cost, tokens or
     duration.
+- [ ] **Plan 88 Phase 2 batch 2 review leftovers (2026-11-11).**
+  - `ManualGateReviewer` fails inserting `gate_requests`:
+    `GateContext.recent_run_outcomes` holds datetimes and JSONB
+    serialisation raises `TypeError`. Pre-existing; MANUAL missions are
+    not dispatched until Phase 4. 88.4.8 must cover it.
+  - `CopilotModel.ensure_healthy` force-stops the shared client when a
+    ping times out on a busy but live CLI, which kills every in-flight
+    session on that worker. Worker `max_concurrent_activities` is not
+    configured. Watch for this in the live check; options are a longer
+    `ping_timeout_seconds` or skipping the ping while sessions are active.
+  - `scripts/trace_execution.py` and `scripts/verify_unified_execution.py`
+    still read `mission_plans.total_spent_usd`, which nothing updates
+    now. 88.4.1 drops the column; update the scripts then.
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
