@@ -70,7 +70,7 @@ class LlmGateReviewer:
             """Structured output from the AI gate reviewer."""
 
             action: str = Field(
-                description="One of: continue, skip, retry, abort, modify",
+                description="One of: continue, skip, retry, abort",
             )
             reason: str = Field(
                 default="",

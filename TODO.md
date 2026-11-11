@@ -120,6 +120,18 @@ open on purpose.
   the mission's single plan has held across all runs (business logic in
   the client). Fixed by 88.4.2, which now replaces the pill with the
   active run's progress computed in the backend.
+- [ ] **Plan 88 Phase 2 batch 1 review minors (2026-11-11).**
+  - A dispatch-loop budget stop (`loop.py`, break with no
+    `abort_reason`) is recorded `RUN_ABORTED`; contracts 3.8.3 say
+    `BUDGET_EXCEEDED`. Fix with budget enforcement (88.4.1/88.4.6).
+  - `TaskResult` now rejects FAILED/TIMEOUT without `failure`, so
+    `persist_mission_outcome` can fail on an `outcome_json` written by a
+    pre-88.2.3b worker in a run in flight across the deploy. 88.2.10
+    (drain in-flight workflows) must cover it.
+  - `test_retry_decision_follows_failure_retryable` does not cover
+    `AGENT_TOOL_ERROR` or `PLATFORM_DEPENDENCY_MISSING`.
+  - Gate abort paths call `failed_result` without cost, tokens or
+    duration.
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
