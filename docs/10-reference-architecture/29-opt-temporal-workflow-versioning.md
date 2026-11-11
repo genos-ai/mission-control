@@ -1,11 +1,12 @@
 # 29 - Temporal Workflow Versioning (Optional Module)
 
-*Version: 1.0.0*
+*Version: 1.1.0*
 *Author: Architecture Team*
 *Created: 2026-11-11*
 
 ## Changelog
 
+- 1.1.0 (2026-11-11): Drain procedure (section 5) for the Plan 88 Phase 2 release, with the dev-stack drill findings (Plan 88 step 88.2.10)
 - 1.0.0 (2026-11-11): Initial standard. Patch-id registry, `workflow.patched` policy, no `deprecate_patch` inside the introducing plan, replay fixtures per patch (Plan 88 step 88.2.8)
 
 ---
@@ -75,7 +76,7 @@ Narrow the query with `AND StartTime < '<deploy time, RFC 3339>'` when newer exe
 
 ### 2.4 Patch or drain
 
-Patching is the default for every change. Draining is used only when a change replaces the activity graph wholesale, so that a patch would duplicate the entire workflow body. Plan 88 Phase 2 is the one such change: it ships without patches and uses the drain runbook (Plan 88 step 88.2.10). Every change after Phase 2 uses patches.
+Patching is the default for every change. Draining is used only when a change replaces the activity graph wholesale, so that a patch would duplicate the entire workflow body. Plan 88 Phase 2 is the one such change: it ships without patches and uses the drain procedure in section 5 (Plan 88 step 88.2.10). Every change after Phase 2 uses patches.
 
 ### 2.5 One commit per patch, with its replay history
 
@@ -109,3 +110,68 @@ Histories that take the old branch are kept, so the replay suite proves both bra
 4. Register the id, record the new-branch history, add the id to `REQUIRED` (rule 2.5).
 5. Run `pytest tests/unit/backend/temporal -q`.
 6. Leave the old branch in place. Removal belongs to a later plan, after the count in rule 2.3 is 0.
+
+---
+
+## 5. Drain Procedure
+
+Run once for the Plan 88 Phase 2 release, in this order. Phase 1 `MissionRunWorkflow` executions carry the wave-activity graph and no Phase 2 state, so they raise `NondeterminismError` on Phase 2 code. `ChatTurnWorkflow`, `PlanRefineWorkflow`, `DesignWorkflowWorkflow` and `RunWorkflowWorkflow` inputs gained a required `timeouts` field, so an execution started before the deploy cannot decode its input afterwards. `AgentMissionWorkflow` no longer exists on the worker.
+
+### 5.1 Preconditions
+
+**Old code stays on disk until step 4.** The Temporal workflow sandbox re-imports workflow modules from the code directory each time it creates a workflow instance. A worker whose code directory has already moved to the new release is not running the old release: it fails every new or evicted workflow task with an import error, and it cannot finalise a cancelled run. Steps 1 to 3 must run while the old release is both loaded and on disk. On the dev stack, that means before checking out the new commit; with immutable images it holds by construction.
+
+**A flag change needs a worker restart.** The worker syncs every mission schedule at startup and every 5 minutes through the reconciler (`sync_mission_schedules`), and both read `missions.recurrence.enabled` from the process's cached `get_app_config()`. Editing the YAML and running `admin.py schedules sync` alone is undone within 5 minutes: a worker that cached `true` recreates the schedules, and one that cached `false` deletes them again.
+
+**CLI address.** The `temporal` CLI defaults to `localhost:7233`, which can resolve to `::1` while the server listens on IPv4. Set `export TEMPORAL_ADDRESS=<temporal.server_url>` (`config/settings/temporal.yaml`) before step 1.
+
+### 5.2 Steps
+
+1. Set `missions.recurrence.enabled: false` (`config/settings/missions.yaml`) on the running deployment, restart the worker and the API on the old release, then run `python admin.py schedules sync`. Every `mission-schedule-*` Temporal schedule is deleted; the `mission_schedules` rows are unchanged. Confirm with `temporal schedule list | grep -c mission-schedule`, which must print `0`, and again 5 minutes later.
+2. Count open executions of the affected types, every 5 minutes for up to 2 hours:
+   ```bash
+   AFFECTED="ExecutionStatus='Running' AND WorkflowType IN ('MissionRunWorkflow','ChatTurnWorkflow','PlanRefineWorkflow','DesignWorkflowWorkflow','RunWorkflowWorkflow','AgentMissionWorkflow')"
+   temporal workflow count --query "$AFFECTED"
+   ```
+3. Cancel whatever is still running, then wait until the count from step 2 is 0:
+   ```bash
+   temporal workflow list --query "$AFFECTED" -o json | jq -r '.[].execution.workflowId' | xargs -I{} temporal workflow cancel --workflow-id {}
+   ```
+   Each cancelled `MissionRunWorkflow` finalises itself as `CANCELLED` through its cancellation handler on the old worker. An execution whose workflow task is already failing (section 5.1) never processes the cancel; terminate it with `temporal workflow terminate --workflow-id <id> --reason "Plan 88 Phase 2 drain"`. The reconciler (Plan 88 step 88.1.10a) then fails its `mission_runs` row as orphaned after `temporal.reconciler.orphan_grace_seconds`. Until then the row is active, so every scheduled tick of that mission is recorded as skipped for overlap.
+4. Record `DEPLOY_TIME` (RFC 3339, UTC). Stop the worker and the API, deploy, and start both. Phase 2 has no migration; `python admin.py migrate current` still shows `plan88_003`.
+5. On the dev stack, set `missions.recurrence.enabled: true`, restart the worker and the API, and run `python admin.py schedules sync`. Production keeps `missions.recurrence.enabled: false` until Plan 88 Phase 4 is complete (Plan 88 Phase 2 Risk 6).
+6. Check that `temporal schedule list` shows every expected `mission-schedule-*` with `Paused` false on the dev stack.
+
+### 5.3 Done When
+
+- The next scheduled tick on the dev stack produces a `MissionRun` that reaches `SUCCEEDED`.
+- This count returns 0:
+  ```bash
+  temporal workflow count --query "WorkflowType='MissionRunWorkflow' AND ExecutionStatus='Running' AND StartTime < '$DEPLOY_TIME'"
+  ```
+
+### 5.4 Stored Outcomes Written by Phase 1 Workers
+
+From Plan 88 step 88.2.3b, `TaskResult` rejects a `FAILED` or `TIMEOUT` result that carries no `failure`, so a Phase 1 outcome cannot be validated on Phase 2 code. The drain is what keeps such an outcome away from that validation:
+
+- Phase 2 validates a `TaskResult` only inside `execute_plan_task`, on the result that the same activity attempt has just built (`RunTaskExecutionService.record`). No Phase 1 result reaches it.
+- `persist_mission_outcome`, the Phase 1 activity that re-validated a run's whole outcome, was deleted in step 88.2.6. A Phase 1 run left in flight cannot reach it on the new worker: its input fails to decode (observed in the drill below), and any activity task it scheduled fails as an unregistered activity type.
+- `execution_records.execution_outcome_json` values written by Phase 1 are read as raw JSON (`get_execution_detail`) and never re-validated.
+
+The residual effect of skipping the drain is therefore a stuck execution, not a corrupt outcome. Steps 3 and 5.3 remove it.
+
+### 5.5 Dev-Stack Drill (2026-11-11)
+
+Run on the dev stack with the `p88-e2e` mission, one hourly schedule (`drain-hourly`, `0 * * * *`) and one manual run started on the Phase 1 API and worker after the Phase 2 code was already checked out.
+
+| Check | Result |
+|-------|--------|
+| `mission-schedule-*` after step 1 | 1 before, 0 after |
+| Affected executions, step 2 | 1 (`MissionRunWorkflow`, run #71), unchanged for 9 minutes |
+| Run #71 on the Phase 1 worker | first workflow task failed: `cannot import name 'ExecuteTaskInput'` (section 5.1) |
+| Run #71 on the Phase 2 worker | `RuntimeError: Failed decoding arguments` on every attempt |
+| `migrate current` after step 4 | `plan88_003 (head)` |
+| Schedule after step 1, without a worker restart | recreated at 10:25 and 10:30 by the Phase 1 worker's reconciler sync (section 5.1) |
+| Schedule after step 5, without a worker restart | deleted again by the Phase 2 worker, which had cached `false` at its 10:32 start; the 11:00 tick never fired |
+| `mission-schedule-*` after step 6, with the worker restarted | 1, not paused |
+| 12:00 tick | run #72 `SKIPPED` for overlap: run #71 is still `PENDING` behind a workflow that is running but cannot decode its input; the reconciler leaves it because Temporal reports it running |
