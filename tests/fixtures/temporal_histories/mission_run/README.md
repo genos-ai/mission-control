@@ -36,7 +36,11 @@ prompt, output_data, mission_brief, message, instructions, failure_reason,
 summary, detail, reason), at any depth, is replaced: a string becomes
 `"<redacted>"`, a dict `{}`, a list `[]`; numbers, booleans and `null` are
 kept. The JSON shape and value types are unchanged, so the dataclasses still
-decode and the history still replays. Review a new fixture for mission text
+decode and the history still replays. Every Temporal Failure (a dict with
+`message` plus `stackTrace`, `cause`, `source` or a `*FailureInfo` key, as on
+ActivityTaskFailed, ActivityTaskTimedOut and WorkflowExecutionFailed events)
+has its `message` and `stackTrace` replaced with `"<redacted>"`, through the
+whole `cause` chain; replay does not compare failure text. Review a new fixture for mission text
 under any other key before committing it.
 
 ## Patch ids (88.2.8 rule 5)

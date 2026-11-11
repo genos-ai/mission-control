@@ -28,10 +28,29 @@ REDACT_KEYS = frozenset(
 )
 REDACTED = "<redacted>"
 JSON_PLAIN = "json/plain"
+# A Temporal Failure (ActivityTaskFailed, WorkflowExecutionFailed, timeouts and
+# their nested ``cause`` chains) carries raw exception text outside any payload.
+FAILURE_MARKERS = frozenset(
+    {
+        "stackTrace",
+        "cause",
+        "source",
+        "applicationFailureInfo",
+        "activityFailureInfo",
+        "timeoutFailureInfo",
+        "canceledFailureInfo",
+        "terminatedFailureInfo",
+        "serverFailureInfo",
+        "resetWorkflowFailureInfo",
+        "childWorkflowExecutionFailureInfo",
+    }
+)
+FAILURE_TEXT_KEYS = ("message", "stackTrace")
 
 
 def redact_history(history: dict) -> dict:
-    """Redact every ``json/plain`` payload in a history dict, in place; returns it."""
+    """Redact every ``json/plain`` payload and every Failure's message and
+    stack trace in a history dict, in place; returns it."""
     _walk(history)
     return history
 
@@ -65,6 +84,8 @@ def _walk(node: Any) -> None:
         if _is_payload(node):
             _redact_payload(node)
             return
+        if _is_failure(node):
+            _redact_failure(node)
         for item in node.values():
             _walk(item)
     elif isinstance(node, list):
@@ -75,6 +96,18 @@ def _walk(node: Any) -> None:
 def _is_payload(node: dict) -> bool:
     metadata = node.get("metadata")
     return isinstance(metadata, dict) and "encoding" in metadata and "data" in node
+
+
+def _is_failure(node: dict) -> bool:
+    return "message" in node and not FAILURE_MARKERS.isdisjoint(node)
+
+
+def _redact_failure(failure: dict) -> None:
+    """Blank failure text; ``_walk`` then recurses into ``cause`` and details.
+    Replay does not compare failure strings, so determinism is unaffected."""
+    for key in FAILURE_TEXT_KEYS:
+        if isinstance(failure.get(key), str):
+            failure[key] = REDACTED
 
 
 def _redact_payload(payload: dict) -> None:

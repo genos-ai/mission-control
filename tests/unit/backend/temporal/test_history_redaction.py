@@ -73,3 +73,53 @@ def test_non_json_payload_untouched():
     redact_history(history)
 
     assert history["payloads"][0] == payload
+
+
+def test_failure_text_redacted_through_cause_chain():
+    history = {
+        "events": [
+            {
+                "eventType": "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+                "activityTaskFailedEventAttributes": {
+                    "failure": {
+                        "message": "activity failed: token=abc",
+                        "stackTrace": "Traceback ... secret",
+                        "source": "PythonSDK",
+                        "cause": {
+                            "message": "ValueError: mission text",
+                            "stackTrace": "Traceback ... nested",
+                            "applicationFailureInfo": {
+                                "type": "ValueError",
+                                "nonRetryable": False,
+                                "details": {"payloads": [_payload({"detail": "x", "n": 1})]},
+                            },
+                        },
+                        "activityFailureInfo": {"activityType": {"name": "run_task"}},
+                    },
+                    "retryState": "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED",
+                },
+            }
+        ]
+    }
+
+    redact_history(history)
+
+    failure = history["events"][0]["activityTaskFailedEventAttributes"]["failure"]
+    assert failure["message"] == "<redacted>"
+    assert failure["stackTrace"] == "<redacted>"
+    assert failure["source"] == "PythonSDK"
+    assert failure["activityFailureInfo"] == {"activityType": {"name": "run_task"}}
+    cause = failure["cause"]
+    assert cause["message"] == "<redacted>"
+    assert cause["stackTrace"] == "<redacted>"
+    assert cause["applicationFailureInfo"]["type"] == "ValueError"
+    details = cause["applicationFailureInfo"]["details"]["payloads"][0]
+    assert _decoded(details) == {"detail": "<redacted>", "n": 1}
+
+
+def test_plain_dict_with_message_but_no_failure_marker_untouched():
+    history = {"events": [{"message": "keep", "eventId": "1"}]}
+
+    redact_history(history)
+
+    assert history["events"][0]["message"] == "keep"
