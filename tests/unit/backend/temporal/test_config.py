@@ -25,7 +25,6 @@ class TestTemporalSchema:
         assert config.task_queue == "agent-missions"
         assert config.approval_timeout_seconds == 14400
         assert config.escalation_timeout_seconds == 86400
-        assert config.notification_timeout_seconds == 30
 
     def test_strict_rejects_unknown_fields(self):
         with pytest.raises(Exception):

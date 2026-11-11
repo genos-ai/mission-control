@@ -1,26 +1,31 @@
-"""Mission Run Workflow (Plan 88 step 88.1.8, contract 3.3.3).
+"""Mission Run Workflow (Plan 88 steps 88.1.8 and 88.2.6, contract 3.3.3).
 
 One durable workflow per MissionRun. It begins the run, plans it, then loops:
-fetch the run's task graph, execute a wave of approved tasks, persist, ask the
-post-run supervisor, and route its decision. The loop ends through _end_run,
-which finalises the run.
+fetch the run's task graph, run each approved task as its own
+execute_plan_task activity (layer by layer, at most max_parallel_tasks at a
+time), ask the post-run supervisor, and route its decision. The loop ends
+through _end_run, which finalises the run.
 
 The workflow reads no config: every timeout and retry policy comes from the
-RunConfigSnapshot pinned in MissionRunWorkflowInput. The loop is bounded by the
-supervisor's iteration breaker (gate_post_run.py breaker #2); there is no
-workflow iteration cap and no continue-as-new in Phase 1.
+RunConfigSnapshot pinned in MissionRunWorkflowInput. The run is bounded by
+max_run_duration_seconds of active time; human approval waits are excluded.
+A supervisor WAIT is a durable wait_condition, not a timer, and costs nothing.
 """
 
 import asyncio
+import dataclasses
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
 from temporalio import workflow
-from temporalio.exceptions import ActivityError, ApplicationError, is_cancelled_exception
+from temporalio.exceptions import (
+    ActivityError,
+    ApplicationError,
+    is_cancelled_exception,
+)
 
 with workflow.unsafe.imports_passed_through():
-    from modules.backend.temporal.activities import execute_mission, persist_mission_outcome
     from modules.backend.temporal.activity_options import activity_kwargs
     from modules.backend.temporal.mission_run_activities import (
         begin_mission_run,
@@ -32,15 +37,20 @@ with workflow.unsafe.imports_passed_through():
         ActivityPolicySnapshot,
         BeginRunInput,
         DirectorTurnInput,
-        ExecuteWaveInput,
+        ExecuteTaskInput,
+        ExecuteTaskResult,
         FinaliseRunInput,
         GateDecisionUpdate,
         MissionRunWorkflowInput,
         MissionRunWorkflowState,
         MissionRunWorkflowStatus,
         PlanRunInput,
+        ResolveTaskInput,
+        RunTaskGraph,
         SupervisorFollowupInput,
+        TaskFailureDigest,
         TasksApprovedSignal,
+        digest_failures,
     )
     from modules.backend.temporal.supervisor_activities import (
         PostRunEvalInput,
@@ -50,9 +60,14 @@ with workflow.unsafe.imports_passed_through():
         fire_supervisor_followups,
         start_director_turn,
     )
+    from modules.backend.temporal.task_activities import (
+        execute_plan_task,
+        resolve_failed_task,
+    )
 
 REFINE_PROMPT = (
     "The supervisor decided to advance the plan after wave {iteration}. "
+    "Failures in that wave:\n{failures}\n"
     "Please call refine_plan to generate the next wave of tasks "
     "based on the outcomes, then approve them."
 )
@@ -77,10 +92,14 @@ async def _exec(fn: Callable[..., Any], arg: object, p: ActivityPolicySnapshot) 
     return await workflow.execute_activity(fn, arg, **activity_kwargs(p))
 
 
-def _wave_failure(outcome_json: dict) -> str | None:
-    """The wave's abort reason or error, truncated; None when it has neither."""
-    failure = outcome_json.get("abort_reason") or outcome_json.get("error")
-    return str(failure)[:500] if failure else None
+def _render_failures(digests: list[TaskFailureDigest], truncated: int) -> str:
+    lines = [
+        f"- [{d.origin}/{d.failure_class}] x{d.occurrences} task {d.task_id}: {d.summary}"
+        for d in digests
+    ]
+    if truncated:
+        lines.append(f"- and {truncated} more distinct failures (see TaskFailedEvent history)")
+    return "\n".join(lines) if lines else "- none"
 
 
 @workflow.defn
@@ -96,6 +115,12 @@ class MissionRunWorkflow:
         self._pause_requested = st.pause_requested if st is not None else False
         self._paused = st.paused if st is not None else False
         self._decision: GateDecisionUpdate | None = st.decision if st is not None else None
+        self._wave_results: dict[str, ExecuteTaskResult] = {}
+        self._wave_status = "completed"
+        self._wave_cost_usd = 0.0
+        self._wave_failure_reason: str | None = None
+        self._wave_failures: list[TaskFailureDigest] = []
+        self._wave_failures_truncated = 0
 
     @workflow.signal
     def tasks_approved(self, s: TasksApprovedSignal) -> None:
@@ -125,7 +150,9 @@ class MissionRunWorkflow:
             if self._state is None:
                 try:
                     b = await _exec(
-                        begin_mission_run, BeginRunInput(inp.mission_run_id), c.persistence
+                        begin_mission_run,
+                        BeginRunInput(inp.mission_run_id),
+                        c.persistence,
                     )
                 except ActivityError as e:
                     if is_cancelled_exception(e):
@@ -138,6 +165,8 @@ class MissionRunWorkflow:
                     session_id=b.session_id,
                     execution_record_id=b.execution_record_id,
                     context_version_start=b.context_version_start,
+                    run_started_at=workflow.now(),
+                    excluded_wait_seconds=0,
                     pending_gate=None,
                     last_supervisor_action=None,
                     approved_seq=self._approved_seq,
@@ -157,140 +186,21 @@ class MissionRunWorkflow:
                     return await self._end_run("failed", "planning_failed", _cause_type(e))
                 if p.status == "failed":
                     return await self._end_run("failed", "planning_failed", p.detail)
-            s = self._state
             while True:
-                seen = self._approved_seq
-                g = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
-                if g.approved == 0:
-                    if g.proposed == 0:
+                seen = self._approved_seq  # recorded before the fetch (contracts 3.3.3)
+                graph = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
+                if graph.approved == 0:
+                    if graph.proposed == 0:
                         return await self._end_run("succeeded", "no_further_work", None)
-                    self._phase = "awaiting_gate"
-                    await workflow.wait_condition(lambda: self._approved_seq > seen)
+                    await self._wait_for_approval(seen)
                     continue
-                s.iteration += 1
-                self._phase = "executing"
-                try:
-                    wave = await _exec(
-                        execute_mission,
-                        ExecuteWaveInput(inp.mission_run_id, s.session_id, s.execution_record_id),
-                        c.execute_task,
-                    )
-                except ActivityError as e:
-                    if is_cancelled_exception(e):
-                        raise
-                    return await self._end_run("failed", "task_failures", _cause_type(e))
-                await workflow.execute_activity(
-                    persist_mission_outcome,
-                    args=[
-                        inp.mission_run_id,
-                        s.session_id,
-                        wave.outcome_json,
-                        inp.mission_id,
-                        s.execution_record_id,
-                    ],
-                    **activity_kwargs(c.persistence),
-                )
-                self._phase = "supervising"
-                try:
-                    ev = await _exec(
-                        evaluate_post_run,
-                        PostRunEvalInput(
-                            inp.mission_id,
-                            inp.mission_run_id,
-                            s.execution_record_id,
-                            s.iteration - 1,
-                            s.session_id,
-                        ),
-                        c.evaluate_post_run,
-                    )
-                except ActivityError as e:
-                    if is_cancelled_exception(e):
-                        raise
-                    return await self._end_run("failed", "supervisor_escalated", _cause_type(e))
-                s.last_supervisor_action = ev.action
-                await _exec(
-                    fire_supervisor_followups,
-                    SupervisorFollowupInput(
-                        mission_id=inp.mission_id,
-                        mission_run_id=inp.mission_run_id,
-                        execution_record_id=s.execution_record_id,
-                        action=ev.action,
-                        reason=ev.reason[:200],
-                        reviewer=ev.reviewer,
-                        wave_status=wave.status,
-                        wave_cost_usd=wave.total_cost_usd,
-                        failure_reason=_wave_failure(wave.outcome_json),
-                    ),
-                    c.persistence,
-                )
-                if not await _exec(check_plan_active, inp.mission_id, c.persistence):
-                    return await self._end_run("cancelled", "cancelled_by_user", "plan paused")
-                if ev.action == "wait":
-                    continue
-                if ev.action == "advance_approved":
-                    await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
-                    continue
-                if ev.action == "advance_refine":
-                    self._refinement_done = False
-                    await _exec(
-                        start_director_turn,
-                        DirectorTurnInput(
-                            inp.mission_id,
-                            inp.mission_run_id,
-                            s.session_id,
-                            REFINE_PROMPT.format(iteration=s.iteration),
-                            workflow.info().workflow_id,
-                        ),
-                        c.director_turn,
-                    )
-                    try:
-                        await workflow.wait_condition(
-                            lambda: self._refinement_done,
-                            timeout=timedelta(seconds=c.refine_wait_seconds),
-                        )
-                    except asyncio.TimeoutError:
-                        # best-effort — workflow code stays deterministic, so no event
-                        # bus is reachable here; the graph fetch below decides what next.
-                        workflow.logger.warning(
-                            "refinement signal not received", extra={"mission_id": inp.mission_id}
-                        )
-                    after = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
-                    if after.proposed > 0:
-                        await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
-                    if after.proposed == 0 and after.approved == 0:
-                        return await self._end_run(
-                            "failed", "supervisor_escalated", "refine produced no tasks"
-                        )
-                    continue
-                if ev.action == "propose_complete":
-                    await _exec(
-                        start_director_turn,
-                        DirectorTurnInput(
-                            inp.mission_id,
-                            inp.mission_run_id,
-                            s.session_id,
-                            COMPLETE_PROMPT.format(iteration=s.iteration),
-                            None,
-                        ),
-                        c.director_turn,
-                    )
-                    return await self._end_run("succeeded", "objective_met", ev.reason[:500])
-                if ev.action == "escalate":
-                    await _exec(
-                        start_director_turn,
-                        DirectorTurnInput(
-                            inp.mission_id,
-                            inp.mission_run_id,
-                            s.session_id,
-                            ESCALATE_PROMPT.format(reason=ev.reason[:200]),
-                            None,
-                        ),
-                        c.director_turn,
-                    )
-                    return await self._end_run("failed", "supervisor_escalated", ev.reason[:500])
-                return await self._end_run(
-                    "failed", "supervisor_escalated", f"unknown action {ev.action}"
-                )
+                self._state.iteration += 1  # one iteration == one executed wave
+                end = await self._execute_layers(graph)
+                if end is not None:
+                    return end
+                end = await self._supervise(seen)
+                if end is not None:
+                    return end
         except (asyncio.CancelledError, ActivityError) as e:
             # Workflow cancellation reaches an awaited activity as ActivityError
             # with a CancelledError cause, not as asyncio.CancelledError.
@@ -298,6 +208,260 @@ class MissionRunWorkflow:
                 raise
             await self._end_run("cancelled", None, None)
             raise
+
+    # ── Layers ───────────────────────────────────────────────────────────
+
+    async def _execute_layers(self, graph: RunTaskGraph) -> str | None:
+        cfg = self._input.config
+        self._phase = "executing"
+        self._wave_results = {}  # final result per task id, in execution order
+        if await self._gate("pre_dispatch", None) == "abort":
+            return await self._end_run("cancelled", "gate_rejected", "aborted at pre_dispatch")
+        for layer in graph.layers:
+            if await self._gate("pre_layer", None) == "abort":
+                return await self._end_run("cancelled", "gate_rejected", "aborted at pre_layer")
+            for start in range(0, len(layer), cfg.max_parallel_tasks):
+                end = await self._layer_boundary()
+                if end is not None:
+                    return end
+                chunk = layer[start : start + cfg.max_parallel_tasks]
+                outcomes = await asyncio.gather(
+                    *(self._run_task(t) for t in chunk), return_exceptions=True
+                )
+                for outcome in outcomes:
+                    if isinstance(outcome, BaseException) and (
+                        not isinstance(outcome, ActivityError) or is_cancelled_exception(outcome)
+                    ):
+                        raise outcome
+                failed = [o for o in outcomes if isinstance(o, ActivityError)]
+                if failed:
+                    return await self._end_run("failed", "task_failures", str(failed[0])[:500])
+                for task_id, result in zip(chunk, outcomes, strict=True):
+                    end = await self._after_task(task_id, result)
+                    if end is not None:
+                        return end
+            if await self._gate("post_layer", None) == "abort":
+                return await self._end_run("cancelled", "gate_rejected", "aborted at post_layer")
+        results = list(self._wave_results.values())
+        failed_results = [r for r in results if r.status == "failed"]
+        self._wave_status = "failed" if failed_results else "completed"
+        self._wave_cost_usd = sum(r.cost_usd for r in results)
+        self._wave_failure_reason = failed_results[0].failure_reason if failed_results else None
+        self._wave_failures, self._wave_failures_truncated = digest_failures(
+            failed_results, cfg.max_failure_digests
+        )
+        return None
+
+    async def _layer_boundary(self) -> str | None:
+        """Runs before each chunk; 88.4.5 and 88.4.6 add the pause and budget points."""
+        if self._duration_exhausted():
+            return await self._end_run(
+                "failed",
+                "max_duration_exceeded",
+                "max_run_duration_seconds reached at a layer boundary",
+            )
+        return None
+
+    async def _run_task(self, task_id: str) -> ExecuteTaskResult:
+        cfg = self._input.config
+        return await workflow.execute_activity(
+            execute_plan_task,
+            ExecuteTaskInput(
+                mission_run_id=self._input.mission_run_id,
+                task_id=task_id,
+                session_id=self._state.session_id,
+                execution_record_id=self._state.execution_record_id,
+                budget_headroom_usd=None,
+                heartbeat_interval_seconds=cfg.task_heartbeat_interval_seconds,
+            ),
+            cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            **activity_kwargs(cfg.execute_task),
+        )
+
+    async def _after_task(self, task_id: str, result: ExecuteTaskResult) -> str | None:
+        self._wave_results[task_id] = result
+        while result.verification_failed:
+            action = await self._gate("verification_failed", task_id)
+            if action == "abort":
+                return await self._end_run(
+                    "cancelled",
+                    "gate_rejected",
+                    f"aborted at verification_failed for {task_id}",
+                )
+            if action not in ("retry", "skip"):
+                return None  # "continue" from the Phase 2 seam: the task stays FAILED
+            await _exec(
+                resolve_failed_task,
+                ResolveTaskInput(self._input.mission_run_id, task_id, action),
+                self._input.config.persistence,
+            )
+            if action == "skip":
+                # 3.3.5: failure fields are set only when status == "failed"
+                self._wave_results[task_id] = dataclasses.replace(
+                    result,
+                    status="skipped",
+                    failure_origin=None,
+                    failure_class=None,
+                    failure_fingerprint=None,
+                )
+                return None
+            if self._duration_exhausted():
+                return await self._end_run(
+                    "failed",
+                    "max_duration_exceeded",
+                    "max_run_duration_seconds reached before a retry",
+                )
+            try:
+                result = await self._run_task(task_id)
+            except ActivityError as err:
+                if is_cancelled_exception(err):
+                    raise
+                return await self._end_run("failed", "task_failures", str(err)[:500])
+            self._wave_results[task_id] = result
+        if result.status == "completed" and await self._gate("post_task", task_id) == "abort":
+            return await self._end_run(
+                "cancelled", "gate_rejected", f"aborted at post_task for {task_id}"
+            )
+        return None
+
+    async def _gate(self, gate_point: str, task_id: str | None) -> str:
+        """Return an action from 3.3.6, or "continue"; issues no command.
+
+        88.4.8 replaces the body under patch id p88-durable-gate.
+        """
+        return "continue"
+
+    # ── Supervisor ───────────────────────────────────────────────────────
+
+    async def _supervise(self, seen: int) -> str | None:
+        inp = self._input
+        c = inp.config
+        s = self._state
+        self._phase = "supervising"
+        try:
+            ev = await _exec(
+                evaluate_post_run,
+                PostRunEvalInput(
+                    inp.mission_id,
+                    inp.mission_run_id,
+                    s.execution_record_id,
+                    s.iteration - 1,
+                    s.session_id,
+                ),
+                c.evaluate_post_run,
+            )
+        except ActivityError as e:
+            if is_cancelled_exception(e):
+                raise
+            return await self._end_run("failed", "supervisor_escalated", _cause_type(e))
+        s.last_supervisor_action = ev.action
+        await _exec(
+            fire_supervisor_followups,
+            SupervisorFollowupInput(
+                mission_id=inp.mission_id,
+                mission_run_id=inp.mission_run_id,
+                execution_record_id=s.execution_record_id,
+                action=ev.action,
+                reason=ev.reason[:200],
+                reviewer=ev.reviewer,
+                wave_status=self._wave_status,
+                wave_cost_usd=self._wave_cost_usd,
+                failure_reason=self._wave_failure_reason,
+            ),
+            c.persistence,
+        )
+        if not await _exec(check_plan_active, inp.mission_id, c.persistence):
+            return await self._end_run("cancelled", "cancelled_by_user", "plan paused")
+        if ev.action == "wait":
+            return await self._supervisor_wait(seen)
+        if ev.action == "advance_approved":
+            await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
+            return None
+        if ev.action == "advance_refine":
+            return await self._refine()
+        if ev.action == "propose_complete":
+            await self._director_turn(COMPLETE_PROMPT.format(iteration=s.iteration), None)
+            return await self._end_run("succeeded", "objective_met", ev.reason[:500])
+        if ev.action == "escalate":
+            await self._director_turn(ESCALATE_PROMPT.format(reason=ev.reason[:200]), None)
+            return await self._end_run("failed", "supervisor_escalated", ev.reason[:500])
+        return await self._end_run("failed", "supervisor_escalated", f"unknown action {ev.action}")
+
+    async def _refine(self) -> str | None:
+        inp = self._input
+        c = inp.config
+        self._refinement_done = False
+        failures = _render_failures(self._wave_failures, self._wave_failures_truncated)
+        await self._director_turn(
+            REFINE_PROMPT.format(iteration=self._state.iteration, failures=failures),
+            workflow.info().workflow_id,
+        )
+        try:
+            await workflow.wait_condition(
+                lambda: self._refinement_done,
+                timeout=timedelta(seconds=c.refine_wait_seconds),
+            )
+        except asyncio.TimeoutError:
+            # best-effort — workflow code stays deterministic, so no event
+            # bus is reachable here; the graph fetch below decides what next.
+            workflow.logger.warning(
+                "refinement signal not received", extra={"mission_id": inp.mission_id}
+            )
+        after = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
+        if after.proposed > 0:
+            await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
+        if after.proposed == 0 and after.approved == 0:
+            return await self._end_run("failed", "supervisor_escalated", "refine produced no tasks")
+        return None
+
+    async def _director_turn(self, prompt: str, signal_workflow_id: str | None) -> None:
+        inp = self._input
+        await _exec(
+            start_director_turn,
+            DirectorTurnInput(
+                inp.mission_id,
+                inp.mission_run_id,
+                self._state.session_id,
+                prompt,
+                signal_workflow_id,
+            ),
+            inp.config.director_turn,
+        )
+
+    # ── Waits and the hard stop ──────────────────────────────────────────
+
+    async def _supervisor_wait(self, seen: int) -> str | None:
+        """Durable WAIT: counts against the duration and holds the active-run slot."""
+        self._phase = "supervising"
+        try:
+            await workflow.wait_condition(
+                lambda: self._approved_seq > seen, timeout=self._remaining_duration()
+            )
+        except asyncio.TimeoutError:
+            return await self._end_run(
+                "failed",
+                "max_duration_exceeded",
+                "idle wait exceeded max_run_duration_seconds",
+            )
+        return None
+
+    async def _wait_for_approval(self, seen: int) -> None:
+        """Human approval wait: no timeout until 88.4.8; excluded from the duration."""
+        self._phase = "awaiting_gate"
+        opened = workflow.now()
+        await workflow.wait_condition(lambda: self._approved_seq > seen)
+        self._state.excluded_wait_seconds += int((workflow.now() - opened).total_seconds())
+
+    def _duration_used_seconds(self) -> float:
+        elapsed = (workflow.now() - self._state.run_started_at).total_seconds()
+        return elapsed - self._state.excluded_wait_seconds
+
+    def _duration_exhausted(self) -> bool:
+        return self._duration_used_seconds() >= self._input.config.max_run_duration_seconds
+
+    def _remaining_duration(self) -> timedelta:
+        remaining = self._input.config.max_run_duration_seconds - self._duration_used_seconds()
+        return timedelta(seconds=max(remaining, 1))
 
     async def _end_run(self, status: str, reason: str | None, detail: str | None) -> str:
         self._phase = "finalising"

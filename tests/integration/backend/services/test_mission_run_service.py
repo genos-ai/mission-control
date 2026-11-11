@@ -4,11 +4,10 @@ Real database with committed rows; TemporalWorkflowGateway is an AsyncMock.
 Each service call runs in its own session, as the activities do.
 """
 
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import func, select, text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from modules.backend.core.exceptions import (
@@ -31,7 +30,6 @@ from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.user import User
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.task import TaskRepository
-from modules.backend.schemas.execution_outcome import ExecutionOutcome, ExecutionStatus
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
@@ -309,114 +307,6 @@ async def test_run_detail_carries_execution_record_id(db_session_factory, gatewa
     assert after.execution_record_id == begun.execution_record_id
 
 
-# ── waves ─────────────────────────────────────────────────────────────────
-
-
-async def test_wave_reuses_run_execution_record(
-    db_session_factory, gateway, owner, monkeypatch
-) -> None:
-    from modules.backend.agents.mission_control.persistence_bridge import (
-        persist_mission_results,
-    )
-    from modules.backend.temporal.activities import persist_mission_outcome
-
-    user, mission, plan = await owner()
-    await _task(db_session_factory, plan, TaskStatus.APPROVED)
-    run = await _start(db_session_factory, mission, user)
-    begun = await _begin(db_session_factory, run.id)
-
-    def _outcome() -> ExecutionOutcome:
-        return ExecutionOutcome(mission_id=mission.id, status=ExecutionStatus.SUCCESS)
-
-    async def fake_handle_mission(**kwargs) -> ExecutionOutcome:
-        outcome = _outcome()
-        outcome.execution_record_id = await persist_mission_results(
-            outcome,
-            session_id=kwargs["session_id"],
-            mission_id=kwargs["mission_id"],
-            db_session=kwargs["db_session"],
-            execution_record_id=kwargs["execution_record_id"],
-        )
-        return outcome
-
-    monkeypatch.setattr(
-        "modules.backend.agents.mission_control.mission_control.handle_mission",
-        fake_handle_mission,
-    )
-    for wave in range(2):
-        if wave:
-            await _task(db_session_factory, plan, TaskStatus.APPROVED, run.id)
-        async with db_session_factory() as session:
-            orchestrator = MissionPlanOrchestrator(session, event_bus=RecordingBus())
-            result = await orchestrator.dispatch_approved(
-                run.id,
-                user.id,
-                session_id=begun.session_id,
-                execution_record_id=begun.execution_record_id,
-            )
-            await session.commit()
-        assert result["execution_record_id"] == begun.execution_record_id
-
-    @asynccontextmanager
-    async def test_session():
-        async with db_session_factory() as session:
-            yield session
-
-    monkeypatch.setattr("modules.backend.core.database.get_async_session", test_session)
-    await persist_mission_outcome(
-        run.id,
-        begun.session_id,
-        _outcome().model_dump(mode="json"),
-        mission.id,
-        begun.execution_record_id,
-    )
-
-    async with db_session_factory() as session:
-        count = await session.scalar(
-            select(func.count())
-            .select_from(ExecutionRecord)
-            .where(ExecutionRecord.mission_run_id == run.id)
-        )
-    assert count == 1
-
-
-async def test_persist_outcome_writes_run_task_counts(
-    db_session_factory, gateway, owner, monkeypatch
-) -> None:
-    """The stall rule reads these counts; a retried persist must not double count."""
-    from modules.backend.temporal.activities import persist_mission_outcome
-
-    user, mission, plan = await owner()
-    run = await _start(db_session_factory, mission, user)
-    begun = await _begin(db_session_factory, run.id)
-    await _task(db_session_factory, plan, TaskStatus.COMPLETED, run.id)
-
-    @asynccontextmanager
-    async def test_session():
-        async with db_session_factory() as session:
-            yield session
-
-    monkeypatch.setattr("modules.backend.core.database.get_async_session", test_session)
-    outcome = ExecutionOutcome(
-        mission_id=mission.id,
-        status=ExecutionStatus.SUCCESS,
-        execution_record_id=begun.execution_record_id,
-    )
-    for _ in range(2):
-        await persist_mission_outcome(
-            run.id,
-            begun.session_id,
-            outcome.model_dump(mode="json"),
-            mission.id,
-            begun.execution_record_id,
-        )
-
-    async with db_session_factory() as session:
-        record = await session.get(ExecutionRecord, begun.execution_record_id)
-    assert record.completed_task_count == 1
-    assert record.failed_task_count == 0
-
-
 # ── run-scoped planning ───────────────────────────────────────────────────
 
 
@@ -582,7 +472,7 @@ async def test_finalise_fails_inflight_tasks_and_sets_counts(
 async def test_finalise_writes_ledger_cost(db_session_factory, gateway, owner) -> None:
     user, mission, _ = await owner()
     run = await _start(db_session_factory, mission, user)
-    await _begin(db_session_factory, run.id)
+    begun = await _begin(db_session_factory, run.id)
     async with db_session_factory() as session:
         for cost, run_id in ((0.25, run.id), (0.50, run.id), (1.00, None)):
             session.add(
@@ -609,6 +499,9 @@ async def test_finalise_writes_ledger_cost(db_session_factory, gateway, owner) -
     assert result.notification.kind == RUN_SUCCEEDED
     assert result.notification.subject_id == run.id
     assert (await _run(db_session_factory, run.id)).cost_usd == pytest.approx(0.75)
+    async with db_session_factory() as session:
+        record = await session.get(ExecutionRecord, begun.execution_record_id)
+    assert record.total_cost_usd == pytest.approx(0.75)
 
 
 async def test_finalise_sums_rows_tagged_through_record_call(

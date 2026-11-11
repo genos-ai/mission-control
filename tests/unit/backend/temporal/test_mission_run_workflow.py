@@ -1,4 +1,4 @@
-"""MissionRunWorkflow (Plan 88 step 88.1.8, contract 3.3.3).
+"""MissionRunWorkflow (Plan 88 steps 88.1.8 and 88.2.6, contract 3.3.3).
 
 Runs the real workflow in a time-skipping Temporal environment. Every activity
 is a fake registered under the real activity name; the fakes read their script
@@ -26,7 +26,8 @@ with workflow.unsafe.imports_passed_through():
         BeginRunInput,
         BeginRunResult,
         DirectorTurnInput,
-        ExecuteWaveInput,
+        ExecuteTaskInput,
+        ExecuteTaskResult,
         FinaliseRunInput,
         FinaliseRunResult,
         MissionRunWorkflowInput,
@@ -40,7 +41,6 @@ with workflow.unsafe.imports_passed_through():
         TasksApprovedSignal,
     )
     from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
-    from modules.backend.temporal.models import MissionExecutionResult
     from modules.backend.temporal.supervisor_activities import PostRunEvalInput, PostRunEvalResult
 
 _SESSION_ID = "11111111-1111-1111-1111-111111111111"
@@ -106,8 +106,8 @@ async def graph_fake(mission_run_id: str) -> RunTaskGraph:
     return graph
 
 
-@activity.defn(name="execute_mission")
-async def execute_fake(inp: ExecuteWaveInput) -> MissionExecutionResult:
+@activity.defn(name="execute_plan_task")
+async def execute_fake(inp: ExecuteTaskInput) -> ExecuteTaskResult:
     _fake.execute_attempts += 1
     _fake.execute_started.set()
     if _fake.execute_block:
@@ -116,18 +116,17 @@ async def execute_fake(inp: ExecuteWaveInput) -> MissionExecutionResult:
             await asyncio.sleep(0.05)
     if _fake.execute_attempts <= _fake.execute_failures:
         raise RuntimeError("transient")
-    return MissionExecutionResult(mission_id=inp.mission_run_id, status="success")
-
-
-@activity.defn(name="persist_mission_outcome")
-async def persist_fake(
-    mission_run_id: str,
-    session_id: str,
-    outcome_json: dict,
-    mission_id: str,
-    execution_record_id: str,
-) -> bool:
-    return True
+    return ExecuteTaskResult(
+        task_id=inp.task_id,
+        status="completed",
+        verification_failed=False,
+        cost_usd=0.0,
+        idempotent_replay=False,
+        failure_reason=None,
+        failure_origin=None,
+        failure_class=None,
+        failure_fingerprint=None,
+    )
 
 
 @activity.defn(name="evaluate_post_run")
@@ -168,7 +167,6 @@ _ACTIVITIES = [
     plan_fake,
     graph_fake,
     execute_fake,
-    persist_fake,
     evaluate_fake,
     followups_fake,
     plan_active_fake,
@@ -212,6 +210,7 @@ def _input(task_queue: str) -> MissionRunWorkflowInput:
         max_parallel_tasks=1,
         max_run_duration_seconds=43200,
         task_heartbeat_interval_seconds=20,
+        max_failure_digests=10,
     )
     return MissionRunWorkflowInput(
         mission_run_id=str(uuid.uuid4()),

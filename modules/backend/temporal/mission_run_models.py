@@ -5,8 +5,10 @@ plus the workflow, signal, update and activity I/O dataclasses. Every string
 field that carries an enum holds its lowercase value (contract 3.0.2).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,7 @@ class RunConfigSnapshot:
     max_parallel_tasks: int
     max_run_duration_seconds: int
     task_heartbeat_interval_seconds: int
+    max_failure_digests: int  # failures.supervisor.max_failure_digests (88.2.6)
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,8 @@ class MissionRunWorkflowState:
     session_id: str
     execution_record_id: str
     context_version_start: int
+    run_started_at: datetime  # workflow.now() after begin_mission_run (88.2.6)
+    excluded_wait_seconds: int  # human approval waits, excluded from the duration (88.2.6)
     pending_gate: PendingGate | None
     last_supervisor_action: str | None
     approved_seq: int
@@ -203,6 +208,69 @@ class SupervisorFollowupInput:
     wave_status: str
     wave_cost_usd: float
     failure_reason: str | None
+
+
+@dataclass(frozen=True)
+class TaskFailureDigest:
+    """One distinct failure of a wave or run; built only by digest_failures."""
+
+    task_id: str  # first task with this fingerprint
+    origin: str  # FailureOrigin value
+    failure_class: str  # FailureClass value
+    fingerprint: str
+    summary: str  # the first task's failure_reason
+    occurrences: int  # tasks sharing the fingerprint
+
+
+class FailureItem(Protocol):
+    """A failed task: ExecuteTaskResult and TaskRepository.failed_tasks_for_run rows qualify."""
+
+    @property
+    def task_id(self) -> str: ...
+    @property
+    def failure_origin(self) -> str | None: ...
+    @property
+    def failure_class(self) -> str | None: ...
+    @property
+    def failure_fingerprint(self) -> str | None: ...
+    @property
+    def failure_reason(self) -> str | None: ...
+
+
+_UNKNOWN = "unknown"  # FailureOrigin.UNKNOWN and FailureClass.UNKNOWN values
+
+
+def digest_failures(items: Iterable[FailureItem], cap: int) -> tuple[list[TaskFailureDigest], int]:
+    """Group failures by fingerprint in input order; keep the first ``cap`` groups.
+
+    The only grouping rule for failure digests (contracts 3.3.4, 3.8.6). Each
+    group keeps its first item's task_id and summary and counts its items.
+    Returns the kept digests and the number of groups dropped. Pure, so the
+    workflow sandbox may call it. A row without a classification (written
+    before 88.2.3b) groups under an empty fingerprint as unknown.
+    """
+    order: list[str] = []
+    first: dict[str, FailureItem] = {}
+    counts: dict[str, int] = {}
+    for item in items:
+        key = item.failure_fingerprint or ""
+        if key not in first:
+            order.append(key)
+            first[key] = item
+            counts[key] = 0
+        counts[key] += 1
+    digests = [
+        TaskFailureDigest(
+            task_id=first[key].task_id,
+            origin=first[key].failure_origin or _UNKNOWN,
+            failure_class=first[key].failure_class or _UNKNOWN,
+            fingerprint=key,
+            summary=first[key].failure_reason or "",
+            occurrences=counts[key],
+        )
+        for key in order[:cap]
+    ]
+    return digests, max(len(order) - cap, 0)
 
 
 @dataclass
@@ -296,13 +364,6 @@ class DirectorTurnInput:
     session_id: str
     prompt: str
     signal_workflow_id: str | None
-
-
-@dataclass
-class ExecuteWaveInput:
-    mission_run_id: str
-    session_id: str
-    execution_record_id: str
 
 
 @dataclass(frozen=True)

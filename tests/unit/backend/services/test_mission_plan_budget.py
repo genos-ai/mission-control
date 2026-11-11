@@ -6,12 +6,10 @@ the configured default cap, so it can be exhausted like any other ceiling.
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from modules.backend.core.exceptions import ValidationError
-from modules.backend.services import mission_plan_dispatch
 from modules.backend.services.mission_plan import remaining_plan_budget_usd
 from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
 from modules.backend.temporal.plan_refine_models import PlanRefineInput
@@ -34,41 +32,6 @@ def test_remaining_uses_ceiling_minus_spent():
 def test_remaining_null_ceiling_uses_default_minus_spent():
     with patch("modules.backend.services.mission_plan.get_default_budget_usd", return_value=5.0):
         assert remaining_plan_budget_usd(_plan(None, 2.0)) == 3.0
-
-
-@pytest.mark.parametrize("spent", [5.0, 6.0])
-async def test_dispatch_approved_rejects_exhausted_null_ceiling(spent: float):
-    plan = _plan(None, spent)
-    orchestrator = SimpleNamespace(
-        _repo=SimpleNamespace(get_by_id=AsyncMock(return_value=plan)),
-        _session=SimpleNamespace(),
-        _event_bus=MagicMock(),
-    )
-    run_repo = MagicMock()
-    run_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(plan_id=plan.id))
-
-    with (
-        patch(
-            "modules.backend.services.mission_plan.get_default_budget_usd",
-            return_value=5.0,
-        ),
-        patch.object(
-            mission_plan_dispatch.mission_plan_taskio,
-            "materialize_task_plan",
-            MagicMock(),
-        ),
-        patch.object(
-            mission_plan_dispatch, "MissionRunRepository", MagicMock(return_value=run_repo)
-        ),
-        pytest.raises(ValidationError, match="budget exhausted"),
-    ):
-        await mission_plan_dispatch.dispatch_approved(
-            orchestrator,
-            str(uuid.uuid4()),
-            str(uuid.uuid4()),
-            session_id=str(uuid.uuid4()),
-            execution_record_id=str(uuid.uuid4()),
-        )
 
 
 def test_plan_refine_input_budget_required():

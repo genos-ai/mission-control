@@ -93,17 +93,6 @@ export function useBackgroundTasks(missionId: string | undefined) {
   }
 }
 
-export function useStartExecution() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (executionId: string) =>
-      api.post<ExecutionRecordDetail>(`/executions/${executionId}/execute`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['executions'] })
-    },
-  })
-}
-
 export function useCancelExecution() {
   const qc = useQueryClient()
   return useMutation({

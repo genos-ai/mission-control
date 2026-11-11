@@ -1,8 +1,8 @@
 """
 Temporal Worker.
 
-Starts a Temporal Worker that executes AgentMissionWorkflow and its
-Activities. Run via CLI: python -m modules.backend.temporal.worker
+Starts a Temporal Worker that executes MissionRunWorkflow, the other
+platform workflows and their Activities. Run via CLI: python -m modules.backend.temporal.worker
 """
 
 import asyncio
@@ -10,11 +10,6 @@ import asyncio
 from temporalio.worker import Worker
 
 from modules.backend.core.logging import get_logger
-from modules.backend.temporal.activities import (
-    execute_mission,
-    persist_mission_outcome,
-    send_notification,
-)
 from modules.backend.temporal.chat_activities import execute_chat_turn, persist_user_message
 from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
@@ -86,7 +81,6 @@ from modules.backend.temporal.tool_fork_activities import (
     update_execution_record_status,
 )
 from modules.backend.temporal.tool_fork_workflow import DesignWorkflowWorkflow, RunWorkflowWorkflow
-from modules.backend.temporal.workflow import AgentMissionWorkflow
 
 logger = get_logger(__name__)
 
@@ -100,7 +94,6 @@ async def start_worker() -> None:
         client,
         task_queue=config.task_queue,
         workflows=[
-            AgentMissionWorkflow,
             ChatTurnWorkflow,
             MissionRunWorkflow,
             MissionScheduleTickWorkflow,
@@ -124,10 +117,6 @@ async def start_worker() -> None:
             ReconcilerWorkflow,
         ],
         activities=[
-            # Mission execution (Plan 16)
-            execute_mission,
-            persist_mission_outcome,
-            send_notification,
             # Chat turn (Plan 52 Phase B)
             persist_user_message,
             execute_chat_turn,

@@ -11,14 +11,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from modules.backend.core.exceptions import ValidationError
-from modules.backend.core.failure_classification import get_failure_classifier
-from modules.backend.core.utils import utc_now
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.task import TaskRepository
-from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
-from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 if TYPE_CHECKING:
@@ -106,19 +101,6 @@ def _failure_dict(task: Task) -> dict:
     }
 
 
-def materialize_task_plan(plan: MissionPlan, *, mission_run_id: str | None) -> TaskPlan:
-    """Materialize the Task rows in scope (see materialize_plan_dict) into a TaskPlan.
-
-    Raises ValidationError if no task is in scope.
-    """
-    plan_dict = materialize_plan_dict(plan, mission_run_id=mission_run_id)
-    if plan_dict is None:
-        raise ValidationError(
-            f"MissionPlan {plan.id} has no tasks yet. " f"Refine the plan before dispatching."
-        )
-    return TaskPlan.model_validate(plan_dict)
-
-
 async def resolve_run_scope(
     orchestrator: MissionPlanOrchestrator,
     mission_id: str,
@@ -200,7 +182,7 @@ async def load_prior_outputs(
 
     Reads plan_task_states where status is completed/skipped and
     result_summary is not null. result_summary contains the JSON-
-    serialized output_reference stored by write_back_task_results.
+    serialized output_reference stored by RunTaskExecutionService.record.
 
     Returns a {task_id: output_dict} mapping that seeds the dispatch
     loop's completed_outputs so from_upstream references resolve.
@@ -219,7 +201,7 @@ async def load_dependency_outputs(session: AsyncSession, task_id: str) -> dict[s
     (task_dependencies.depends_on_id), whatever run it completed in: explicit
     dependency edges are not bounded by run. A dependency that is not
     COMPLETED is absent even when it carries a result_summary from an
-    earlier run (write-back never clears it), and so is one without a
+    earlier run (recording never clears it), and so is one without a
     result_summary; a from_upstream reference to either fails.
     """
     dependencies = await TaskRepository(session).get_dependency_tasks(
@@ -239,90 +221,6 @@ def _decode_result_summaries(tasks: list[Task]) -> dict[str, dict]:
         except (TypeError, ValueError, json.JSONDecodeError):
             outputs[task.id] = {"result": task.result_summary}
     return outputs
-
-
-async def write_back_task_results(
-    orchestrator: MissionPlanOrchestrator,
-    plan: MissionPlan,
-    outcome,  # ExecutionOutcome
-    *,
-    dispatched_task_ids: set[str],
-) -> list[str]:
-    """Persist per-task outcomes back to Task rows.
-
-    For each task_result in the outcome, update the matching
-    plan_task_state row with status, execution linkage, result
-    summary, and failure reason. Tasks that were dispatched but
-    did not appear in outcome.task_results are marked FAILED
-    (a dispatcher bug or a mid-run abort).
-
-    Plan 42 §10.5 batch write-back — no modification to the
-    dispatch loop or persistence_bridge.
-    ``retry_count`` is not touched: ``MissionPlanService.retry_task`` is its
-    only increment (Plan 88 contracts 3.1.9).
-    """
-    # Map outcome status -> task lifecycle status
-    outcome_to_task: dict[OutcomeStatus, TaskStatus] = {
-        OutcomeStatus.SUCCESS: TaskStatus.COMPLETED,
-        OutcomeStatus.FAILED: TaskStatus.FAILED,
-        OutcomeStatus.TIMEOUT: TaskStatus.FAILED,
-        OutcomeStatus.SKIPPED: TaskStatus.SKIPPED,
-    }
-
-    seen_task_ids: set[str] = set()
-    updated_ids: list[str] = []
-
-    for task_result in outcome.task_results:
-        task_id = task_result.task_id
-        seen_task_ids.add(task_id)
-
-        task = await orchestrator._task_repo.get_by_id_or_none(task_id)
-        if task is None:
-            continue  # task not in DB (shouldn't happen)
-
-        new_status = outcome_to_task.get(
-            task_result.status,
-            TaskStatus.FAILED,
-        )
-        task.status = new_status
-        task.last_attempt_at = utc_now()
-
-        # Denormalized metrics
-        task.cost_usd = float(task_result.cost_usd or 0.0)
-        task.duration_seconds = float(task_result.duration_seconds or 0.0)
-
-        if new_status == TaskStatus.FAILED:
-            orchestrator._task_repo.set_failure(task, task_result.failure)
-        else:
-            output = task_result.output_reference
-            if output:
-                try:
-                    task.result_summary = json.dumps(output, default=str)
-                except (TypeError, ValueError):
-                    task.result_summary = str(output)
-            orchestrator._task_repo.set_failure(task, None)
-
-        updated_ids.append(task_id)
-
-    # Tasks dispatched but never reported: mark failed
-    _dispatchable = (TaskStatus.APPROVED, TaskStatus.QUEUED, TaskStatus.RUNNING)
-    for task_id in dispatched_task_ids - seen_task_ids:
-        task = await orchestrator._task_repo.get_by_id_or_none(task_id)
-        if task is None or task.status not in _dispatchable:
-            continue
-        task.status = TaskStatus.FAILED
-        orchestrator._task_repo.set_failure(
-            task,
-            get_failure_classifier().control(
-                FailureClass.RUN_ABORTED,
-                "Task was dispatched but did not report a result. "
-                "This usually indicates a mid-run abort or dispatcher bug.",
-            ),
-        )
-        updated_ids.append(task_id)
-
-    await orchestrator._session.flush()
-    return updated_ids
 
 
 async def resolve_task_execution_id(
@@ -352,88 +250,6 @@ async def resolve_task_execution_id(
     result = await orchestrator._session.execute(stmt)
     row = result.scalar_one_or_none()
     return row
-
-
-async def derive_subset_task_plan(
-    orchestrator: MissionPlanOrchestrator,
-    full_plan: TaskPlan,
-    approved_task_ids: set[str],
-    mission_plan_id: str,
-) -> TaskPlan:
-    """Filter a full TaskPlan to only the approved tasks.
-
-    Dependencies that already completed or were skipped in a prior
-    run are considered satisfied — they don't need to be in the
-    approved subset because they already ran.
-    """
-    filtered_tasks = [t for t in full_plan.tasks if t.task_id in approved_task_ids]
-
-    # Build the set of task_ids whose dependencies are already
-    # satisfied (completed, skipped — they ran in a prior wave).
-    # RUNNING tasks are NOT included — if a dependency is stuck in
-    # RUNNING (orphaned by a crash), the dispatch should fail so the
-    # user or crash recovery fixes it first.
-    all_states = await orchestrator._task_repo.get_by_plan_id(mission_plan_id)
-    satisfied_ids = {
-        t.id for t in all_states if t.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
-    }
-
-    # The "safe" set is: tasks being dispatched now + already done.
-    safe_ids = approved_task_ids | satisfied_ids
-
-    # Validate closure: every dependency must be safe
-    for task in filtered_tasks:
-        for dep_id in task.dependencies:
-            if dep_id not in safe_ids:
-                raise ValidationError(
-                    f"Task {task.task_id!r} depends on {dep_id!r}, "
-                    f"which is neither approved nor completed. "
-                    f"Approve the dependency first."
-                )
-
-    # Strip satisfied upstream dependencies from each task's dependency
-    # list. They completed in a prior run and are NOT in the subset plan —
-    # the DAG validator rejects references to task IDs not in the plan.
-    # Only keep cross-task dependencies within the current dispatch batch.
-    in_batch_ids = {t.task_id for t in filtered_tasks}
-    filtered_tasks = [
-        task.model_copy(
-            update={
-                "dependencies": [d for d in task.dependencies if d in in_batch_ids],
-            }
-        )
-        for task in filtered_tasks
-    ]
-
-    # Filter execution_hints.critical_path to only tasks in this subset —
-    # the plan validator rejects references to tasks not in the plan.
-    hints = full_plan.execution_hints
-    if hints and hasattr(hints, "critical_path") and hints.critical_path:
-        filtered_ids = {t.task_id for t in filtered_tasks}
-        hints = hints.model_copy(
-            update={
-                "critical_path": [tid for tid in hints.critical_path if tid in filtered_ids],
-            }
-        )
-
-    # Scale cost and duration proportionally to the subset size.
-    # A single-task subset should not inherit the full plan's $18
-    # estimate — it should get 1/N of the total (or a minimum of $2).
-    total_tasks = len(full_plan.tasks) or 1
-    subset_tasks = len(filtered_tasks) or 1
-    ratio = subset_tasks / total_tasks
-    subset_cost = max(full_plan.estimated_cost_usd * ratio, 2.0)
-    subset_duration = max(full_plan.estimated_duration_seconds * ratio, 60)
-
-    return TaskPlan(
-        version=full_plan.version,
-        mission_id=full_plan.mission_id,
-        summary=full_plan.summary,
-        estimated_cost_usd=round(subset_cost, 2),
-        estimated_duration_seconds=round(subset_duration),
-        tasks=filtered_tasks,
-        execution_hints=hints,
-    )
 
 
 def infer_task_type(plan: TaskPlan) -> str:

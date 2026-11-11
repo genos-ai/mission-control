@@ -47,7 +47,6 @@ async def get_plan_state(
         "budget_usd_ceiling": plan.budget_usd_ceiling,
         "total_spent_usd": plan.total_spent_usd,
         "supervisor_iteration_count": plan.supervisor_iteration_count,
-        "max_supervisor_iterations": plan.max_supervisor_iterations,
         "summary": plan.summary,
         "estimated_cost_usd": plan.estimated_cost_usd,
         "estimated_duration": plan.estimated_duration,

@@ -323,6 +323,11 @@ class MissionRunLifecycleMixin:
             mission_id, since=None, until=None, mission_run_id=run_id
         )
         run.cost_usd = cost
+        # Per-task execution (88.2.6) never completes the record through
+        # persist_mission_results, so the run's ledger total is written here.
+        record = await self._records.get_by_mission_run(run_id)
+        if record is not None:
+            record.total_cost_usd = cost
         await self.transition(run_id, status, reason, detail)
 
         await self._start_for_raced_approvals(mission_id, plan_id, gate_mode, owner_id)

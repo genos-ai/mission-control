@@ -61,7 +61,9 @@ from modules.backend.services.mission_run_lifecycle import MissionRunLifecycleMi
 from modules.backend.temporal.config_snapshots import build_run_config_snapshot
 from modules.backend.temporal.mission_run_models import (
     MissionRunWorkflowInput,
+    TaskFailureDigest,
     TasksApprovedSignal,
+    digest_failures,
 )
 from modules.backend.temporal.workflow_gateway import (
     TemporalWorkflowGateway,
@@ -342,6 +344,18 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
                 "Run not started for approved tasks",
                 extra={"mission_id": mission_id, "reason": str(err)},
             )
+
+    # ── Supervisor inputs (88.2.6) ───────────────────────────────────────
+
+    async def failure_digests(self, run_id: str, cap: int) -> tuple[list[TaskFailureDigest], int]:
+        """The run's FAILED tasks as at most ``cap`` digests, and the number dropped."""
+        return digest_failures(await self._tasks.failed_tasks_for_run(run_id), cap)
+
+    async def record_iteration(self, run_id: str, iteration_count: int) -> None:
+        """Set mission_runs.iteration_count; the caller commits."""
+        run = await self._runs.get_by_id(run_id)
+        run.iteration_count = iteration_count
+        await self._session.flush()
 
     # ── Transitions ──────────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ manually or via a separate integration test.
 Checks:
 
   [A] Rule #1: budget exhausted → ESCALATE
-  [B] Rule #2: max supervisor iterations → ESCALATE
+  [B] Rule #2 removed (Plan 88 88.2.6): no supervisor iteration cap
   [C] Rule #3: stall detection (3 consecutive zero-completion) → ESCALATE
   [D] Rule #4: approved tasks remaining → WAIT
   [E] Rule #5: proposed + autonomous → ADVANCE_APPROVED
@@ -28,7 +28,7 @@ Checks:
   [L] Gate mode interaction: interactive never auto-advances
   [M] Event types: SupervisorDecisionEmittedEvent registered
   [N] Schema: execution_records has completed_task_count + failed_task_count
-  [O] Schema: mission_plans has supervisor_iteration_count + max_supervisor_iterations
+  [O] Schema: mission_runs has iteration_count
 
 Usage:
     conda run -n mission-control python scripts/verify_autonomy_loop.py [-v]
@@ -86,7 +86,6 @@ class AutonomyLoopVerifier:
         proposed: int = 0,
         recent_outcomes: list[dict] | None = None,
         supervisor_iterations: int = 0,
-        max_iterations: int = 20,
         execution_record_id: str | None = None,
     ):
         """Build a synthetic GateContext for the reviewer."""
@@ -106,7 +105,6 @@ class AutonomyLoopVerifier:
                 "failed": 0,
                 "total_completed": 5,
                 "execution_record_id": execution_record_id,
-                "max_supervisor_iterations": max_iterations,
             },
             mission_brief="Test mission brief",
             supervisor_iteration_count=supervisor_iterations,
@@ -182,19 +180,6 @@ class AutonomyLoopVerifier:
             self._fail("Rule #1 budget exhausted", f"got {decision.action.value}")
             return
         self._pass("Rule #1: budget exhausted → ESCALATE")
-
-    async def check_rule_2_max_iterations(self) -> None:
-        """[B] Max supervisor iterations → ESCALATE."""
-        from modules.backend.agents.mission_control.gate_models import GateAction
-        from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
-
-        reviewer = AutonomousPostRunReviewer(session=None, gate_mode="autonomous")
-        ctx = self._build_context(supervisor_iterations=20, max_iterations=20)
-        decision = await reviewer.review(ctx)
-        if decision.action != GateAction.ESCALATE:
-            self._fail("Rule #2 max iterations", f"got {decision.action.value}")
-            return
-        self._pass("Rule #2: max supervisor iterations → ESCALATE")
 
     async def check_rule_3_stall(self) -> None:
         """[C] Stall detection → ESCALATE."""
@@ -438,8 +423,8 @@ class AutonomyLoopVerifier:
             return
         self._pass("Schema: execution_records has completed_task_count + failed_task_count")
 
-    async def check_schema_mission_plans(self) -> None:
-        """[O] mission_plans has supervisor counters."""
+    async def check_schema_mission_runs(self) -> None:
+        """[O] mission_runs has the supervisor iteration counter (Plan 88 step 88.2.6)."""
         from sqlalchemy import inspect as sa_inspect
 
         from modules.backend.core.database import get_async_session
@@ -447,17 +432,14 @@ class AutonomyLoopVerifier:
         async with get_async_session() as db:
             bind = await db.connection()
             raw = await bind.run_sync(
-                lambda conn: {c["name"] for c in sa_inspect(conn).get_columns("mission_plans")}
+                lambda conn: {c["name"] for c in sa_inspect(conn).get_columns("mission_runs")}
             )
 
-        needed = {"supervisor_iteration_count", "max_supervisor_iterations"}
-        missing = needed - raw
+        missing = {"iteration_count"} - raw
         if missing:
-            self._fail("mission_plans columns", f"missing: {missing}")
+            self._fail("mission_runs columns", f"missing: {missing}")
             return
-        self._pass(
-            "Schema: mission_plans has supervisor_iteration_count + max_supervisor_iterations"
-        )
+        self._pass("Schema: mission_runs has iteration_count")
 
     # ── Runner ───────────────────────────────────────────────────────
 
@@ -469,9 +451,8 @@ class AutonomyLoopVerifier:
         if not await self.setup():
             return False
 
-        print("\n[A-C] Circuit breakers")
+        print("\n[A, C] Circuit breakers")
         await self.check_rule_1_budget_exhausted()
-        await self.check_rule_2_max_iterations()
         await self.check_rule_3_stall()
 
         print("\n[D] Approved remaining")
@@ -502,7 +483,7 @@ class AutonomyLoopVerifier:
 
         print("\n[N-O] Schema columns")
         await self.check_schema_execution_records()
-        await self.check_schema_mission_plans()
+        await self.check_schema_mission_runs()
 
         print("\n" + "=" * 70)
         if self._failures:
@@ -510,7 +491,7 @@ class AutonomyLoopVerifier:
             for f in self._failures:
                 print(f"  {FAIL} {f}")
             return False
-        print("PASSED — all autonomy loop checks passed (15/15)")
+        print("PASSED — all autonomy loop checks passed (14/14)")
         return True
 
 

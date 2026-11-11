@@ -407,15 +407,10 @@ class TemporalSchema(_StrictBase):
     task_queue: str = "agent-missions"
     approval_timeout_seconds: int = 14400
     escalation_timeout_seconds: int = 86400
-    notification_timeout_seconds: int = 30
     # Workflow-level retry and timeout tuning
-    budget_timeout_multiplier_seconds: int = 120
     min_activity_timeout_seconds: int = 600
     persistence_timeout_seconds: int = 30
     persistence_retry_max_attempts: int = 3
-    execution_retry_max_attempts: int = 2
-    execution_retry_initial_interval_seconds: int = 5
-    execution_retry_max_interval_seconds: int = 60
     mission_run: MissionRunSchema = Field(...)
     reconciler: ReconcilerSchema = Field(...)
     system_schedules: dict[str, SystemScheduleSchema] = Field(...)
@@ -621,9 +616,9 @@ class GatePointsSchema(_StrictBase):
     post_task: GatePointSchema = Field(default_factory=GatePointSchema)
     verification_failed: GatePointSchema = Field(default_factory=GatePointSchema)
     post_layer: GatePointSchema = Field(default_factory=GatePointSchema)
-    # Plan 51 Phase C: post-run autonomy loop checkpoint. Called
-    # directly from MissionPlanService.dispatch_approved, not routed
-    # through ConfigurableGate. Config entry for discovery/enable flag.
+    # Plan 51 Phase C: post-run autonomy loop checkpoint. Called from
+    # the evaluate_post_run activity, not routed through
+    # ConfigurableGate. Config entry for discovery/enable flag.
     post_run: GatePointSchema = Field(default_factory=GatePointSchema)
 
 

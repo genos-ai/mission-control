@@ -44,6 +44,7 @@ from modules.backend.models.llm_call import LlmCall  # noqa: E402
 from modules.backend.models.mission import Mission  # noqa: E402
 from modules.backend.models.mission_event import MissionEvent  # noqa: E402
 from modules.backend.models.mission_plan import MissionPlan  # noqa: E402
+from modules.backend.models.mission_run import MissionRun  # noqa: E402
 from modules.backend.models.session import Session, SessionMessage  # noqa: E402
 from modules.backend.models.session_followup import SessionFollowup  # noqa: E402
 from modules.backend.models.task import Task  # noqa: E402
@@ -216,6 +217,24 @@ async def collect_mission_plan(db: AsyncSession, mission_id: str) -> MissionPlan
     return result.scalar_one_or_none()
 
 
+async def collect_mission_run(
+    db: AsyncSession, *, run_id: str | None, mission_id: str | None
+) -> MissionRun | None:
+    """The run by id; without one, the mission's latest run."""
+    if run_id:
+        return await db.get(MissionRun, run_id)
+    if not mission_id:
+        return None
+    stmt = (
+        select(MissionRun)
+        .where(MissionRun.mission_id == mission_id)
+        .order_by(MissionRun.sequence.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def collect_session_for_mission(db: AsyncSession, mission_id: str) -> Session | None:
     stmt = (
         select(Session)
@@ -375,7 +394,7 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
     return events
 
 
-def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
+def build_plan_metadata_events(plan: MissionPlan, run: MissionRun | None) -> list[TraceEvent]:
     """Emit a summary event for the MissionPlan itself."""
     events: list[TraceEvent] = []
     plan_status = plan.status.name if hasattr(plan.status, "name") else plan.status
@@ -393,7 +412,11 @@ def build_plan_metadata_events(plan: MissionPlan) -> list[TraceEvent]:
                 f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",  # noqa: E501
                 f"tasks ({len(tasks)}): {', '.join(task_ids[:10])}"
                 + ("..." if len(task_ids) > 10 else ""),
-                f"supervisor_iterations={plan.supervisor_iteration_count}/{plan.max_supervisor_iterations}",  # noqa: E501
+                (
+                    f"run #{run.sequence} iteration_count={run.iteration_count}"
+                    if run is not None
+                    else "iteration_count=n/a (no mission run)"
+                ),
             ],
         )
     )
@@ -998,7 +1021,8 @@ async def run_trace(
             # Mission plan + tasks (tasks are selectin-loaded via plan.tasks)
             plan = await collect_mission_plan(db, mission_id)
             if plan:
-                timeline.extend(build_plan_metadata_events(plan))
+                run = await collect_mission_run(db, run_id=None, mission_id=mission_id)
+                timeline.extend(build_plan_metadata_events(plan, run))
                 tasks = list(plan.tasks or [])
                 timeline.extend(build_task_events(tasks))
 
@@ -1053,7 +1077,8 @@ async def run_trace(
         plan = await collect_mission_plan(db, mission_id) if mission_id else None
         tasks: list[Task] = []
         if plan:
-            timeline.extend(build_plan_metadata_events(plan))
+            run = await collect_mission_run(db, run_id=record.mission_run_id, mission_id=mission_id)
+            timeline.extend(build_plan_metadata_events(plan, run))
             tasks = list(plan.tasks or [])
             timeline.extend(build_task_events(tasks))
 

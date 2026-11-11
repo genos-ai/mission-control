@@ -78,9 +78,9 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
         # AutonomousPostRunReviewer (LLM call) whose exception surface is
         # unbounded — must convert to a failed PostRunEvalResult rather
         # than raise.
-        from modules.backend.temporal.activities import _format_activity_error
+        from modules.backend.temporal.activity_helpers import format_activity_error
 
-        clean_msg = _format_activity_error(e)
+        clean_msg = format_activity_error(e)
         activity.logger.error(
             "evaluate_post_run failed",
             extra={
@@ -101,30 +101,36 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     """Inner logic for evaluate_post_run — separated for error wrapping.
 
-    The gate mode comes from the run; the brief, iteration cap, budget and
-    spend from the mission and its plan (Phase 4 moves the last three).
+    The gate mode and failures come from the run; the brief from the mission;
+    spend is the sum of the plan's task costs against the plan ceiling (88.4.6
+    replaces both with BudgetService.check_run).
     """
     from redis.asyncio import Redis as AsyncRedis
 
     from modules.backend.agents.adapters.supervisor_introspection import get_recent_run_outcomes
     from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
-    from modules.backend.core.config import get_redis_url
+    from modules.backend.core.config import get_app_config, get_redis_url
     from modules.backend.core.database import get_async_session
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.models.mission_plan import GateMode
     from modules.backend.models.task import TaskStatus
+    from modules.backend.services.execution_persistence import ExecutionPersistenceService
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.mission_plan import MissionPlanService, remaining_plan_budget_usd
+    from modules.backend.services.mission_plan import MissionPlanService, plan_budget_ceiling_usd
     from modules.backend.services.mission_run import MissionRunService
 
+    cap = get_app_config().failures.supervisor.max_failure_digests
     redis = AsyncRedis.from_url(get_redis_url())
     try:
         async with get_async_session() as db:
-            run = await MissionRunService(db, SessionEventBus(redis)).get_run(
-                input.mission_id, input.mission_run_id
-            )
+            runs = MissionRunService(db, SessionEventBus(redis))
+            run = await runs.get_run(input.mission_id, input.mission_run_id)
             gate_mode = GateMode(run.gate_mode)
             mission = await MissionService(db).get_mission(input.mission_id)
+            # The stall rule reads the record's counts; refresh them from the run's tasks.
+            await ExecutionPersistenceService(db).record_run_task_counts(
+                input.execution_record_id, input.mission_run_id
+            )
             recent = await get_recent_run_outcomes(
                 db,
                 mission_id=input.mission_id,
@@ -135,8 +141,9 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             svc = MissionPlanService(db)
             plan = await svc.get_or_create_plan(input.mission_id)
             task_states = await svc.get_tasks(plan.id)
-            total_spent_usd = plan.total_spent_usd
-            budget_usd = total_spent_usd + remaining_plan_budget_usd(plan)
+            total_cost_usd = await svc.total_task_cost_usd(plan.id)
+            budget_usd = plan_budget_ceiling_usd(plan)
+            digests, truncated = await runs.failure_digests(input.mission_run_id, cap)
 
             summary = {
                 "approved": sum(1 for s in task_states if s.status == TaskStatus.APPROVED),
@@ -146,14 +153,23 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
                 "failed": sum(1 for s in task_states if s.status == TaskStatus.FAILED),
                 "total_completed": sum(r.get("completed_task_count", 0) for r in recent),
                 "execution_record_id": input.execution_record_id,
-                "max_supervisor_iterations": plan.max_supervisor_iterations,
+                "failures": [
+                    {
+                        "origin": d.origin,
+                        "failure_class": d.failure_class,
+                        "summary": d.summary,
+                        "occurrences": d.occurrences,
+                    }
+                    for d in digests
+                ],
+                "failures_truncated": truncated,
             }
 
             context = GateContext(
                 gate_type="post_run",
                 mission_id=input.mission_id,
                 session_id=input.session_id,
-                total_cost_usd=total_spent_usd,
+                total_cost_usd=total_cost_usd,
                 budget_usd=budget_usd,
                 recent_run_outcomes=recent,
                 plan_task_summary=summary,
@@ -167,9 +183,8 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             )
             decision = await reviewer.review(context)
 
-            # Increment supervisor iteration counter
-            plan.supervisor_iteration_count += 1
-            await db.flush()
+            # supervisor_iteration_count is zero-based: this evaluation is iteration count + 1.
+            await runs.record_iteration(input.mission_run_id, input.supervisor_iteration_count + 1)
             await db.commit()
     finally:
         await redis.aclose()

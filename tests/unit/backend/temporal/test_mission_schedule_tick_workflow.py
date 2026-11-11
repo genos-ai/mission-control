@@ -97,6 +97,7 @@ def _run_input(run_id: str, task_queue: str) -> MissionRunWorkflowInput:
             max_parallel_tasks=1,
             max_run_duration_seconds=43200,
             task_heartbeat_interval_seconds=20,
+            max_failure_digests=10,
         ),
     )
 

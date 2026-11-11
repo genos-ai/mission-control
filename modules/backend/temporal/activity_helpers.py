@@ -47,6 +47,30 @@ async def heartbeat_every(interval_seconds: float, *, phase: str) -> AsyncIterat
         beat.cancel()
 
 
+def format_activity_error(exc: Exception) -> str:
+    """Extract a clean, actionable message from activity errors.
+
+    For LLM provider errors (ModelHTTPError, etc.), includes model name,
+    status code, and error detail. For all other exceptions, produces a
+    generic but informative message without the misleading "LLM" prefix.
+    """
+    model_name = getattr(exc, "model_name", None)
+    status_code = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+
+    if model_name and status_code:
+        detail = ""
+        if isinstance(body, dict):
+            error_info = body.get("error", {})
+            detail = error_info.get("message", "") if isinstance(error_info, dict) else str(body)
+        return (
+            f"LLM call failed: model={model_name}, status={status_code}"
+            f"{f' — {detail[:200]}' if detail else ''}"
+        )
+
+    return f"{type(exc).__name__}: {str(exc)[:250]}"
+
+
 async def emit_activity_error(
     mission_id: str,
     source: str,

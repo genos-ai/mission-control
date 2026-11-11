@@ -18,7 +18,3 @@ def _reconcile_names(rel_path: str) -> list[str]:
 
 def test_main_does_not_reference_reconcilers():
     assert _reconcile_names("modules/backend/main.py") == []
-
-
-def test_dispatch_does_not_reconcile():
-    assert _reconcile_names("modules/backend/services/mission_plan_dispatch.py") == []

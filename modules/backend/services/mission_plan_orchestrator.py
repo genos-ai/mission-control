@@ -2,18 +2,18 @@
 Mission Plan Orchestrator — orchestration layer for mission plan dispatch and refinement.
 
 Extracted from mission_plan.py (Plan 38 section 2.1) and converted from a mixin
-to a standalone BaseService subclass. Contains dispatch_approved, refine,
-apply_plan and their helper methods.
+to a standalone BaseService subclass. Contains refine, apply_plan and their
+helper methods.
 
 This is the documented service-agent boundary crossing point: methods here
 call into the agents layer (handle_mission, Planning Agent) and use
 MissionPlanService for state CRUD.
 
-Plan 84 Phase 5.2: dispatch and task-materialization internals live in the
-sibling mission_plan_dispatch.py and mission_plan_taskio.py modules. This file
-keeps the public API (refine, apply_plan, _persist_plan, _emit) plus a thin
-delegating method for dispatch_approved, which the Temporal execute_mission
-activity calls. Runs are started by MissionRunService (Plan 88 step 88.1.7).
+Plan 84 Phase 5.2: task-materialization internals live in the sibling
+mission_plan_taskio.py module. This file keeps the public API (refine,
+apply_plan, _persist_plan, _emit). Runs are started by MissionRunService
+(Plan 88 step 88.1.7) and their tasks run one activity each in
+MissionRunWorkflow (Plan 88 step 88.2.6).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.task_plan import TaskPlan
-from modules.backend.services import mission_plan_dispatch, mission_plan_taskio
+from modules.backend.services import mission_plan_taskio
 from modules.backend.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -372,27 +372,3 @@ class MissionPlanOrchestrator(BaseService):
             "task_count": len(candidate.tasks),
             "reconciliation": reconcile_stats,
         }
-
-    # ── Dispatch (delegates to mission_plan_dispatch.py) ────────────────
-
-    async def dispatch_approved(
-        self,
-        mission_run_id: str,
-        user_id: str,
-        *,
-        session_id: str,
-        execution_record_id: str,
-    ) -> dict:
-        """Dispatch the run's approved tasks as one wave.
-
-        Implementation lives in mission_plan_dispatch.py (Plan 84 Phase
-        5.2) — kept as a method here so external callers (Temporal's
-        execute_mission activity) keep the same call surface.
-        """
-        return await mission_plan_dispatch.dispatch_approved(
-            self,
-            mission_run_id,
-            user_id,
-            session_id=session_id,
-            execution_record_id=execution_record_id,
-        )

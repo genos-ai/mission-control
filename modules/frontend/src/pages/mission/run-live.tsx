@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import {
-  useExecution,
-  useCancelExecution,
-  useStartExecution,
-} from '@/hooks/use-executions'
+import { useExecution, useCancelExecution } from '@/hooks/use-executions'
 import { useRunStream } from '@/hooks/use-sse'
 import { useLiveRunStore } from '@/stores/live-run'
 import { useResearchStore } from '@/stores/research'
@@ -18,7 +14,6 @@ import { LiveSummary } from '@/components/live/live-summary'
 import { ResearchLiveView } from '@/components/research/research-live-view'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed_out'])
-const PENDING_STATUSES = new Set(['pending', 'created'])
 
 // TODO: Run detail page shows very little when navigating into an already-running
 //       or completed run. The UI is entirely SSE-driven — if you missed earlier
@@ -38,25 +33,10 @@ export default function RunLivePage() {
   const isTerminal = execution
     ? TERMINAL_STATUSES.has(execution.status)
     : false
-  const isPending = execution
-    ? PENDING_STATUSES.has(execution.status)
-    : false
 
   // SSE stream
   const sessionId = execution?.session_id ?? null
   const { events, connected } = useRunStream(isTerminal ? null : sessionId)
-
-  // Start execution once SSE is connected (only for pending runs)
-  const startExecution = useStartExecution()
-  const startedRef = useRef(false)
-  useEffect(() => {
-    if (connected && isPending && execution && !startedRef.current) {
-      startedRef.current = true
-      startExecution.mutate(execution.id, {
-        onError: (err) => toast.error(err.message),
-      })
-    }
-  }, [connected, isPending, execution]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store init + reset
   const init = useLiveRunStore((s) => s.init)

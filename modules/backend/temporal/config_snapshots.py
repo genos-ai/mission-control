@@ -74,6 +74,7 @@ def build_run_config_snapshot() -> RunConfigSnapshot:
         max_parallel_tasks=run.max_parallel_tasks,
         max_run_duration_seconds=run.max_run_duration_seconds,
         task_heartbeat_interval_seconds=run.task_heartbeat_interval_seconds,
+        max_failure_digests=config.failures.supervisor.max_failure_digests,
     )
     return dataclasses.replace(snap, config_hash=config_hash(snap))
 

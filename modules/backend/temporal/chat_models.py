@@ -2,7 +2,7 @@
 Chat turn workflow data models (Plan 52 Phase B).
 
 Serializable dataclasses for the ChatTurnWorkflow. Same convention
-as temporal/models.py — no ORM objects, JSON-safe, Temporal-friendly.
+as temporal/mission_run_models.py — no ORM objects, JSON-safe, Temporal-friendly.
 """
 
 from dataclasses import dataclass, field

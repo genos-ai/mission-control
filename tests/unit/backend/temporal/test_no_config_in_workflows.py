@@ -2,7 +2,7 @@
 
 Replay must not depend on the worker's config: every value a workflow needs
 arrives in its pinned input snapshot. Every *workflow*.py module under
-temporal/ is checked, except workflow.py, which 88.2.6 deletes.
+temporal/ is checked.
 """
 
 import ast
@@ -13,11 +13,7 @@ import pytest
 from modules.backend.core.config import find_project_root
 
 TEMPORAL_DIR = find_project_root() / Path("modules/backend/temporal")
-# AgentMissionWorkflow; 88.2.6 deletes the file and this constant.
-DELETED_IN_88_2_6 = frozenset({"workflow.py"})
-WORKFLOW_FILES = sorted(
-    p for p in TEMPORAL_DIR.glob("*workflow*.py") if p.name not in DELETED_IN_88_2_6
-)
+WORKFLOW_FILES = sorted(TEMPORAL_DIR.glob("*workflow*.py"))
 FORBIDDEN = frozenset({"get_app_config", "get_default_budget_usd", "get_settings"})
 
 

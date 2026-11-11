@@ -13,7 +13,7 @@ Two activities, not three: the agent turn persists its own response
 inline via handle(). This avoids a third Temporal dispatch round-trip
 that added ~100-200ms of latency per chat turn.
 
-Key rules (same as AgentMissionWorkflow):
+Key rules (same as MissionRunWorkflow):
 - Workflow code is deterministic — no I/O, no random, no wall-clock
   reads (use workflow.now() if workflow code ever needs the time)
 - All side effects happen in Activities

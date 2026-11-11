@@ -5,18 +5,15 @@ Read endpoints for querying execution history,
 decisions, and cost breakdowns. Write operations happen via
 the ExecutionPersistenceService called from the dispatch loop.
 
-Temporal endpoints (execute, approve, status) are gated by
-the temporal.enabled feature flag.
+Runs start only through MissionRunService; this module starts no
+execution. Cancel stops a record's Temporal workflow, then the record.
 """
-
-import uuid
 
 from fastapi import APIRouter
 
 from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
-    Idempotency,
     RequestId,
     require_mission_access,
     require_mission_operator,
@@ -187,167 +184,8 @@ async def get_execution_cost(
 
 
 # =============================================================================
-# Execution dispatch
+# Execution control
 # =============================================================================
-
-
-@router.post(
-    "/{execution_id}/execute",
-    response_model=ApiResponse,
-    summary="Execute an execution",
-)
-async def execute_execution(
-    execution_id: str,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-    idempotency: Idempotency,
-) -> ApiResponse:
-    """Start an execution — returns immediately, runs in background.
-
-    The execution dispatches asynchronously. Monitor progress via
-    SSE at GET /streams/runs/{session_id}.
-
-    Supports Idempotency-Key header — safe to retry on network timeout.
-    """
-    # Return cached response if this execution was already started
-    if idempotency:
-        cached = await idempotency.get_cached_response()
-        if cached:
-            return ApiResponse(**cached)
-
-    import asyncio
-
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
-    service = ExecutionPersistenceService(db)
-
-    record = await service.get_execution(execution_id)
-    if not record:
-        raise NotFoundError(f"Execution '{execution_id}' not found")
-
-    await _require_execution_access(db, record.mission_id, current_user)
-
-    if config.temporal.enabled:
-        from modules.backend.core.config import get_default_budget_usd
-        from modules.backend.core.exceptions import ApplicationError
-        from modules.backend.temporal.client import get_temporal_client
-        from modules.backend.temporal.models import MissionWorkflowInput
-        from modules.backend.temporal.workflow import AgentMissionWorkflow
-
-        if not record.mission_id:
-            raise ApplicationError(f"Execution record '{execution_id}' has no mission_id")
-        if not record.session_id:
-            raise ApplicationError(f"Execution record '{execution_id}' has no session_id")
-
-        # Stamp the workflow id so the reconciler can resolve liveness;
-        # the request-scoped session commits it.
-        record.temporal_workflow_id = f"execution-{execution_id}"
-        client = await get_temporal_client()
-        handle = await client.start_workflow(
-            AgentMissionWorkflow.run,
-            MissionWorkflowInput(
-                mission_run_id=execution_id,
-                session_id=record.session_id,
-                mission_brief=record.objective_statement or "",
-                roster_name=record.roster_name or "default",
-                mission_budget_usd=get_default_budget_usd(),
-                mission_id=record.mission_id,
-                approval_timeout_seconds=config.temporal.approval_timeout_seconds,
-                escalation_timeout_seconds=config.temporal.escalation_timeout_seconds,
-                notification_timeout_seconds=config.temporal.notification_timeout_seconds,
-            ),
-            id=f"execution-{execution_id}",
-            task_queue=config.temporal.task_queue,
-        )
-        result = {
-            "workflow_id": handle.id,
-            "execution_id": execution_id,
-            "status": "started",
-        }
-        response = ApiResponse(
-            success=True,
-            data=result,
-            metadata={"request_id": request_id},
-        )
-        if idempotency:
-            await idempotency.cache_response(response.model_dump())
-        return response
-
-    # Non-Temporal: fire-and-forget via handle_mission (Plan 71)
-
-    _bg_mission_id = record.mission_id
-
-    async def _run_in_background(exec_id: str) -> None:
-        from redis.asyncio import Redis as AsyncRedis
-
-        from modules.backend.agents.mission_control.mission_dispatch import handle_mission
-        from modules.backend.core.config import get_default_budget_usd, get_redis_url
-        from modules.backend.core.database import get_async_session
-        from modules.backend.services.session import SessionService
-
-        try:
-            redis = AsyncRedis.from_url(get_redis_url())
-            from modules.backend.events.bus import SessionEventBus
-
-            event_bus = SessionEventBus(redis, mission_id=_bg_mission_id)
-
-            async with get_async_session() as bg_db:
-                svc = ExecutionPersistenceService(bg_db)
-                rec = await svc.get_execution(exec_id)
-                if not rec:
-                    return
-
-                session_svc = SessionService(bg_db)
-                await handle_mission(
-                    execution_label=f"mission-{rec.session_id}",
-                    mission_brief=rec.objective_statement or "",
-                    session_service=session_svc,
-                    event_bus=event_bus,
-                    roster_name=rec.roster_name or "default",
-                    mission_budget_usd=get_default_budget_usd(),
-                    session_id=rec.session_id,
-                    mission_id=rec.mission_id,
-                    db_session=bg_db,
-                    execution_record_id=exec_id,
-                )
-                await bg_db.commit()
-        except Exception as exc:
-            logger.exception("Background execution failed", extra={"execution_id": exec_id})
-            try:
-                from modules.backend.events.types import SystemEvent
-
-                await event_bus.publish(
-                    SystemEvent(
-                        session_id=uuid.uuid4(),
-                        source="executions_endpoint:background_task",
-                        level="error",
-                        message=f"Background execution failed: {exc}",
-                        mission_id=_bg_mission_id,
-                    )
-                )
-            except Exception:
-                # best-effort — this IS the event-emission path; there is
-                # nowhere further to escalate to.
-                logger.warning(
-                    "Failed to emit background-execution-failure SystemEvent", exc_info=True
-                )
-
-    asyncio.create_task(_run_in_background(execution_id))
-
-    response = ApiResponse(
-        success=True,
-        data={
-            "id": str(record.id),
-            "status": "running",
-            "objective": record.objective_statement,
-        },
-        metadata={"request_id": request_id},
-    )
-    if idempotency:
-        await idempotency.cache_response(response.model_dump())
-    return response
 
 
 @router.post(
@@ -387,70 +225,6 @@ async def cancel_execution(
     )
 
 
-@router.post(
-    "/{execution_id}/approve",
-    response_model=ApiResponse,
-    summary="Submit approval for an execution",
-)
-async def submit_approval(
-    execution_id: str,
-    decision: str,
-    db: DbSession,
-    current_user: CurrentUser,
-    request_id: RequestId,
-    reason: str | None = None,
-) -> ApiResponse:
-    """Send an approval decision to a waiting Temporal workflow."""
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
-    if not config.temporal.enabled:
-        return ApiResponse(
-            success=False,
-            data={
-                "error": "temporal_not_enabled",
-                "message": "Approval signals require Temporal.",
-            },
-            metadata={"request_id": request_id},
-        )
-
-    # Authorize against the execution's mission before signalling.
-    service = ExecutionPersistenceService(db)
-    record = await service.get_execution(execution_id)
-    if not record:
-        raise NotFoundError(f"Execution '{execution_id}' not found")
-    await _require_execution_access(db, record.mission_id, current_user)
-
-    from modules.backend.temporal.client import get_temporal_client
-    from modules.backend.temporal.models import ApprovalDecision
-    from modules.backend.temporal.workflow import AgentMissionWorkflow
-
-    client = await get_temporal_client()
-    handle = client.get_workflow_handle(f"execution-{execution_id}")
-
-    await handle.signal(
-        AgentMissionWorkflow.submit_approval,
-        ApprovalDecision(
-            decision=decision,
-            responder_type="human",
-            # Derived from the authenticated user — never trust a
-            # client-supplied responder identity.
-            responder_id=str(current_user.id),
-            reason=reason,
-        ),
-    )
-
-    return ApiResponse(
-        success=True,
-        data={
-            "execution_id": execution_id,
-            "decision": decision,
-            "status": "signal_sent",
-        },
-        metadata={"request_id": request_id},
-    )
-
-
 @router.get(
     "/{execution_id}/status",
     response_model=ApiResponse,
@@ -462,43 +236,12 @@ async def get_execution_status(
     current_user: CurrentUser,
     request_id: RequestId,
 ) -> ApiResponse:
-    """Get execution status — Temporal Query or DB fallback."""
-    from modules.backend.core.config import get_app_config
-
-    config = get_app_config()
-
+    """Get execution status from the database."""
     # Authorize against the execution's mission first.
     record = await ExecutionPersistenceService(db).get_execution(execution_id)
     if not record:
         raise NotFoundError(f"Execution '{execution_id}' not found")
     await _require_execution_access(db, record.mission_id, current_user)
-
-    if config.temporal.enabled:
-        try:
-            from modules.backend.temporal.client import get_temporal_client
-            from modules.backend.temporal.workflow import AgentMissionWorkflow
-
-            client = await get_temporal_client()
-            handle = client.get_workflow_handle(f"execution-{execution_id}")
-            status = await handle.query(AgentMissionWorkflow.get_status)
-            return ApiResponse(
-                success=True,
-                data={
-                    "source": "temporal",
-                    "execution_id": status.mission_id,
-                    "workflow_status": status.workflow_status,
-                    "execution_status": status.mission_status,
-                    "total_cost_usd": status.total_cost_usd,
-                    "waiting_for_approval": status.waiting_for_approval,
-                    "error": status.error,
-                },
-                metadata={"request_id": request_id},
-            )
-        except Exception as e:
-            logger.debug(
-                "Temporal status query failed, falling back to DB",
-                extra={"execution_id": execution_id, "error": str(e)},
-            )
 
     service = ExecutionPersistenceService(db)
     try:

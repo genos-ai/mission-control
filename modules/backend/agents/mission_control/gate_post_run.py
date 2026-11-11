@@ -3,9 +3,9 @@ Autonomous Post-Run Gate Reviewer (Plan 51 Phase C).
 
 Implements the 8-branch decision matrix from Plan 51 §4.2 as a
 ``GateReviewer`` for the ``post_run`` gate checkpoint. Called by
-``MissionPlanService.dispatch_approved`` after every completed
-wave to decide: wait, advance, refine, propose-complete, or
-escalate.
+the ``evaluate_post_run`` activity after every executed wave of a
+MissionRunWorkflow to decide: wait, advance, refine,
+propose-complete, or escalate.
 
 Architecture (Plan 51 §2.3): **rules first, Haiku fallback.**
 Seven of eight branches are deterministic Python — no LLM call,
@@ -13,11 +13,12 @@ no token cost, no latency. Only branch #8 (plan exhausted +
 ambiguous classification) consults Haiku, and Phase D implements
 that branch. Phase C stubs it as ``ESCALATE`` (safe default).
 
-Four circuit breakers (§4.6) fire before any rule evaluation:
+Three circuit breakers (§4.6) fire before any rule evaluation:
 1. Budget exhausted
-2. Max supervisor iterations
 3. Stall (N consecutive zero-completion waves)
 4. Budget headroom (proactive — estimated next-wave cost > remaining)
+Breaker #2, the supervisor iteration cap, was removed by Plan 88 step
+88.2.6; the numbers are kept because audit rows record them.
 
 Idempotency (§4.6a): the reviewer queries ``execution_decisions``
 for an existing ``post_run_supervisor`` row matching the current
@@ -133,17 +134,6 @@ class AutonomousPostRunReviewer:
                 f"({context.budget_usd:.4f}).",
                 execution_record_id=execution_record_id,
                 rule=1,
-            )
-
-        # Breaker #2: Max supervisor iterations
-        max_iter = context.plan_task_summary.get("max_supervisor_iterations", 20)
-        if context.supervisor_iteration_count >= max_iter:
-            return self._decide(
-                GateAction.ESCALATE,
-                f"Supervisor iteration limit reached "
-                f"({context.supervisor_iteration_count}/{max_iter}).",
-                execution_record_id=execution_record_id,
-                rule=2,
             )
 
         # Breaker #3: Stall detection

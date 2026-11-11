@@ -182,7 +182,7 @@ def check_datetime_violations(path: Path, rel: str) -> list[Violation]:
     if not rel.startswith("modules/"):
         return []
     # Exclude files that reference these patterns in docstrings/comments
-    skip_files = ("compliance.py", "temporal/workflow.py")
+    skip_files = ("compliance.py",)
     if any(s in rel for s in skip_files):
         return []
     violations = []

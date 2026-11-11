@@ -70,7 +70,7 @@ def test_run_snapshot_hash_changes_with_config(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         config_snapshots,
         "get_app_config",
-        lambda: SimpleNamespace(temporal=temporal, gate=real.gate),
+        lambda: SimpleNamespace(temporal=temporal, gate=real.gate, failures=real.failures),
     )
     after = build_run_config_snapshot()
     assert (
@@ -83,6 +83,7 @@ def test_run_snapshot_carries_duration_and_heartbeat() -> None:
     snap = build_run_config_snapshot()
     assert snap.max_run_duration_seconds == 43200
     assert snap.task_heartbeat_interval_seconds == 20
+    assert snap.max_failure_digests == 10
 
 
 async def test_snapshot_round_trips_temporal_converter() -> None:

@@ -36,7 +36,6 @@ def _context(
     approved: int = 0,
     proposed: int = 0,
     total_completed: int = 0,
-    max_supervisor_iterations: int = 20,
     execution_record_id: str | None = None,
     mission_brief: str | None = None,
 ) -> GateContext:
@@ -45,7 +44,6 @@ def _context(
         "approved": approved,
         "proposed": proposed,
         "total_completed": total_completed,
-        "max_supervisor_iterations": max_supervisor_iterations,
     }
     if execution_record_id:
         summary["execution_record_id"] = execution_record_id
@@ -100,33 +98,19 @@ class TestBreakerBudgetExhausted:
 
 
 # ---------------------------------------------------------------------------
-# A.2.2 — Circuit breaker #2: Max supervisor iterations
+# A.2.2 — No supervisor iteration breaker (Plan 88 step 88.2.6)
 # ---------------------------------------------------------------------------
 
 
-class TestBreakerMaxIterations:
-    @pytest.mark.asyncio
-    async def test_max_iterations_reached(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(supervisor_iteration_count=20, max_supervisor_iterations=20)
+@pytest.mark.asyncio
+async def test_no_iteration_breaker(db_session: AsyncSession):
+    reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
+    ctx = _context(supervisor_iteration_count=500, proposed=1)
 
-        decision = await reviewer.review(ctx)
+    decision = await reviewer.review(ctx)
 
-        assert decision.action == GateAction.ESCALATE
-        assert decision.rule == 2
-
-    @pytest.mark.asyncio
-    async def test_below_max_iterations(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(
-            supervisor_iteration_count=5,
-            max_supervisor_iterations=20,
-            proposed=1,
-        )
-
-        decision = await reviewer.review(ctx)
-
-        assert decision.rule != 2
+    assert decision.action == GateAction.ADVANCE_APPROVED
+    assert decision.rule != 2
 
 
 # ---------------------------------------------------------------------------
@@ -559,12 +543,13 @@ class TestCachedDecision:
 
         second = await reviewer.review(
             _context(
+                budget_usd=1.0,
+                total_cost_usd=1.0,
                 supervisor_iteration_count=2,
-                max_supervisor_iterations=2,
                 execution_record_id=record_id,
             )
         )
-        assert (second.action, second.rule) == (GateAction.ESCALATE, 2)
+        assert (second.action, second.rule) == (GateAction.ESCALATE, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +563,6 @@ class TestReasonIsHumanText:
         ("kwargs", "rule"),
         [
             ({"budget_usd": 1.0, "total_cost_usd": 1.0}, 1),
-            ({"supervisor_iteration_count": 20}, 2),
             ({"approved": 0, "proposed": 0, "recent_run_outcomes": []}, "fallthrough"),
         ],
     )

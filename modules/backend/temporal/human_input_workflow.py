@@ -1,7 +1,7 @@
 """
 HumanInputWorkflow — Temporal-native durable pause (Plan 45 Phase 4).
 
-Uses the same Signal + wait_condition pattern as AgentMissionWorkflow.
+Uses the Signal + wait_condition pattern (MissionRunWorkflow uses it too).
 Starts a lightweight workflow that:
 1. Records the pending request + notifies the human (activity)
 2. Waits for a Signal (or timeout) — Temporal-durable across restarts

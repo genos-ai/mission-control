@@ -35,6 +35,16 @@ class TaskGroup(NamedTuple):
     latest_updated_at: datetime
 
 
+class FailedTaskRow(NamedTuple):
+    """A FAILED task's failure record, enum fields as lowercase values (a digest_failures item)."""
+
+    task_id: str
+    failure_origin: str | None
+    failure_class: str | None
+    failure_fingerprint: str | None
+    failure_reason: str | None
+
+
 class TaskRepository(BaseRepository[Task]):
     """Repository for Task CRUD + dependency management."""
 
@@ -79,6 +89,36 @@ class TaskRepository(BaseRepository[Task]):
             query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def failed_tasks_for_run(self, run_id: str) -> list[FailedTaskRow]:
+        """The run's FAILED tasks ordered by last_attempt_at, id (Plan 88 step 88.2.6)."""
+        query = (
+            select(
+                Task.id,
+                Task.failure_origin,
+                Task.failure_class,
+                Task.failure_fingerprint,
+                Task.failure_reason,
+            )
+            .where(Task.mission_run_id == run_id, Task.status == TaskStatus.FAILED)
+            .order_by(Task.last_attempt_at, Task.id)
+        )
+        result = await self.session.execute(query)
+        return [
+            FailedTaskRow(
+                task_id=row.id,
+                failure_origin=row.failure_origin.value if row.failure_origin else None,
+                failure_class=row.failure_class.value if row.failure_class else None,
+                failure_fingerprint=row.failure_fingerprint,
+                failure_reason=row.failure_reason,
+            )
+            for row in result.all()
+        ]
+
+    async def sum_cost_by_plan(self, plan_id: str) -> float:
+        """Sum of tasks.cost_usd over the plan's tasks; 0.0 when none."""
+        query = select(func.coalesce(func.sum(Task.cost_usd), 0)).where(Task.plan_id == plan_id)
+        return float((await self.session.execute(query)).scalar_one())
 
     async def adopt_backlog(
         self,
