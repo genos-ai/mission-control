@@ -47,6 +47,7 @@ with workflow.unsafe.imports_passed_through():
         MissionRunWorkflowState,
         MissionRunWorkflowStatus,
         PlanRunInput,
+        RefinementOutcome,
         ResolveTaskInput,
         RunTaskGraph,
         SupervisorFollowupInput,
@@ -113,6 +114,7 @@ class MissionRunWorkflow:
         self._state: MissionRunWorkflowState | None = st
         self._phase = "planning"
         self._refinement_done = False
+        self._refinement_outcome: RefinementOutcome | None = None
         self._approved_seq = st.approved_seq if st is not None else 0
         self._pause_requested = st.pause_requested if st is not None else False
         self._paused = st.paused if st is not None else False
@@ -129,13 +131,16 @@ class MissionRunWorkflow:
         self._approved_seq += 1
 
     @workflow.signal
-    def refinement_complete(self) -> None:
+    def refinement_complete(self, outcome: RefinementOutcome | None = None) -> None:
         """Signal from ChatTurnWorkflow when the Director's refine turn ends.
 
         It means the turn ended, not that it refined: a turn that errored or
-        never called refine_plan signals too. _refine only wakes on it and
-        fetch_run_task_graph decides; no new tasks fails the run.
+        never called refine_plan signals too. refine_plan waits for its
+        refinement to commit or fail while a run is active, so the turn ends
+        after it. _refine only wakes on this and fetch_run_task_graph
+        decides; no new tasks fails the run with the outcome as the cause.
         """
+        self._refinement_outcome = outcome
         self._refinement_done = True
 
     @workflow.query
@@ -405,6 +410,7 @@ class MissionRunWorkflow:
         inp = self._input
         c = inp.config
         self._refinement_done = False
+        self._refinement_outcome = None
         failures = _render_failures(self._wave_failures, self._wave_failures_truncated)
         await self._director_turn(
             REFINE_PROMPT.format(iteration=self._state.iteration, failures=failures),
@@ -425,8 +431,21 @@ class MissionRunWorkflow:
         if after.proposed > 0:
             await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
         if after.proposed == 0 and after.approved == 0:
-            return await self._end_run("failed", "supervisor_escalated", "refine produced no tasks")
+            detail = f"refine produced no tasks: {self._refine_cause()}"
+            return await self._end_run("failed", "supervisor_escalated", detail[:500])
         return None
+
+    def _refine_cause(self) -> str:
+        """Why the refine turn added no tasks, from the refinement_complete payload."""
+        if not self._refinement_done:
+            seconds = self._input.config.refine_wait_seconds
+            return f"no refinement_complete signal within {seconds}s"
+        outcome = self._refinement_outcome
+        if outcome is None:
+            return "Director turn ended without an outcome"
+        if outcome.error:
+            return outcome.error
+        return f"Director turn ended without new tasks; Director replied: {outcome.reply}"
 
     async def _director_turn(self, prompt: str, signal_workflow_id: str | None) -> None:
         inp = self._input

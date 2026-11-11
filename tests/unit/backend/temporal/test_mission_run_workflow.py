@@ -34,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
         MissionRunWorkflowStatus,
         PlanRunInput,
         PlanRunResult,
+        RefinementOutcome,
         RetrySnapshot,
         RunConfigSnapshot,
         RunTaskGraph,
@@ -370,7 +371,9 @@ async def test_refine_without_new_tasks_escalates(env: WorkflowEnvironment):
         assert await handle.result() == "failed"
 
     _ends(("failed", "supervisor_escalated"))
-    assert _fake.finalised[0].detail == "refine produced no tasks"
+    assert _fake.finalised[0].detail == (
+        "refine produced no tasks: no refinement_complete signal within 5s"
+    )
 
 
 async def test_refine_turn_signalled_without_new_tasks_fails(env: WorkflowEnvironment):
@@ -386,7 +389,31 @@ async def test_refine_turn_signalled_without_new_tasks_fails(env: WorkflowEnviro
             assert await asyncio.wait_for(handle.result(), timeout=4) == "failed"
 
     _ends(("failed", "supervisor_escalated"))
-    assert _fake.finalised[0].detail == "refine produced no tasks"
+    assert _fake.finalised[0].detail == (
+        "refine produced no tasks: Director turn ended without an outcome"
+    )
+
+
+async def test_refine_turn_outcome_is_the_end_detail_cause(env: WorkflowEnvironment):
+    # The refinement_complete payload carries why the turn added nothing:
+    # the turn's error, else the Director's reply (which relays a failed refine).
+    _fake.graphs = [_graph(0, 1), _graph(0, 0)]
+    _fake.actions = ["advance_refine"]
+
+    with env.auto_time_skipping_disabled():
+        async with _started(env) as handle:
+            await asyncio.wait_for(_fake.director_started.wait(), timeout=10)
+            await handle.signal(
+                MissionRunWorkflow.refinement_complete,
+                RefinementOutcome(error=None, reply="Plan refinement failed: planner timed out"),
+            )
+            assert await asyncio.wait_for(handle.result(), timeout=4) == "failed"
+
+    _ends(("failed", "supervisor_escalated"))
+    assert _fake.finalised[0].detail == (
+        "refine produced no tasks: Director turn ended without new tasks; "
+        "Director replied: Plan refinement failed: planner timed out"
+    )
 
 
 async def test_cancel_finalises_cancelled(env: WorkflowEnvironment):

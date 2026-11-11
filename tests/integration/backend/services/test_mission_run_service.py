@@ -372,6 +372,34 @@ async def test_reconcile_does_not_cancel_other_runs_tasks(
     assert created.mission_run_id == second.id
 
 
+async def test_refine_committing_after_its_run_ended_goes_to_backlog(
+    db_session_factory, gateway, owner
+) -> None:
+    # Failure drill B: the refine resolved its run while the run was active,
+    # the run ended during planning, then the refine committed. Its task must
+    # go to the backlog (3.5.1), not stay on the ended run where no run adopts it.
+    user, mission, plan = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _end(db_session_factory, run.id)
+    new_task_id = "00000000-0000-4000-8000-0000000000bb"
+    new_plan = TaskPlan(
+        mission_id=mission.id,
+        tasks=[TaskDefinition(task_id=new_task_id, agent=AGENT, description="New task")],
+    )
+
+    async with db_session_factory() as session:
+        orchestrator = MissionPlanOrchestrator(session, event_bus=RecordingBus())
+        loaded = await orchestrator._repo.get_by_id(plan.id)
+        await mission_plan_taskio.reconcile_tasks(
+            orchestrator, loaded, new_plan, mission_run_id=run.id
+        )
+        await session.commit()
+
+    (created,) = await _tasks(db_session_factory, new_task_id)
+    assert created.status == TaskStatus.PROPOSED
+    assert created.mission_run_id is None
+
+
 # ── cancel ────────────────────────────────────────────────────────────────
 
 

@@ -82,9 +82,12 @@ class MissionRunLifecycleMixin:
     async def begin(self, run_id: str) -> BeginRunResult:
         """PENDING to RUNNING with a session, one ExecutionRecord and adopted backlog.
 
-        Idempotent: a RUNNING run returns its stored values.
+        Idempotent: a RUNNING run returns its stored values. The run row is
+        locked before the backlog is adopted, in the order finalise and a
+        refine's reconcile use.
         """
-        run = await self._runs.get_by_id(run_id)
+        found = await self._runs.get_by_id(run_id)
+        run = await self._runs.lock_current(found.mission_id, run_id)
         if run.status == MissionRunStatus.RUNNING:
             record = await self._records.get_by_mission_run(run_id)
             return BeginRunResult(
@@ -287,8 +290,11 @@ class MissionRunLifecycleMixin:
         """End the run: fail in-flight tasks, release the rest, record counts and cost.
 
         After commit, a raced approval on an AUTONOMOUS plan starts the next run.
+        The run row is locked first, so a concurrent refine either commits its
+        new tasks before they are released or sees the run ended.
         """
-        run = await self._runs.get_by_id(run_id)
+        found = await self._runs.get_by_id(run_id)
+        run = await self._runs.lock_current(found.mission_id, run_id)
         mission = await self._missions.get_by_id(run.mission_id)
         plan = await self._plans.get_by_id(run.plan_id)
         owner_id = mission.owner_id

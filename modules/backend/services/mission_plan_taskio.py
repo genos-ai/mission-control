@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from modules.backend.models.mission_run import ACTIVE_RUN_STATUSES, MissionRunStatus
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.task import TaskRepository
@@ -117,6 +118,24 @@ async def resolve_run_scope(
     return active.id if active is not None else None
 
 
+async def _joinable_run(
+    orchestrator: MissionPlanOrchestrator, mission_id: str, run_id: str | None
+) -> str | None:
+    """The run new tasks join: run_id while it is still active, else None (the backlog).
+
+    Locks the run row until the caller commits. finalise and begin take the
+    same lock before they touch the run's tasks, so a refine that commits
+    after its run ended puts its new tasks in the backlog (contract 3.5.1)
+    instead of on a terminal run, where no later run would adopt them.
+    """
+    if run_id is None:
+        return None
+    run = await MissionRunRepository(orchestrator._session).lock_current(mission_id, run_id)
+    if run is None or MissionRunStatus(run.status) not in ACTIVE_RUN_STATUSES:
+        return None
+    return run_id
+
+
 async def reconcile_tasks(
     orchestrator: MissionPlanOrchestrator,
     plan: MissionPlan,
@@ -127,8 +146,9 @@ async def reconcile_tasks(
     """Reconcile the run's and the backlog's Task rows against a new TaskPlan.
 
     Delegates to TaskRepository.reconcile_tasks for the core logic; tasks of
-    other runs are never touched, and new tasks join the run. When
-    mission_run_id is None the mission's active run, if any, is the scope.
+    other runs are never touched, and new tasks join the run while it is
+    active, else the backlog. When mission_run_id is None the mission's
+    active run, if any, is the scope.
     Also rebuilds task_dependencies from the new plan's dependency edges.
     """
     mission_run_id = await resolve_run_scope(orchestrator, plan.mission_id, mission_run_id)
@@ -157,7 +177,7 @@ async def reconcile_tasks(
         plan.mission_id,
         new_task_defs,
         scope_run_id=mission_run_id,
-        assign_run_id=mission_run_id,
+        assign_run_id=await _joinable_run(orchestrator, plan.mission_id, mission_run_id),
     )
 
     # Rebuild dependency graph using task IDs we already know

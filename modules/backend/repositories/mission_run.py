@@ -43,6 +43,16 @@ class MissionRunRepository(BaseRepository[MissionRun]):
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def lock_current(self, mission_id: str, run_id: str) -> MissionRun | None:
+        """As lock_for_mission, reloading the row so a status read under the lock is current."""
+        stmt = (
+            select(MissionRun)
+            .where(MissionRun.id == run_id, MissionRun.mission_id == mission_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def get_active_for_mission(self, mission_id: str) -> MissionRun | None:
         """The mission's non-terminal run; uq_mission_runs_one_active allows at most one."""
         stmt = select(MissionRun).where(

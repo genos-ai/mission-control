@@ -374,6 +374,21 @@ class DirectorTurnInput:
 
 
 @dataclass(frozen=True)
+class RefinementOutcome:
+    """Payload of the refinement_complete signal: how the Director's refine turn ended.
+
+    The turn ends only after any refinement it started for the run has
+    committed or failed (refine_plan waits while a run is active), so the
+    run's next graph read sees the refined tasks. ``error`` is set when the
+    turn itself failed; ``reply`` is the Director's final message, which
+    reports a failed refinement in its own words.
+    """
+
+    error: str | None
+    reply: str
+
+
+@dataclass(frozen=True)
 class ExecuteTaskInput:
     mission_run_id: str
     task_id: str

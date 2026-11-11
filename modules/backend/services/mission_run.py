@@ -140,6 +140,10 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
 
     # ── Reads ────────────────────────────────────────────────────────────
 
+    async def get_active_run(self, mission_id: str) -> MissionRun | None:
+        """The mission's non-terminal run, or None when it has none."""
+        return await self._runs.get_active_for_mission(mission_id)
+
     async def get_run(self, mission_id: str, run_id_or_sequence: str) -> MissionRun:
         """The run by sequence (all digits) or id, within the mission; NotFoundError otherwise."""
         run: MissionRun | None = None
