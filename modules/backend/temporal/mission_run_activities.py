@@ -105,7 +105,11 @@ async def finalise_mission_run(input: FinaliseRunInput) -> FinaliseRunResult:
     reason = MissionRunStatusReason(input.reason) if input.reason is not None else None
     async with _run_service() as svc:
         result = await svc.finalise(
-            input.mission_run_id, MissionRunStatus(input.status), reason, input.detail
+            input.mission_run_id,
+            MissionRunStatus(input.status),
+            reason,
+            input.detail,
+            director_objective_met=input.director_objective_met,
         )
     if result.notification is not None:
         logger.info(

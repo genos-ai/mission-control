@@ -67,6 +67,7 @@ class _Fake:
     finalised: list[FinaliseRunInput] = field(default_factory=list)
     director_prompts: list[str] = field(default_factory=list)
     director_started: asyncio.Event = field(default_factory=asyncio.Event)
+    evaluations: list[PostRunEvalInput] = field(default_factory=list)
 
 
 _fake = _Fake()
@@ -133,6 +134,7 @@ async def execute_fake(inp: ExecuteTaskInput) -> ExecuteTaskResult:
 
 @activity.defn(name="evaluate_post_run")
 async def evaluate_fake(inp: PostRunEvalInput) -> PostRunEvalResult:
+    _fake.evaluations.append(inp)
     action = _fake.actions.pop(0) if len(_fake.actions) > 1 else _fake.actions[0]
     return PostRunEvalResult(action=action, reason="because")
 
@@ -440,6 +442,60 @@ async def test_objective_met_declared_by_a_failed_turn_is_not_trusted(env: Workf
     )
 
 
+async def _declare(env: WorkflowEnvironment, outcome: RefinementOutcome) -> str:
+    with env.auto_time_skipping_disabled():
+        async with _started(env) as handle:
+            await asyncio.wait_for(_fake.director_started.wait(), timeout=10)
+            await handle.signal(MissionRunWorkflow.refinement_complete, outcome)
+            return await asyncio.wait_for(handle.result(), timeout=4)
+
+
+async def test_declaration_with_blocked_approved_task_left_over_succeeds(env: WorkflowEnvironment):
+    # A wave failure leaves a dependent APPROVED and blocked (no layer). The
+    # Director declares without refining: that is not a contradiction.
+    blocked = RunTaskGraph(layers=[], proposed=0, approved=1, running=0)
+    _fake.graphs = [_graph(0, 1), blocked]
+    _fake.actions = ["advance_refine"]
+
+    outcome = RefinementOutcome(error=None, reply="Met.", objective_met_reason="poem completed")
+    assert await _declare(env, outcome) == "succeeded"
+
+    _ends(("succeeded", "objective_met"))
+    [end] = _fake.finalised
+    assert end.detail == "Director declared the objective met: poem completed"
+    assert end.director_objective_met == "poem completed"
+
+
+async def test_declaration_and_refine_plan_in_one_turn_fails(env: WorkflowEnvironment):
+    # refine_plan was called, even though it produced no tasks: a contradiction.
+    _fake.graphs = [_graph(0, 1), _graph(0, 0)]
+    _fake.actions = ["advance_refine"]
+
+    outcome = RefinementOutcome(
+        error=None, reply="Met.", objective_met_reason="poem completed", refined=True
+    )
+    assert await _declare(env, outcome) == "failed"
+
+    _ends(("failed", "supervisor_escalated"))
+    [end] = _fake.finalised
+    assert end.detail == (
+        "refine contradiction: the Director declared the objective met and called "
+        "refine_plan; Director's reason: poem completed"
+    )
+    assert end.director_objective_met is None
+
+
+async def test_post_run_eval_scoped_to_the_wave_tasks(env: WorkflowEnvironment):
+    _fake.graphs = [_graph(0, 1), _graph(0, 0)]
+    _fake.actions = ["propose_complete"]
+
+    async with _started(env) as handle:
+        assert await handle.result() == "succeeded"
+
+    [evaluation] = _fake.evaluations
+    assert evaluation.wave_task_ids == ["t1"]
+
+
 def test_refinement_outcome_without_declaration_field_decodes():
     # A refinement_complete payload sent before objective_met_reason existed.
     from temporalio.converter import DataConverter
@@ -447,7 +503,9 @@ def test_refinement_outcome_without_declaration_field_decodes():
     converter = DataConverter.default
     [payload] = converter.payload_converter.to_payloads([{"error": None, "reply": "hi"}])
     [outcome] = converter.payload_converter.from_payloads([payload], [RefinementOutcome])
-    assert outcome == RefinementOutcome(error=None, reply="hi", objective_met_reason=None)
+    assert outcome == RefinementOutcome(
+        error=None, reply="hi", objective_met_reason=None, refined=False
+    )
 
 
 async def test_cancel_finalises_cancelled(env: WorkflowEnvironment):

@@ -141,3 +141,17 @@ async def test_turn_that_does_not_signal_a_run_has_no_run_refine():
 
     assert handle_kwargs["run_refine"] is None
     assert result.objective_met_reason is None
+
+
+async def test_refine_turn_carries_refine_plan_call_to_result():
+    # refine_plan marks the turn's RunRefineTurn; the result carries it so the
+    # run can tell a refine from APPROVED tasks the turn did not add.
+    inp = await _director_turn_input()
+
+    def refine(kwargs: dict) -> None:
+        kwargs["run_refine"].refined = True
+
+    result, _ = await _run_turn(inp, refine)
+
+    assert result.refined is True
+    assert result.objective_met_reason is None

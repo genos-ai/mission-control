@@ -6,7 +6,10 @@ Phase 2, owner decision 2026-11-11). The post-run reviewer can ask for a
 refine the Director judges unnecessary; without this tool the Director could
 only say so in text, and the run failed "refine produced no tasks" (failure
 drill p88-faildrill-b3). The declaration travels structurally: RunRefineTurn
--> ChatTurnResult -> the run's refinement_complete signal.
+-> ChatTurnResult -> the run's refinement_complete signal. The tool writes
+nothing: the run records the decision when it ends SUCCEEDED on it
+(finalise_mission_run), so execution_decisions never holds a declaration the
+run rejected.
 """
 
 from __future__ import annotations
@@ -21,8 +24,6 @@ from modules.backend.agents.mission.director.tool_helpers import ToolRefusal, ru
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-DIRECTOR_AGENT_NAME = "mission.director.agent"
 
 # Guarded so the agent layer does not import sqlalchemy at runtime (rule 011.1).
 if TYPE_CHECKING:
@@ -40,9 +41,8 @@ async def declare_objective_met(
 ) -> dict:
     """Declare the active run's objective met in its refine turn.
 
-    Records the decision on the run's ExecutionRecord with the Director as
-    decider and commits it, then marks the turn so the run ends SUCCEEDED
-    (OBJECTIVE_MET) when the turn ends.
+    Marks the turn so the run ends SUCCEEDED (OBJECTIVE_MET) when the turn
+    ends; the run records the decision as it ends. Writes nothing.
 
     Args:
         db_session: Active async session.
@@ -55,7 +55,8 @@ async def declare_objective_met(
         The declared run and a message for the Director.
 
     Raises:
-        ToolRefusal: Not a run's refine turn, no reason, or already declared.
+        ToolRefusal: Not a run's refine turn, no reason, already declared, or
+            refine_plan already called in the turn.
         ConflictError: The turn's run is no longer the mission's active run.
     """
     from modules.backend.services.mission_run import MissionRunService
@@ -74,12 +75,15 @@ async def declare_objective_met(
             "The objective is already declared met for this run.",
             {"mission_run_id": run_refine.mission_run_id},
         )
+    if run_refine.refined:
+        raise ToolRefusal(
+            "refine_plan was already called in this refine turn; declaring the "
+            "objective met as well contradicts it.",
+            {"mission_run_id": run_refine.mission_run_id},
+        )
 
     run_id = run_refine.mission_run_id
-    await MissionRunService(db_session, event_bus).record_director_objective_met(
-        mission_id, run_id, reason, DIRECTOR_AGENT_NAME
-    )
-    await db_session.commit()
+    await MissionRunService(db_session, event_bus).require_active_run(mission_id, run_id)
     run_refine.objective_met_reason = reason
     logger.info(
         "Director declared the run objective met",
@@ -89,9 +93,9 @@ async def declare_objective_met(
         "status": "declared",
         "mission_run_id": run_id,
         "message": (
-            "Recorded. The run ends SUCCEEDED (objective met) when this turn "
-            "ends. Do not call refine_plan in this turn: a refine that adds "
-            "tasks contradicts the declaration and fails the run."
+            "Declared. The run ends SUCCEEDED (objective met) when this turn "
+            "ends and records your reason. Do not call refine_plan in this "
+            "turn: it is refused after a declaration."
         ),
     }
 
@@ -135,5 +139,4 @@ def register(agent) -> None:
                 reason,
                 ctx.deps.event_bus,
             ),
-            rollback_on_error=True,
         )

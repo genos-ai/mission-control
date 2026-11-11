@@ -102,7 +102,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
     model = ""
     error: str | None = None
     thinking: str | None = None
-    # A run's refine turn: declare_objective_met records into this object.
+    # A run's refine turn: declare_objective_met and refine_plan record into this object.
     run_refine = (
         RunRefineTurn(mission_run_id=input.refine_mission_run_id)
         if input.refine_mission_run_id
@@ -198,6 +198,7 @@ async def execute_chat_turn(input: ChatTurnInput) -> ChatTurnResult:
         error=error,
         thinking=thinking,
         objective_met_reason=run_refine.objective_met_reason if run_refine else None,
+        refined=run_refine.refined if run_refine else False,
     )
 
 

@@ -356,6 +356,9 @@ class FinaliseRunInput:
     status: str
     reason: str | None
     detail: str | None
+    # The Director's reason when the run ends SUCCEEDED (objective_met) on its
+    # declare_objective_met; finalise records the decision with the run's end.
+    director_objective_met: str | None = None
 
 
 @dataclass
@@ -388,11 +391,17 @@ class RefinementOutcome:
     (OBJECTIVE_MET) instead of failing for want of new tasks. It is a
     structured field from the tool call, never parsed from ``reply``, and
     defaults to None so a signal sent before the field existed still decodes.
+
+    ``refined`` is True when the Director called refine_plan in the turn,
+    whatever the refine produced. With a declaration it is a contradiction.
+    The run's task graph cannot stand in for it: APPROVED tasks blocked by a
+    failed upstream task stay in the run without the turn adding anything.
     """
 
     error: str | None
     reply: str
     objective_met_reason: str | None = None
+    refined: bool = False
 
 
 @dataclass(frozen=True)

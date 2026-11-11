@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import RunContext
 
 from modules.backend.agents.mission.director.deps import MissionDirectorDeps
-from modules.backend.agents.mission.director.tool_helpers import run_tool
+from modules.backend.agents.mission.director.tool_helpers import ToolRefusal, run_tool
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,12 +26,15 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from modules.backend.agents.deps.base import RunRefineTurn
+
 
 async def refine_plan(
     db_session: AsyncSession,
     mission_id: str,
     instructions: str,
     event_bus: Any,
+    run_refine: RunRefineTurn | None = None,
 ) -> dict:
     """Refine the plan through a PlanRefineWorkflow.
 
@@ -50,12 +53,16 @@ async def refine_plan(
         mission_id: Mission whose plan to refine.
         instructions: The user's refinement request, in their own words.
         event_bus: The Director's event bus, for the run lookup.
+        run_refine: The run refine turn this call belongs to; None outside
+            one. Marked refined before anything starts, so the run sees the
+            attempt even when the refinement fails.
 
     Returns:
         The workflow's identifiers and a message for the user; when a run
         is active, also the refined plan version and task counts.
 
     Raises:
+        ToolRefusal: The objective was already declared met in this refine turn.
         ExternalServiceError: The refinement for the active run failed.
     """
     from temporalio.client import WorkflowFailureError
@@ -69,6 +76,15 @@ async def refine_plan(
     from modules.backend.temporal.config_snapshots import build_workflow_timeouts_snapshot
     from modules.backend.temporal.plan_refine_models import PlanRefineInput
     from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
+
+    if run_refine is not None:
+        if run_refine.objective_met_reason is not None:
+            raise ToolRefusal(
+                "The objective is already declared met in this refine turn; "
+                "refining as well contradicts the declaration.",
+                {"mission_run_id": run_refine.mission_run_id},
+            )
+        run_refine.refined = True
 
     mission = await MissionService(db_session).get_mission(mission_id)
     plan_svc = MissionPlanService(db_session)
@@ -195,5 +211,6 @@ def register(agent) -> None:
                 ctx.deps.mission_id,
                 instructions,
                 ctx.deps.event_bus,
+                ctx.deps.run_refine,
             ),
         )

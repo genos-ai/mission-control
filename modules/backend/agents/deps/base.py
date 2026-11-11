@@ -83,13 +83,17 @@ class RunRefineTurn:
 
     Built by execute_chat_turn only for the turn MissionRunWorkflow starts on
     advance_refine, so the run's id travels with the turn. The run waits for
-    that turn to end. declare_objective_met writes its reason here, and
-    execute_chat_turn returns it in ChatTurnResult, from where ChatTurnWorkflow
-    puts it in the run's refinement_complete signal.
+    that turn to end. declare_objective_met writes its reason here and
+    refine_plan sets ``refined``; execute_chat_turn returns both in
+    ChatTurnResult, from where ChatTurnWorkflow puts them in the run's
+    refinement_complete signal. ``refined`` records that refine_plan was
+    called, whatever it produced: the run's task graph can hold APPROVED
+    tasks the turn did not add, so it cannot tell whether the turn refined.
     """
 
     mission_run_id: str
     objective_met_reason: str | None = None
+    refined: bool = False
 
 
 @dataclass

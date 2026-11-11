@@ -13,6 +13,7 @@ import pytest
 from temporalio.client import WorkflowFailureError
 from temporalio.exceptions import ActivityError, ApplicationError, RetryState
 
+from modules.backend.agents.deps.base import RunRefineTurn
 from modules.backend.agents.mission.director.tools.refine_plan import refine_plan
 from modules.backend.core.exceptions import ExternalServiceError
 from modules.backend.services.mission import MissionService
@@ -92,3 +93,18 @@ async def test_active_run_refine_failure_raises_cause(client, monkeypatch):
 
     with pytest.raises(ExternalServiceError, match="Plan refinement failed: .*planner returned"):
         await _call()
+
+
+async def test_refine_turn_marked_refined_even_when_the_refine_fails(client, monkeypatch):
+    # The run's refine turn learns that refine_plan was called, whatever it
+    # produced: with a declaration that is a contradiction (review of 4d5d315b).
+    _active_run(monkeypatch, SimpleNamespace(id=RUN_ID))
+    client.execute_workflow.side_effect = WorkflowFailureError(
+        cause=ApplicationError("planner returned no tasks")
+    )
+    turn = RunRefineTurn(mission_run_id=RUN_ID)
+
+    with pytest.raises(ExternalServiceError):
+        await refine_plan(SimpleNamespace(commit=AsyncMock()), "mission-1", "next", None, turn)
+
+    assert turn.refined is True

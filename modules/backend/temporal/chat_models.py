@@ -45,3 +45,5 @@ class ChatTurnResult:
     thinking: str | None = None
     # Set when the Director called declare_objective_met in a run's refine turn.
     objective_met_reason: str | None = None
+    # True when the Director called refine_plan in a run's refine turn.
+    refined: bool = False

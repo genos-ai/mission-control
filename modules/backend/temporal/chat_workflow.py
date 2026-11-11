@@ -116,6 +116,7 @@ class ChatTurnWorkflow:
                     error=result.error,
                     reply=result.content,
                     objective_met_reason=result.objective_met_reason,
+                    refined=result.refined,
                 ),
             )
 

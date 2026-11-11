@@ -195,8 +195,22 @@ open on purpose.
     p88-faildrill-b3 run #1 the wave-2 task completed, the reviewer still
     chose `advance_refine`, the Director replied "objective met" and did
     not refine, and the run ended `FAILED` "refine produced no tasks".
-    Resolved: Director tool `declare_objective_met` (owner decision
-    2026-11-11, phase-2 88.2.6).
+    Director tool `declare_objective_met` added (owner decision
+    2026-11-11, phase-2 88.2.6). Why the reviewer judged the objective
+    unmet: a data bug, not only LLM judgement. Its `failures` were every
+    FAILED task of the run, not of the wave, so after wave 2 it was shown
+    wave 1's superseded `platform_defect` (with plan-wide `failed=1`) as
+    current; its reasoning cites it while noting the replacement
+    completed. Fixed: failures scoped to the wave's task ids plus a `wave`
+    block (review of 4d5d315b). Still open: re-run the drill to confirm
+    the reviewer now proposes completion; plan-wide `failed` still counts
+    superseded failures (no task supersession link exists).
+  - A run that ends with APPROVED tasks blocked by a failed upstream task
+    releases them to the backlog, and on an AUTONOMOUS plan
+    `_start_for_raced_approvals` then starts a run for them, which can
+    never execute them (no layer). Earlier, rule 4 makes the reviewer
+    `WAIT` on any APPROVED task, blocked or not, until
+    `max_run_duration_seconds`. Failure is not propagated to dependents.
 - [ ] **Plan 88 Phase 2 refine fix review minors (90d242b2,
   2026-11-11).**
   - Timeouts are not tied: the Director turn (600s) now contains the

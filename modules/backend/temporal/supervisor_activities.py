@@ -12,7 +12,7 @@ Activities for the MissionRunWorkflow's post-run supervisor loop:
 Each activity opens its own DB session and commits independently.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from temporalio import activity
 
@@ -40,6 +40,8 @@ class PostRunEvalInput:
     supervisor_iteration_count: int
     session_id: str
     zero_completion_waves: int = 0  # consecutive waves of this run with no completed task
+    # The tasks the wave under review executed; failures and the wave block are scoped to them.
+    wave_task_ids: list[str] = field(kw_only=True)
 
 
 @dataclass
@@ -102,9 +104,13 @@ async def evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
 async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     """Inner logic for evaluate_post_run — separated for error wrapping.
 
-    The gate mode and failures come from the run; the brief from the mission;
-    spend is the sum of the plan's task costs against the plan ceiling (88.4.6
-    replaces both with BudgetService.check_run).
+    The gate mode comes from the run; the brief from the mission; spend is
+    the sum of the plan's task costs against the plan ceiling (88.4.6
+    replaces both with BudgetService.check_run). Failures and the ``wave``
+    block are read from the database for the wave's tasks only: a task an
+    earlier wave left FAILED, since replaced by a completed one, is not a
+    failure of this wave (drill p88-faildrill-b3). The status counts stay
+    plan-wide; the decision rules read them.
     """
     from redis.asyncio import Redis as AsyncRedis
 
@@ -144,7 +150,10 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             task_states = await svc.get_tasks(plan.id)
             total_cost_usd = await svc.total_task_cost_usd(plan.id)
             budget_usd = plan_budget_ceiling_usd(plan)
-            digests, truncated = await runs.failure_digests(input.mission_run_id, cap)
+            digests, truncated = await runs.failure_digests(
+                input.mission_run_id, input.wave_task_ids, cap
+            )
+            wave = await runs.wave_tasks(input.mission_run_id, input.wave_task_ids)
 
             summary = {
                 "approved": sum(1 for s in task_states if s.status == TaskStatus.APPROVED),
@@ -165,6 +174,10 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
                     for d in digests
                 ],
                 "failures_truncated": truncated,
+                "wave": [
+                    {"task_id": w.task_id, "status": w.status, "description": w.description}
+                    for w in wave
+                ],
             }
 
             context = GateContext(

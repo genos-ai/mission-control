@@ -370,6 +370,7 @@ class MissionRunWorkflow:
                     s.iteration - 1,
                     s.session_id,
                     s.zero_completion_waves,
+                    wave_task_ids=list(self._wave_results),
                 ),
                 c.evaluate_post_run,
             )
@@ -431,27 +432,29 @@ class MissionRunWorkflow:
             workflow.logger.warning(
                 "refinement signal not received", extra={"mission_id": inp.mission_id}
             )
-        after = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
-        has_tasks = after.proposed > 0 or after.approved > 0
         outcome = self._refinement_outcome if self._refinement_done else None
         declared = outcome.objective_met_reason if outcome is not None else None
-        if declared is not None and has_tasks:
-            # The Director said there is nothing left to do while the run has
-            # new work: neither reading is safe to act on, so stop loudly.
+        if declared is not None and outcome.refined:
+            # The Director said there is nothing left to do and also refined:
+            # neither reading is safe to act on, so stop loudly. The task graph
+            # cannot decide this: it holds APPROVED tasks the turn did not add.
             detail = (
                 "refine contradiction: the Director declared the objective met "
-                f"and the run has new tasks; Director's reason: {declared}"
+                f"and called refine_plan; Director's reason: {declared}"
             )
             return await self._end_run("failed", "supervisor_escalated", detail[:500])
-        if after.proposed > 0:
-            await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
-        if has_tasks:
-            return None
-        # A turn that failed after declaring is not trusted: the run fails
-        # below with the turn's error as the cause, as for any failed turn.
+        # A turn that failed after declaring is not trusted: it is handled
+        # below as any failed turn, with the turn's error as the cause.
         if declared is not None and not outcome.error:
             detail = f"Director declared the objective met: {declared}"
-            return await self._end_run("succeeded", "objective_met", detail[:500])
+            return await self._end_run(
+                "succeeded", "objective_met", detail[:500], director_objective_met=declared
+            )
+        after = await _exec(fetch_run_task_graph, inp.mission_run_id, c.persistence)
+        if after.proposed > 0:
+            await _exec(approve_run_proposed_tasks, inp.mission_run_id, c.persistence)
+        if after.proposed > 0 or after.approved > 0:
+            return None
         detail = f"refine produced no tasks: {self._refine_cause()}"
         return await self._end_run("failed", "supervisor_escalated", detail[:500])
 
@@ -542,11 +545,20 @@ class MissionRunWorkflow:
         remaining = self._input.config.max_run_duration_seconds - self._duration_used_seconds()
         return timedelta(seconds=max(remaining, 1))
 
-    async def _end_run(self, status: str, reason: str | None, detail: str | None) -> str:
+    async def _end_run(
+        self,
+        status: str,
+        reason: str | None,
+        detail: str | None,
+        *,
+        director_objective_met: str | None = None,
+    ) -> str:
         self._phase = "finalising"
         await _exec(
             finalise_mission_run,
-            FinaliseRunInput(self._input.mission_run_id, status, reason, detail),
+            FinaliseRunInput(
+                self._input.mission_run_id, status, reason, detail, director_objective_met
+            ),
             self._input.config.persistence,
         )
         return status

@@ -59,7 +59,7 @@ def activity_sessions(monkeypatch, db_session_factory: Factory) -> None:
 
 async def _failed_task(
     factory: Factory, plan_id: str, mission_id: str, run_id: str, fingerprint: str, reason: str
-) -> None:
+) -> str:
     async with factory() as session:
         repo = TaskRepository(session)
         task = await repo.create_task(
@@ -76,6 +76,7 @@ async def _failed_task(
         task.failure_fingerprint = fingerprint
         task.cost_usd = 0.5
         await session.commit()
+        return task.id
 
 
 async def test_post_run_context_carries_failure_digests(
@@ -92,12 +93,22 @@ async def test_post_run_context_carries_failure_digests(
         )
     async with db_session_factory() as session:
         begun = await MissionRunService(session, RecordingBus()).begin(run.id)
-    await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "first")
-    await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f2", "other")
-    await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "again")
+    wave = [
+        await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "first"),
+        await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f2", "other"),
+        await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "again"),
+    ]
 
     result = await evaluate_post_run(
-        PostRunEvalInput(mission.id, run.id, begun.execution_record_id, 2, begun.session_id, 1)
+        PostRunEvalInput(
+            mission.id,
+            run.id,
+            begun.execution_record_id,
+            2,
+            begun.session_id,
+            1,
+            wave_task_ids=wave,
+        )
     )
 
     assert result.action == "wait"
@@ -146,11 +157,21 @@ async def test_stall_escalates_within_run_after_early_success(
             mission_run_id=run.id,
         )
         await session.commit()
-    for fingerprint in ("f1", "f2", "f3"):
+    wave = [
         await _failed_task(db_session_factory, plan.id, mission.id, run.id, fingerprint, "boom")
+        for fingerprint in ("f1", "f2", "f3")
+    ]
 
     result = await evaluate_post_run(
-        PostRunEvalInput(mission.id, run.id, begun.execution_record_id, 3, begun.session_id, 3)
+        PostRunEvalInput(
+            mission.id,
+            run.id,
+            begun.execution_record_id,
+            3,
+            begun.session_id,
+            3,
+            wave_task_ids=wave,
+        )
     )
 
     assert result.action == "escalate"
@@ -158,3 +179,60 @@ async def test_stall_escalates_within_run_after_early_success(
     async with db_session_factory() as session:
         record = await session.get(ExecutionRecord, begun.execution_record_id)
     assert record.completed_task_count == 1
+
+
+async def test_post_run_failures_scoped_to_the_wave(
+    db_session_factory: Factory, committed_owner, gateway, contexts, activity_sessions
+) -> None:
+    """Drill p88-faildrill-b3: wave 1 failed a task, wave 2 completed its replacement.
+
+    The reviewer was shown the wave-1 failure as current. Scoped to wave 2 it
+    sees no failure and the completed replacement in the wave block.
+    """
+    user, mission, plan = await committed_owner()
+    async with db_session_factory() as session:
+        run = await MissionRunService(session, RecordingBus()).start_run(
+            mission.id,
+            trigger=MissionRunTrigger.MANUAL,
+            objective=None,
+            user_id=user.id,
+            session_id=None,
+        )
+    async with db_session_factory() as session:
+        begun = await MissionRunService(session, RecordingBus()).begin(run.id)
+    await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "platform_defect")
+    async with db_session_factory() as session:
+        replacement = await TaskRepository(session).create_task(
+            plan_id=plan.id,
+            mission_id=mission.id,
+            agent=AGENT,
+            description="write the poem (replacement)",
+            status=TaskStatus.COMPLETED,
+            mission_run_id=run.id,
+        )
+        await session.commit()
+        replacement_id = replacement.id
+
+    await evaluate_post_run(
+        PostRunEvalInput(
+            mission.id,
+            run.id,
+            begun.execution_record_id,
+            1,
+            begun.session_id,
+            0,
+            wave_task_ids=[replacement_id],
+        )
+    )
+
+    [context] = contexts
+    summary = context.plan_task_summary
+    assert summary["failures"] == []
+    assert summary["failures_truncated"] == 0
+    assert summary["wave"] == [
+        {
+            "task_id": replacement_id,
+            "status": "completed",
+            "description": "write the poem (replacement)",
+        }
+    ]

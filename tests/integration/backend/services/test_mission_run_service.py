@@ -10,13 +10,20 @@ import pytest
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from modules.backend.core.decision_reasoning import decode_decision_reasoning
 from modules.backend.core.exceptions import (
     ConflictError,
     ExternalServiceError,
     NotFoundError,
     RunStartRejectedError,
+    ValidationError,
 )
-from modules.backend.models.execution_record import ExecutionRecord, ExecutionRecordStatus
+from modules.backend.models.execution_record import (
+    DecisionType,
+    ExecutionDecision,
+    ExecutionRecord,
+    ExecutionRecordStatus,
+)
 from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission import Mission
 from modules.backend.models.mission_plan import GateMode, MissionPlan
@@ -530,6 +537,68 @@ async def test_finalise_writes_ledger_cost(db_session_factory, gateway, owner) -
     async with db_session_factory() as session:
         record = await session.get(ExecutionRecord, begun.execution_record_id)
     assert record.total_cost_usd == pytest.approx(0.75)
+
+
+async def test_finalise_records_director_objective_met_with_the_run_end(
+    db_session_factory, gateway, owner
+) -> None:
+    # The Director's declaration is recorded only as the run ends on it, in
+    # the same commit (review of 4d5d315b): a rejected declaration leaves no row.
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    begun = await _begin(db_session_factory, run.id)
+
+    async with db_session_factory() as session:
+        await _svc(session).finalise(
+            run.id,
+            MissionRunStatus.SUCCEEDED,
+            MissionRunStatusReason.OBJECTIVE_MET,
+            "Director declared the objective met: poem completed",
+            director_objective_met="poem completed",
+        )
+
+    assert (await _run(db_session_factory, run.id)).status == MissionRunStatus.SUCCEEDED
+    async with db_session_factory() as session:
+        [decision] = (
+            await session.scalars(
+                select(ExecutionDecision).where(
+                    ExecutionDecision.execution_record_id == begun.execution_record_id
+                )
+            )
+        ).all()
+    assert decision.decision_type == DecisionType.OBJECTIVE_MET
+    human, meta = decode_decision_reasoning(decision.reasoning)
+    assert human == "poem completed"
+    assert meta["reviewer"] == "mission.director.agent"
+    assert meta["action"] == "objective_met"
+    assert meta["mission_run_id"] == run.id
+
+
+async def test_finalise_refuses_director_objective_met_on_another_outcome(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    begun = await _begin(db_session_factory, run.id)
+
+    async with db_session_factory() as session:
+        with pytest.raises(ValidationError):
+            await _svc(session).finalise(
+                run.id,
+                MissionRunStatus.FAILED,
+                MissionRunStatusReason.SUPERVISOR_ESCALATED,
+                "refine contradiction",
+                director_objective_met="poem completed",
+            )
+
+    assert (await _run(db_session_factory, run.id)).status != MissionRunStatus.FAILED
+    async with db_session_factory() as session:
+        rows = await session.scalars(
+            select(ExecutionDecision).where(
+                ExecutionDecision.execution_record_id == begun.execution_record_id
+            )
+        )
+        assert rows.all() == []
 
 
 async def test_finalise_sums_rows_tagged_through_record_call(

@@ -12,6 +12,7 @@ and _context_version that MissionRunService defines.
 from modules.backend.core.exceptions import (
     ConflictError,
     MissionRunStateError,
+    NotFoundError,
     RunStartRejectedError,
     ValidationError,
 )
@@ -286,13 +287,29 @@ class MissionRunLifecycleMixin:
         status: MissionRunStatus,
         reason: MissionRunStatusReason | None,
         detail: str | None,
+        director_objective_met: str | None = None,
     ) -> FinaliseRunResult:
         """End the run: fail in-flight tasks, release the rest, record counts and cost.
 
         After commit, a raced approval on an AUTONOMOUS plan starts the next run.
         The run row is locked first, so a concurrent refine either commits its
         new tasks before they are released or sees the run ended.
+
+        ``director_objective_met`` is the Director's reason when the run ends
+        SUCCEEDED (OBJECTIVE_MET) on its declaration; the decision is recorded
+        in the same commit as the run's end.
+
+        Raises:
+            ValidationError: director_objective_met with any other outcome.
+            NotFoundError: director_objective_met and the run has no ExecutionRecord.
         """
+        if director_objective_met is not None and (
+            status != MissionRunStatus.SUCCEEDED or reason != MissionRunStatusReason.OBJECTIVE_MET
+        ):
+            raise ValidationError(
+                "A Director objective-met decision needs a SUCCEEDED (OBJECTIVE_MET) end, "
+                f"not {status.value} ({reason.value if reason is not None else None})"
+            )
         found = await self._runs.get_by_id(run_id)
         run = await self._runs.lock_current(found.mission_id, run_id)
         mission = await self._missions.get_by_id(run.mission_id)
@@ -334,6 +351,10 @@ class MissionRunLifecycleMixin:
         record = await self._records.get_by_mission_run(run_id)
         if record is not None:
             record.total_cost_usd = cost
+        if director_objective_met is not None:
+            if record is None:
+                raise NotFoundError(f"Mission run {run_id} has no execution record")
+            await self._record_director_objective_met(run, record.id, director_objective_met)
         await self.transition(run_id, status, reason, detail)
 
         await self._start_for_raced_approvals(mission_id, plan_id, gate_mode, owner_id)

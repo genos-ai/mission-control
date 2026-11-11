@@ -47,7 +47,7 @@ from modules.backend.repositories.mission_context import MissionContextRepositor
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.mission_run_digest import MissionRunDigestRepository
-from modules.backend.repositories.task import TaskRepository
+from modules.backend.repositories.task import TaskRepository, WaveTaskRow
 from modules.backend.repositories.user import UserRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
 from modules.backend.schemas.mission_run import (
@@ -76,6 +76,8 @@ from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 _SOURCE = "mission_run_service"
 # Page size of list_runs when the caller sends no limit; replaced by cli.yaml in 88.1.13.
 DEFAULT_RUN_LIST_LIMIT = 50
+# The decider on a run's Director objective-met decision (declare_objective_met).
+DIRECTOR_DECIDER = "mission.director.agent"
 _ONE_ACTIVE_CONSTRAINT = "uq_mission_runs_one_active"
 
 _RECORD_STATUS: dict[MissionRunStatus, ExecutionRecordStatus] = {
@@ -353,43 +355,56 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
 
     # ── Supervisor inputs (88.2.6) ───────────────────────────────────────
 
-    async def failure_digests(self, run_id: str, cap: int) -> tuple[list[TaskFailureDigest], int]:
-        """The run's FAILED tasks as at most ``cap`` digests, and the number dropped."""
-        return digest_failures(await self._tasks.failed_tasks_for_run(run_id), cap)
+    async def failure_digests(
+        self, run_id: str, task_ids: list[str], cap: int
+    ) -> tuple[list[TaskFailureDigest], int]:
+        """The FAILED tasks among ``task_ids`` in the run as at most ``cap`` digests.
 
-    async def record_director_objective_met(
-        self, mission_id: str, run_id: str, reason: str, decider: str
-    ) -> None:
-        """Record the Director's declaration that the run's objective is met.
+        Returns the digests and the number dropped. The post-run reviewer
+        passes the wave's task ids: a failure an earlier wave left behind is
+        not a failure of the wave under review.
+        """
+        rows = await self._tasks.failed_tasks_for_run(run_id, task_ids)
+        return digest_failures(rows, cap)
 
-        Written in the post-run reviewer's format (execution_decisions,
-        reasoning with a metadata tail) on the run's ExecutionRecord, with the
-        Director as the decider. Only the mission's active run accepts it: a
-        declaration for an ended run would be read by nothing. The caller commits.
+    async def wave_tasks(self, run_id: str, task_ids: list[str]) -> list[WaveTaskRow]:
+        """The run's tasks among ``task_ids`` with their current status and description."""
+        return await self._tasks.wave_tasks_for_run(run_id, task_ids)
+
+    async def require_active_run(self, mission_id: str, run_id: str) -> None:
+        """Raise unless run_id is the mission's active run.
 
         Raises:
             ConflictError: run_id is not the mission's active run.
-            NotFoundError: the run has no ExecutionRecord yet.
         """
         active = await self.get_active_run(mission_id)
         if active is None or active.id != run_id:
             raise ConflictError(
                 f"Mission run {run_id} is not the active run of mission {mission_id}"
             )
-        record = await self._records.get_by_mission_run(run_id)
-        if record is None:
-            raise NotFoundError(f"Mission run {run_id} has no execution record")
+
+    async def _record_director_objective_met(
+        self, run: MissionRun, record_id: str, reason: str
+    ) -> None:
+        """Record the Director's objective-met decision as the run ends on it.
+
+        Written in the post-run reviewer's format (execution_decisions,
+        reasoning with a metadata tail) on the run's ExecutionRecord, with the
+        Director as the decider. Only finalise calls it, for a run ending
+        SUCCEEDED (OBJECTIVE_MET) on the Director's declaration, so the
+        decision row and the run's outcome commit together. The caller commits.
+        """
         reasoning = encode_decision_reasoning(
             reason,
             {
                 "action": DecisionType.OBJECTIVE_MET.value,
-                "reviewer": decider,
-                "mission_run_id": run_id,
-                "iteration": active.iteration_count,
+                "reviewer": DIRECTOR_DECIDER,
+                "mission_run_id": run.id,
+                "iteration": run.iteration_count,
             },
         )
         await ExecutionPersistenceService(self._session).save_decision(
-            record.id, DecisionType.OBJECTIVE_MET.value, reasoning
+            record_id, DecisionType.OBJECTIVE_MET.value, reasoning
         )
 
     async def record_iteration(self, run_id: str, iteration_count: int) -> None:

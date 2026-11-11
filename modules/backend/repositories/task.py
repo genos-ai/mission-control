@@ -45,6 +45,14 @@ class FailedTaskRow(NamedTuple):
     failure_reason: str | None
 
 
+class WaveTaskRow(NamedTuple):
+    """A task the run executed in a wave: id, current status value and description."""
+
+    task_id: str
+    status: str
+    description: str
+
+
 class TaskRepository(BaseRepository[Task]):
     """Repository for Task CRUD + dependency management."""
 
@@ -90,8 +98,10 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def failed_tasks_for_run(self, run_id: str) -> list[FailedTaskRow]:
-        """The run's FAILED tasks ordered by last_attempt_at, id (Plan 88 step 88.2.6)."""
+    async def failed_tasks_for_run(
+        self, run_id: str, task_ids: Collection[str]
+    ) -> list[FailedTaskRow]:
+        """The run's FAILED tasks among ``task_ids``, ordered by last_attempt_at, id (88.2.6)."""
         query = (
             select(
                 Task.id,
@@ -100,7 +110,11 @@ class TaskRepository(BaseRepository[Task]):
                 Task.failure_fingerprint,
                 Task.failure_reason,
             )
-            .where(Task.mission_run_id == run_id, Task.status == TaskStatus.FAILED)
+            .where(
+                Task.mission_run_id == run_id,
+                Task.id.in_(task_ids),
+                Task.status == TaskStatus.FAILED,
+            )
             .order_by(Task.last_attempt_at, Task.id)
         )
         result = await self.session.execute(query)
@@ -111,6 +125,21 @@ class TaskRepository(BaseRepository[Task]):
                 failure_class=row.failure_class.value if row.failure_class else None,
                 failure_fingerprint=row.failure_fingerprint,
                 failure_reason=row.failure_reason,
+            )
+            for row in result.all()
+        ]
+
+    async def wave_tasks_for_run(self, run_id: str, task_ids: Collection[str]) -> list[WaveTaskRow]:
+        """The run's tasks among ``task_ids``, ordered by last_attempt_at, id."""
+        query = (
+            select(Task.id, Task.status, Task.description)
+            .where(Task.mission_run_id == run_id, Task.id.in_(task_ids))
+            .order_by(Task.last_attempt_at, Task.id)
+        )
+        result = await self.session.execute(query)
+        return [
+            WaveTaskRow(
+                task_id=row.id, status=TaskStatus(row.status).value, description=row.description
             )
             for row in result.all()
         ]

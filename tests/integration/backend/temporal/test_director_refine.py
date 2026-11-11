@@ -38,8 +38,7 @@ from modules.backend.agents.mission.director.tools.declare_objective_met import 
 )
 from modules.backend.agents.mission.director.tools.refine_plan import refine_plan
 from modules.backend.core.config import get_app_config
-from modules.backend.core.decision_reasoning import decode_decision_reasoning
-from modules.backend.models.execution_record import DecisionType, ExecutionDecision
+from modules.backend.models.execution_record import ExecutionDecision
 from modules.backend.models.mission_run import MissionRunTrigger
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
@@ -284,11 +283,14 @@ async def test_director_turn_failure_fails_run_without_waiting(env: WorkflowEnvi
 #
 # Drill b3: the wave-2 task completed, the reviewer still chose advance_refine,
 # the Director replied "objective met" in text and the run failed "refine
-# produced no tasks". These tests run the real declare_objective_met tool
-# against the real database inside the Director turn; the run, mission and
-# ExecutionRecord rows are real, the workflow's activities are stubs.
+# produced no tasks". These tests run the real declare_objective_met and
+# refine_plan tools against the real database inside the Director turn; the
+# run, mission and ExecutionRecord rows are real, the workflow's activities are
+# stubs. The tool writes nothing: finalise records the decision as the run ends
+# on it (test_mission_run_service covers that write against the database).
 
 REASON = "The brief asks for one completed poem task; wave 2 completed it."
+BLOCKED = RunTaskGraph(layers=[], proposed=0, approved=1, running=0)
 
 
 @dataclasses.dataclass
@@ -317,9 +319,9 @@ async def db_run(db_session_factory: Factory, committed_owner, monkeypatch) -> D
 
 
 def _director(
-    factory: Factory, *, reply: str, declare: str | None, adds_task: bool = False
+    factory: Factory, *, reply: str, declare: str | None, then_refine: bool = False
 ) -> Callable[[ChatTurnInput], Awaitable[ChatTurnResult]]:
-    """A Director turn as execute_chat_turn runs it: RunRefineTurn in, its reason out."""
+    """A Director turn as execute_chat_turn runs it: RunRefineTurn in, its fields out."""
 
     async def answer(inp: ChatTurnInput) -> ChatTurnResult:
         run_refine = (
@@ -327,25 +329,30 @@ def _director(
             if inp.refine_mission_run_id
             else None
         )
-        output = ""
-        if declare is not None:
-            async with factory() as session:
-                try:
-                    output = json.dumps(
-                        await declare_objective_met(
-                            session, inp.mission_id, run_refine, declare, RecordingBus()
-                        )
+        outputs: list[str] = []
+        async with factory() as session:
+            calls: list[Callable[[], Awaitable[dict]]] = []
+            if declare is not None:
+                calls.append(
+                    lambda: declare_objective_met(
+                        session, inp.mission_id, run_refine, declare, RecordingBus()
                     )
+                )
+            if then_refine:
+                calls.append(
+                    lambda: refine_plan(session, inp.mission_id, "one more", None, run_refine)
+                )
+            for call in calls:
+                try:
+                    outputs.append(json.dumps(await call()))
                 except Exception as exc:  # noqa: BLE001 — run_tool's contract: errors go to the LLM
-                    output = json.dumps({"error": str(exc)})
-        if adds_task:
-            # A refine committing task b, as _commit_task_b does.
-            stubs.SCRIPT.graphs = [graph(["b"]), graph(["b"]), EMPTY]
-        stubs.CALLS.append(("director_turn_done", output))
+                    outputs.append(json.dumps({"error": str(exc)}))
+        stubs.CALLS.append(("director_turn_done", outputs))
         return ChatTurnResult(
             session_id=inp.session_id,
             content=reply,
             objective_met_reason=run_refine.objective_met_reason if run_refine else None,
+            refined=run_refine.refined if run_refine else False,
         )
 
     return answer
@@ -359,6 +366,11 @@ async def _decisions(factory: Factory, execution_record_id: str) -> list[Executi
             )
         )
         return list(result.scalars().all())
+
+
+def _turn_outputs() -> list[dict]:
+    [outputs] = [arg for name, arg in stubs.CALLS if name == "director_turn_done"]
+    return [json.loads(o) for o in outputs]
 
 
 async def test_director_declares_objective_met_run_succeeds(
@@ -376,35 +388,48 @@ async def test_director_declares_objective_met_run_succeeds(
     [end] = stubs.calls("finalise_mission_run")
     assert (end.status, end.reason) == ("succeeded", "objective_met")
     assert end.detail == f"Director declared the objective met: {REASON}"
-    [decision] = await _decisions(db_session_factory, db_run.execution_record_id)
-    assert decision.decision_type == DecisionType.OBJECTIVE_MET
-    human, meta = decode_decision_reasoning(decision.reasoning)
-    assert human == REASON
-    assert meta["reviewer"] == "mission.director.agent"
-    assert meta["action"] == "objective_met"
-    assert meta["mission_run_id"] == db_run.run_id
+    assert end.director_objective_met == REASON
+    # Nothing is written before the run decides; finalise (a stub here) records it.
+    assert await _decisions(db_session_factory, db_run.execution_record_id) == []
 
 
-async def test_declaring_objective_met_and_refining_fails_run(
+async def test_declaration_with_blocked_task_left_from_failed_wave_succeeds(
+    bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
+):
+    # Wave 1 fails task a; its dependent stays APPROVED and blocked, so the
+    # graph has an approved task the Director's turn did not add.
+    stubs.SCRIPT.graphs = [graph(["a"]), BLOCKED]
+    stubs.SCRIPT.actions = ["advance_refine"]
+    stubs.SCRIPT.task_results = {"a": [failed("a")]}
+    HARNESS.director = _director(db_session_factory, reply="Objective met.", declare=REASON)
+
+    async with _run(bare_env, run_id=db_run.run_id, mission_id=db_run.mission_id) as handle:
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "succeeded"
+
+    [end] = stubs.calls("finalise_mission_run")
+    assert (end.status, end.reason) == ("succeeded", "objective_met")
+    assert end.director_objective_met == REASON
+    assert stubs.calls("approve_run_proposed_tasks") == []
+
+
+async def test_refine_plan_after_declaration_is_refused_and_run_succeeds(
     bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
 ):
     stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
     stubs.SCRIPT.actions = ["advance_refine", "propose_complete"]
     HARNESS.director = _director(
-        db_session_factory, reply="Done, and one more task.", declare=REASON, adds_task=True
+        db_session_factory, reply="Done, and one more task.", declare=REASON, then_refine=True
     )
 
     async with _run(bare_env, run_id=db_run.run_id, mission_id=db_run.mission_id) as handle:
-        assert await asyncio.wait_for(handle.result(), timeout=30) == "failed"
+        assert await asyncio.wait_for(handle.result(), timeout=30) == "succeeded"
 
-    assert _executed() == ["a"]  # the contradicting refine's task never runs
-    assert stubs.calls("approve_run_proposed_tasks") == []
+    declared, refused = _turn_outputs()
+    assert declared["status"] == "declared"
+    assert "already declared met" in refused["error"]
+    assert _executed() == ["a"]
     [end] = stubs.calls("finalise_mission_run")
-    assert (end.status, end.reason) == ("failed", "supervisor_escalated")
-    assert end.detail == (
-        "refine contradiction: the Director declared the objective met and the run "
-        f"has new tasks; Director's reason: {REASON}"
-    )
+    assert end.director_objective_met == REASON
 
 
 async def test_objective_met_in_text_only_still_fails_loudly(
@@ -424,14 +449,14 @@ async def test_objective_met_in_text_only_still_fails_loudly(
         "refine produced no tasks: Director turn ended without new tasks; "
         "Director replied: The objective is met."
     )
-    assert await _decisions(db_session_factory, db_run.execution_record_id) == []
+    assert end.director_objective_met is None
 
 
 async def test_declaration_for_a_run_that_is_not_active_is_refused(
     bare_env: WorkflowEnvironment, db_session_factory: Factory, db_run: DbRun
 ):
     # The turn is bound to a run that is not the mission's active run: the tool
-    # refuses, nothing is recorded, and the run fails loudly as before.
+    # refuses, the turn is undeclared, and the run fails loudly as before.
     stubs.SCRIPT.graphs = [graph(["a"]), EMPTY]
     stubs.SCRIPT.actions = ["advance_refine"]
     HARNESS.director = _director(db_session_factory, reply="Objective met.", declare=REASON)
@@ -439,8 +464,8 @@ async def test_declaration_for_a_run_that_is_not_active_is_refused(
     async with _run(bare_env, mission_id=db_run.mission_id) as handle:
         assert await asyncio.wait_for(handle.result(), timeout=30) == "failed"
 
-    [(_, output)] = [c for c in stubs.CALLS if c[0] == "director_turn_done"]
-    assert "is not the active run of mission" in json.loads(output)["error"]
+    [output] = _turn_outputs()
+    assert "is not the active run of mission" in output["error"]
     [end] = stubs.calls("finalise_mission_run")
     assert end.detail.startswith("refine produced no tasks: ")
-    assert await _decisions(db_session_factory, db_run.execution_record_id) == []
+    assert end.director_objective_met is None
