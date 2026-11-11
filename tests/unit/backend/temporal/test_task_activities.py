@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from temporalio.activity import ActivityCancellationDetails
 from temporalio.testing import ActivityEnvironment
 
 from modules.backend.core.config_schema import FailuresSchema
@@ -191,6 +192,28 @@ async def test_cancel_marks_failed_and_reraises():
             await running
 
     m.svc.mark_cancelled.assert_awaited_once_with(RUN_ID, TASK_ID)
+    m.svc.record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["timed_out", "worker_shutdown"])
+async def test_interrupt_leaves_task_running(reason):
+    """Rule B: an attempt interrupted outside the workflow is re-executed, not failed."""
+    started = asyncio.Event()
+
+    async def _hanging_agent(**_kwargs):
+        started.set()
+        await asyncio.sleep(60)
+
+    env = ActivityEnvironment()
+    with _patched(claim=_claim(), run_result=_hanging_agent) as m:
+        running = asyncio.ensure_future(env.run(execute_plan_task, _input()))
+        await started.wait()
+        env.cancel(ActivityCancellationDetails(**{reason: True}))
+        with pytest.raises(asyncio.CancelledError):
+            await running
+
+    m.svc.mark_cancelled.assert_not_awaited()
     m.svc.record.assert_not_awaited()
 
 

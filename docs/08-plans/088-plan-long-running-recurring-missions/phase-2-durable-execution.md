@@ -498,7 +498,7 @@ The `MODIFY` branch is deleted (P3). `MODIFY` is removed from the `verification_
 
 **Current state:**
 - The whole wave is one activity, `execute_mission`, taking `ExecuteWaveInput` (88.1.8). A retry re-dispatches the whole wave.
-- `retry_task` (`services/mission_plan.py:523-555`) increments `retry_count` (`:539`), and `write_back_task_results` increments it again (`mission_plan_taskio.py:208`, `:231`). 88.2.6 deletes `write_back_task_results`, which leaves `retry_task` as the only increment.
+- `retry_task` (`services/mission_plan.py:523-555`) increments `retry_count` (`:539`), and `write_back_task_results` increments it again (`mission_plan_taskio.py:208`, `:231`). 88.2.4 deletes those two increments (contracts 3.1.9), which leaves `retry_task` as the only increment; 88.2.6 deletes `write_back_task_results` itself.
 - `VALID_TASK_TRANSITIONS` (`models/task.py:58-67`) has no exit from FAILED except APPROVED (`:63`).
 - `heartbeat_every(interval_seconds, phase)` (88.1.8) takes the interval from its caller and a fixed phase string; it yields nothing, so a caller cannot change the phase. Its callers are `plan_mission_run` (`"planning"`) and `execute_mission` (`"executing"`, deleted in 88.2.6).
 - `MissionContextManager.apply_updates` (`services/mission_context.py:238-246`) takes `agent_id`, `mission_id_ref` and `task_id` and cannot attribute a change to a run, although `context_changes.mission_run_id` exists since `plan88_002`.
@@ -718,7 +718,7 @@ The `MODIFY` branch is deleted (P3). `MODIFY` is removed from the `verification_
   - `test_environment_error_fails_task_not_activity`: a patched `build_dispatch_runtime` raising `ExecutionEnvironmentError` gives `status == "failed"`, `failure_class == "env_unavailable"`, and no raise.
   - `test_task_failed_event_published_once`: one failed attempt publishes one `TaskFailedEvent` with `mission_id` set; a replay publishes none.
 
-**Done when:** both test files pass, `python -m modules.backend.temporal.worker` starts with no import errors, and `grep -rnE "\.failure_(reason|origin|class|fingerprint) = " modules/backend --include=*.py` matches only `repositories/task.py` and `repositories/execution_record.py`.
+**Done when:** both test files pass, `python -m modules.backend.temporal.worker` starts with no import errors, and `grep -rnE "\.failure_(reason|origin|class|fingerprint) = " modules/backend --include=*.py --exclude=session_followup.py` matches only `repositories/task.py` and `repositories/execution_record.py` (`session_followup.py` writes the unrelated `session_followups.failure_reason` column).
 
 ### 88.2.4a Planning Agent sees task states and failures
 
@@ -745,7 +745,7 @@ The Planning Agent row of contracts 3.8.6. It follows 88.2.4, because it reads t
 ### 88.2.5 Copilot client health check and restart
 
 **Files:**
-- modify `core/copilot_model.py`;
+- modify `core/copilot_model.py`, `temporal/task_activities.py`;
 - create `tests/unit/backend/core/test_copilot_health.py`.
 
 **Current state:**
@@ -791,7 +791,7 @@ async def ensure_healthy(cls) -> None:
 ```
 - `_ensure_client` uses `CopilotModel._get_lock()` in place of the lazy creation at `:420-421`.
 - At each `_classify_session_error` call site (`:638`, `:653`, `:779`), when the classified error is a `TransientProviderError`, run `async with CopilotModel._get_lock(): await CopilotModel._reset_client()` before re-raising, so the next call starts a new client.
-- `temporal/task_activities.py` imports `CopilotModel` from `core/copilot_model.py` directly.
+- `temporal/task_activities.py` imports `CopilotModel` from `core/copilot_model.py` directly and adds `await CopilotModel.ensure_healthy()` at the start of `execute_plan_task`, before `claim` (change item 6 of 88.2.4, deferred to this step because the method did not exist yet).
 
 **Tests** (`test_copilot_health.py`, with a fake client):
 - `test_skips_within_interval`: `ping` is not called.
@@ -1005,7 +1005,7 @@ async def ensure_healthy(cls) -> None:
 11. **Delete the wave path** (P3):
     - `temporal/activities.py` in full (`execute_mission`, `persist_mission_outcome`, `send_notification`) with `tests/unit/backend/temporal/test_activities.py`, and their `worker.py` registrations.
     - `services/mission_plan_dispatch.py` in full (`dispatch_approved` is its last function) and the `MissionPlanOrchestrator.dispatch_approved` wrapper (`mission_plan_orchestrator.py:497-517`) with the docstring lines naming it (`:5`, `:17`). 88.4.1 therefore has no budget lines to delete in `mission_plan_dispatch.py`.
-    - `mission_plan_taskio.write_back_task_results`, `derive_subset_task_plan` and `materialize_task_plan`, whose only caller was `dispatch_approved`, with their test classes (`test_mission_plan_orchestrator.py:181-322`). This also deletes the `retry_count` increments at `:208` and `:231`. `load_prior_outputs` and `materialize_plan_dict` stay.
+    - `mission_plan_taskio.write_back_task_results`, `derive_subset_task_plan` and `materialize_task_plan`, whose only caller was `dispatch_approved`, with their test classes (`test_mission_plan_orchestrator.py:181-322`). Its `retry_count` increments were already removed in 88.2.4. `load_prior_outputs` and `materialize_plan_dict` stay.
 
 **Tests:** `tests/integration/backend/temporal/test_mission_run_workflow.py` uses `WorkflowEnvironment.start_time_skipping()` and a worker that registers the real `MissionRunWorkflow` with `workflow_runner=UnsandboxedWorkflowRunner()`, so `monkeypatch.setattr(MissionRunWorkflow, "_gate", ...)` takes effect. Stub activities with the same `@activity.defn(name=…)` live in `mission_run_stubs.py` and record calls in a module-level list. Inputs are built with `build_run_config_snapshot()` and `dataclasses.replace` for per-test values.
 - `test_one_activity_per_task`: a graph of two layers with three tasks gives exactly three `execute_plan_task` calls with distinct `task_id`s.

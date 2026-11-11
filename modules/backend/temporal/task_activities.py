@@ -98,6 +98,17 @@ async def _publish_task_failed(
         await redis.aclose()
 
 
+def _workflow_cancelled() -> bool:
+    """True when the workflow requested the cancellation.
+
+    Worker shutdown and heartbeat timeouts also cancel the activity; the task
+    then stays RUNNING so the next attempt re-executes it under the same
+    idempotency key (contracts 3.1.9 rule B).
+    """
+    details = activity.cancellation_details()
+    return details is not None and details.cancel_requested
+
+
 @activity.defn
 async def execute_plan_task(input: ExecuteTaskInput) -> ExecuteTaskResult:
     """Run one task of the run idempotently; a replay never calls the agent."""
@@ -110,10 +121,11 @@ async def execute_plan_task(input: ExecuteTaskInput) -> ExecuteTaskResult:
         try:
             result = await _run_agent(input, claim)
         except asyncio.CancelledError:
-            async with get_async_session() as db:
-                await RunTaskExecutionService(db).mark_cancelled(
-                    input.mission_run_id, input.task_id
-                )
+            if _workflow_cancelled():
+                async with get_async_session() as db:
+                    await RunTaskExecutionService(db).mark_cancelled(
+                        input.mission_run_id, input.task_id
+                    )
             raise
         hb.phase = "record"
         async with get_async_session() as db:

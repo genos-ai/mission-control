@@ -5,7 +5,7 @@ best-effort.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -51,6 +51,7 @@ async def test_raises_and_rolls_back_on_value_error():
 @pytest.mark.asyncio
 async def test_artifact_failure_does_not_raise():
     db_session = AsyncMock()
+    db_session.begin_nested = MagicMock()  # the artifact savepoint: an async context manager
     with (
         patch(f"{_SERVICE}.save_execution", AsyncMock(return_value=SimpleNamespace(id="rec-1"))),
         patch(

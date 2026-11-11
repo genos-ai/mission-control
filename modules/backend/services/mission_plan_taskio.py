@@ -224,6 +224,8 @@ async def write_back_task_results(
 
     Plan 42 §10.5 batch write-back — no modification to the
     dispatch loop or persistence_bridge.
+    ``retry_count`` is not touched: ``MissionPlanService.retry_task`` is its
+    only increment (Plan 88 contracts 3.1.9).
     """
     # Map outcome status -> task lifecycle status
     outcome_to_task: dict[OutcomeStatus, TaskStatus] = {
@@ -257,7 +259,6 @@ async def write_back_task_results(
 
         if new_status == TaskStatus.FAILED:
             orchestrator._task_repo.set_failure(task, task_result.failure)
-            task.retry_count += 1
         else:
             output = task_result.output_reference
             if output:
@@ -284,7 +285,6 @@ async def write_back_task_results(
                 "This usually indicates a mid-run abort or dispatcher bug.",
             ),
         )
-        task.retry_count += 1
         updated_ids.append(task_id)
 
     await orchestrator._session.flush()

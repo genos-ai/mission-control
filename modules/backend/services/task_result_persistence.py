@@ -85,13 +85,16 @@ async def persist_task_result(
     # Driven by catalog config, not output heuristics.
     if artifact_svc is not None and mission_id is not None:
         try:
-            await _maybe_create_artifact(
-                artifact_svc=artifact_svc,
-                mission_id=mission_id,
-                execution_record_id=execution_record_id,
-                task_execution_id=execution.id,
-                task_result=task_result,
-            )
+            # A savepoint, so a failed artifact insert rolls back alone and the
+            # caller's transaction (the task row) can still commit.
+            async with service.session.begin_nested():
+                await _maybe_create_artifact(
+                    artifact_svc=artifact_svc,
+                    mission_id=mission_id,
+                    execution_record_id=execution_record_id,
+                    task_execution_id=execution.id,
+                    task_result=task_result,
+                )
         except Exception as artifact_exc:  # noqa: BLE001
             # best-effort — artifact creation never fails the task row; no
             # event_bus is threaded through this bridge to surface the failure.

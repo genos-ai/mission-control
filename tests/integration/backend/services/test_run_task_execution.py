@@ -34,6 +34,7 @@ from modules.backend.models.mission_run import (
 )
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.user import User
+from modules.backend.repositories.execution_record import ExecutionRecordRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_outcome import TaskResult
 from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
@@ -43,6 +44,7 @@ from modules.backend.schemas.task_failure import (
     FailureOrigin,
     TaskFailure,
 )
+from modules.backend.services import task_result_persistence
 from modules.backend.services.mission_context import MissionContextManager
 from modules.backend.services.mission_run import MissionRunService
 from modules.backend.services.run_task_execution import RunTaskExecutionService
@@ -306,6 +308,88 @@ async def test_record_duplicate_returns_first(db_session_factory, gateway, commi
     assert first.idempotent_replay is False
     assert second.idempotent_replay is True
     assert (second.status, second.cost_usd) == (first.status, first.cost_usd)
+
+
+async def test_record_race_returns_first(
+    db_session_factory, gateway, committed_owner, monkeypatch
+) -> None:
+    """The pre-check misses; the UNIQUE key arbitrates and the loser replays the winner."""
+    run = await _begun_run(db_session_factory, committed_owner)
+    task_id = await _task(db_session_factory, run, TaskStatus.APPROVED)
+    claim = await _claim(db_session_factory, run.id, task_id)
+    first = await _record(
+        db_session_factory, run, task_id, claim.idempotency_key, _success(task_id)
+    )
+    real_get = ExecutionRecordRepository.get_task_execution_by_key
+    calls = {"n": 0}
+
+    async def _miss_first(self, key):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else await real_get(self, key)
+
+    monkeypatch.setattr(ExecutionRecordRepository, "get_task_execution_by_key", _miss_first)
+
+    second = await _record(
+        db_session_factory, run, task_id, claim.idempotency_key, _success(task_id)
+    )
+
+    assert calls["n"] == 2
+    assert second.idempotent_replay is True
+    assert (second.status, second.cost_usd) == (first.status, first.cost_usd)
+    assert len(await _executions(db_session_factory, claim.idempotency_key)) == 1
+
+
+async def test_record_verification_failed_live_and_replay(
+    db_session_factory, gateway, committed_owner
+) -> None:
+    run = await _begun_run(db_session_factory, committed_owner)
+    task_id = await _task(db_session_factory, run, TaskStatus.APPROVED)
+    claim = await _claim(db_session_factory, run.id, task_id)
+    result = _failed(task_id)
+    result.verification_outcome.tier_2.status = "fail"
+
+    live = await _record(db_session_factory, run, task_id, claim.idempotency_key, result)
+    replay = await _record(db_session_factory, run, task_id, claim.idempotency_key, result)
+
+    assert live.verification_failed is True
+    assert replay.idempotent_replay is True
+    assert replay.verification_failed is True
+
+
+async def test_record_rejects_mismatched_task_id(
+    db_session_factory, gateway, committed_owner
+) -> None:
+    run = await _begun_run(db_session_factory, committed_owner)
+    task_id = await _task(db_session_factory, run, TaskStatus.APPROVED)
+    other_id = await _task(db_session_factory, run, TaskStatus.APPROVED)
+    claim = await _claim(db_session_factory, run.id, task_id)
+
+    with pytest.raises(MissionRunStateError):
+        await _record(db_session_factory, run, task_id, claim.idempotency_key, _success(other_id))
+
+    assert await _executions(db_session_factory, claim.idempotency_key) == []
+
+
+async def test_record_survives_artifact_db_error(
+    db_session_factory, gateway, committed_owner, monkeypatch
+) -> None:
+    """An artifact insert failing in the database rolls back its savepoint only."""
+    run = await _begun_run(db_session_factory, committed_owner)
+    task_id = await _task(db_session_factory, run, TaskStatus.APPROVED)
+    claim = await _claim(db_session_factory, run.id, task_id)
+
+    async def _db_error(*, artifact_svc, **_kwargs):
+        await artifact_svc.session.execute(text("SELECT 1/0"))
+
+    monkeypatch.setattr(task_result_persistence, "_maybe_create_artifact", _db_error)
+
+    recorded = await _record(
+        db_session_factory, run, task_id, claim.idempotency_key, _success(task_id)
+    )
+
+    assert recorded.status == "completed"
+    assert len(await _executions(db_session_factory, claim.idempotency_key)) == 1
+    assert (await _get(db_session_factory, task_id)).status == TaskStatus.COMPLETED
 
 
 async def test_record_writes_result_summary_json(

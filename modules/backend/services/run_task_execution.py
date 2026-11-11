@@ -192,6 +192,10 @@ class RunTaskExecutionService(BaseService):
     ) -> ExecuteTaskResult:
         """Transaction B: write the attempt once; a duplicate returns the first write."""
         task_result = TaskResult.model_validate(task_result_json)
+        if task_result.task_id != task_id:
+            raise MissionRunStateError(
+                f"Result for task {task_result.task_id} recorded against task {task_id}"
+            )
         task = await self._locked_task(mission_run_id, task_id)
         existing = await self._executions.get_task_execution_by_key(idempotency_key)
         if existing is not None:
