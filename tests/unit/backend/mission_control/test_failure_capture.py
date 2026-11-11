@@ -2,7 +2,8 @@
 
 Covers the single failed-result builder, every failing dispatch fork, the
 retry handler's one retry rule, workflow step errors and the AST guard on
-``failed_result`` call sites.
+``failed_result`` call sites; and the Planning Agent's view of task states and
+failures during refinement (88.2.4a, contracts 3.8.6).
 """
 
 import ast
@@ -437,3 +438,146 @@ def test_failed_result_callers_pass_task_failure():
                 offenders.append(f"{path}:{node.lineno}")
     assert offenders == []
     assert private_builders == []
+
+
+# =============================================================================
+# Planning Agent sees task states and failures (88.2.4a)
+# =============================================================================
+
+_PLAN_AGENT = "agent_a"
+
+
+def _task_row(status, *, mission_run_id: str | None = None):
+    from modules.backend.models.task import Task
+
+    return Task(
+        id=str(uuid.uuid4()),
+        agent=_PLAN_AGENT,
+        description="A task",
+        status=status,
+        mission_run_id=mission_run_id,
+    )
+
+
+def test_materialize_task_states_carries_failure():
+    from modules.backend.models.task import TaskStatus as RowStatus
+    from modules.backend.repositories.task import TaskRepository
+    from modules.backend.services import mission_plan_taskio
+
+    run_id = str(uuid.uuid4())
+    failed = _task_row(RowStatus.FAILED, mission_run_id=run_id)
+    TaskRepository.set_failure(failed, get_failure_classifier().orphaned("workflow vanished"))
+    completed = _task_row(RowStatus.COMPLETED)
+    other_run = _task_row(RowStatus.FAILED, mission_run_id=str(uuid.uuid4()))
+    plan = SimpleNamespace(tasks=[failed, completed, other_run])
+
+    states = mission_plan_taskio.materialize_task_states(plan, mission_run_id=run_id)
+
+    assert states == [
+        {
+            "task_id": failed.id,
+            "status": "failed",
+            "failure": {
+                "origin": "platform",
+                "failure_class": "orphaned",
+                "summary": "workflow vanished",
+            },
+        },
+        {"task_id": completed.id, "status": "completed", "failure": None},
+    ]
+
+
+class _RefiningPlanner:
+    """Planning agent stand-in: keeps the seeded tasks and finalises the plan."""
+
+    _function_toolset = SimpleNamespace(tools={})
+
+    def __init__(self) -> None:
+        self.prompt: str | None = None
+        self.seeded: dict[str, dict] = {}
+        self.finalise_result: dict | None = None
+
+    async def run(self, prompt, *, deps, model_settings=None, usage_limits=None):
+        from pydantic_ai.usage import RunUsage
+
+        self.prompt = prompt
+        self.seeded = {tid: dict(body) for tid, body in deps.build_session.tasks.items()}
+        self.finalise_result = deps.build_session.finalise(
+            summary="refined", estimated_cost_usd=0.5, estimated_duration_seconds=60
+        )
+        return SimpleNamespace(
+            usage=lambda: RunUsage(input_tokens=10, output_tokens=5),
+            all_messages=lambda: [],
+        )
+
+
+@pytest.mark.asyncio
+async def test_refine_with_failed_task_finalises(db_session, test_user, monkeypatch):
+    from pydantic_ai.models.test import TestModel
+
+    from modules.backend.agents.mission_control.helpers import agent_executor
+    from modules.backend.models.mission import Mission
+    from modules.backend.models.mission_plan import GateMode, MissionPlan
+    from modules.backend.models.task import TaskStatus as RowStatus
+    from modules.backend.repositories.task import TaskRepository
+    from modules.backend.schemas.task_plan import TaskPlan
+    from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+
+    mission = Mission(
+        id=str(uuid.uuid4()),
+        name=f"test-{uuid.uuid4().hex[:8]}",
+        description="Refine with a failed task",
+        owner_id=test_user.id,
+        budget_ceiling_usd=10.0,
+    )
+    db_session.add(mission)
+    await db_session.flush()
+    plan = MissionPlan(
+        mission_id=mission.id, gate_mode=GateMode.AUTONOMOUS, budget_usd_ceiling=10.0
+    )
+    db_session.add(plan)
+    await db_session.flush()
+    repo = TaskRepository(db_session)
+    failed = await repo.create_task(
+        plan_id=plan.id,
+        mission_id=mission.id,
+        agent=_PLAN_AGENT,
+        description="Failing task",
+        status=RowStatus.FAILED,
+    )
+    repo.set_failure(failed, get_failure_classifier().orphaned("workflow vanished"))
+    await db_session.flush()
+
+    start_version = plan.version
+    planner = _RefiningPlanner()
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    async def _roster(mission_id, session):
+        return Roster(agents=[_entry(_PLAN_AGENT)])
+
+    monkeypatch.setattr(agent_executor, "record_llm_call", _noop)
+    monkeypatch.setattr(agent_executor, "_build_model", lambda ref: TestModel())
+    monkeypatch.setattr(
+        "modules.backend.agents.mission.planning.agent.create_agent", lambda model: planner
+    )
+    monkeypatch.setattr("modules.backend.core.agent_trace.trace_and_emit", _noop)
+    monkeypatch.setattr(
+        "modules.backend.agents.mission_control.roster.derive_roster_from_team", _roster
+    )
+
+    orchestrator = MissionPlanOrchestrator(db_session, event_bus=NoOpEventBus())
+    refined = await orchestrator.refine(
+        plan.id, "Retry the failing work", str(test_user.id), mission_run_id=None
+    )
+
+    assert planner.finalise_result is not None and planner.finalise_result["valid"]
+    TaskPlan.model_validate(planner.finalise_result["plan"])
+    # The failure reaches the prompt, never the seeded session tasks.
+    assert "### Current Task States" in planner.prompt
+    assert '"failure_class": "orphaned"' in planner.prompt
+    assert '"summary": "workflow vanished"' in planner.prompt
+    assert "status" not in planner.seeded[failed.id]
+    assert "failure" not in planner.seeded[failed.id]
+    assert refined.version == start_version + 1

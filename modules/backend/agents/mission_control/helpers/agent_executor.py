@@ -437,6 +437,7 @@ async def _call_planning_agent(
     session_id: str | None = None,
     *,
     current_plan: dict | None = None,
+    task_states: list[dict] | None = None,
     refinement_instructions: str | None = None,
     mission_id: str | None = None,
     plan_version: int = 1,
@@ -451,7 +452,9 @@ async def _call_planning_agent(
     Each tool has a trivially small schema — no grammar compiler limits.
 
     When `current_plan` is provided, the PlanBuildingSession is seeded
-    with existing tasks (refinement mode).
+    with existing tasks (refinement mode). `task_states` (status and failure
+    per task, Plan 88 contracts 3.8.6) only reaches the prompt; it is never
+    seeded into the session, because TaskDefinition forbids extra keys.
     """
     import uuid as _uuid
 
@@ -487,6 +490,7 @@ async def _call_planning_agent(
         project_context=project_context,
         recent_failures=recent_failures,
         current_plan=current_plan,
+        task_states=task_states,
         refinement_instructions=refinement_instructions,
         plan_version=plan_version,
     )

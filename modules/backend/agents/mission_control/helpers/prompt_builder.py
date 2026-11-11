@@ -167,6 +167,8 @@ def _build_planning_prompt(
     current_plan: dict | None = None,
     refinement_instructions: str | None = None,
     plan_version: int = 1,
+    *,
+    task_states: list[dict] | None = None,
 ) -> str:
     """Assemble the full prompt for the Planning Agent.
 
@@ -175,7 +177,9 @@ def _build_planning_prompt(
     a new TaskPlan that incorporates the user's changes while preserving
     task_id strings for semantically-unchanged tasks. This is Plan 42's
     refinement path (§10.4) — the Director delegates here via a tool
-    call rather than authoring plans directly.
+    call rather than authoring plans directly. In refinement mode,
+    `task_states` (Plan 88 contracts 3.8.6) is rendered beside the
+    current plan so the agent sees which tasks completed or failed, and why.
     """
     is_refinement = current_plan is not None and refinement_instructions
 
@@ -206,6 +210,7 @@ def _build_planning_prompt(
             "```json\n"
             f"{json.dumps(current_plan, indent=2)}\n"
             "```\n\n"
+            f"{_render_task_states(task_states)}"
             "### User's Refinement Instructions\n\n"
             f"{refinement_instructions}\n"
         )
@@ -235,6 +240,21 @@ def _build_planning_prompt(
         )
 
     return "\n".join(parts)
+
+
+def _render_task_states(task_states: list[dict] | None) -> str:
+    """The Current Task States section of a refinement prompt; empty when there are none."""
+    if not task_states:
+        return ""
+    return (
+        "### Current Task States\n\n"
+        "Status of each task in the current plan. A failed task carries its\n"
+        "failure record: `origin` (where it failed), `failure_class` and `summary`.\n"
+        "Use it to decide whether a failed task should be kept, changed or replaced.\n\n"
+        "```json\n"
+        f"{json.dumps(task_states, indent=2)}\n"
+        "```\n\n"
+    )
 
 
 def _append_validation_feedback(prompt: str, errors: list[str]) -> str:

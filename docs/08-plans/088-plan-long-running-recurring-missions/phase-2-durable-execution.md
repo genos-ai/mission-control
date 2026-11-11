@@ -732,7 +732,7 @@ The Planning Agent row of contracts 3.8.6. It follows 88.2.4, because it reads t
 
 **Change:**
 - `materialize_plan_dict` is unchanged and stays TaskPlan-valid.
-- Add `mission_plan_taskio.materialize_task_states(plan) -> list[dict]`. Each entry is `{task_id, status, failure}`: `status` is the lowercase value, and `failure` is `{origin, failure_class, summary}` read from the `tasks` columns for FAILED tasks, otherwise `None`.
+- Add `mission_plan_taskio.materialize_task_states(plan, *, mission_run_id) -> list[dict]`, scoped like `materialize_plan_dict` (the run's tasks and the backlog). Each entry is `{task_id, status, failure}`: `status` is the lowercase value, and `failure` is `{origin, failure_class, summary}` read from the `tasks` columns for FAILED tasks, otherwise `None`.
 - `MissionPlanOrchestrator.refine` passes it to `_call_planning_agent(..., task_states=...)`. `_build_planning_prompt` renders it beside `current_plan`.
 - It is never seeded into `PlanBuildingSession.tasks`.
 

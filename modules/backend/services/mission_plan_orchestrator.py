@@ -193,6 +193,9 @@ class MissionPlanOrchestrator(BaseService):
                 current_plan=mission_plan_taskio.materialize_plan_dict(
                     plan, mission_run_id=mission_run_id
                 ),
+                task_states=mission_plan_taskio.materialize_task_states(
+                    plan, mission_run_id=mission_run_id
+                ),
                 refinement_instructions=refinement_prompt,
                 plan_version=next_version,
                 mission_run_id=mission_run_id,

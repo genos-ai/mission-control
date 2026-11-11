@@ -49,6 +49,11 @@ def task_definition_from_row(task: Task) -> TaskDefinition:
     return TaskDefinition.model_validate(_task_row_dict(task))
 
 
+def _scoped_tasks(plan: MissionPlan, *, mission_run_id: str | None) -> list[Task]:
+    """The plan's Task rows in scope: the run's tasks and the backlog (mission_run_id IS NULL)."""
+    return [t for t in plan.tasks if t.mission_run_id in (mission_run_id, None)]
+
+
 def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> dict | None:
     """Build a TaskPlan-shaped dict from the plan's Task rows in scope.
 
@@ -57,7 +62,7 @@ def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> d
     agent's current_plan parameter during refinement. Returns None if no
     task is in scope.
     """
-    scoped = [t for t in plan.tasks if t.mission_run_id in (mission_run_id, None)]
+    scoped = _scoped_tasks(plan, mission_run_id=mission_run_id)
     if not scoped:
         return None
     tasks = [_task_row_dict(t) for t in scoped]
@@ -69,6 +74,35 @@ def materialize_plan_dict(plan: MissionPlan, *, mission_run_id: str | None) -> d
         "estimated_duration_seconds": int(plan.estimated_duration or 0),
         "execution_hints": plan.execution_hints_json or {},
         "tasks": tasks,
+    }
+
+
+def materialize_task_states(plan: MissionPlan, *, mission_run_id: str | None) -> list[dict]:
+    """Status and failure record of each Task row in scope (see materialize_plan_dict).
+
+    Plan 88 contracts 3.8.6, Planning Agent row. Each entry is
+    ``{task_id, status, failure}``: ``status`` is the lowercase TaskStatus value,
+    ``failure`` is ``{origin, failure_class, summary}`` from the task's failure
+    columns for a FAILED task, otherwise None. Rendered beside current_plan in
+    the planning prompt; never seeded into PlanBuildingSession.tasks, because
+    TaskDefinition forbids extra keys.
+    """
+    return [
+        {
+            "task_id": t.id,
+            "status": t.status.value,
+            "failure": _failure_dict(t) if t.status == TaskStatus.FAILED else None,
+        }
+        for t in _scoped_tasks(plan, mission_run_id=mission_run_id)
+    ]
+
+
+def _failure_dict(task: Task) -> dict:
+    """The planner-facing failure record of a FAILED task: lowercase enum values and summary."""
+    return {
+        "origin": task.failure_origin.value if task.failure_origin is not None else None,
+        "failure_class": task.failure_class.value if task.failure_class is not None else None,
+        "summary": task.failure_reason,
     }
 
 
