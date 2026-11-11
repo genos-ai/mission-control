@@ -8,7 +8,7 @@ never create another gateway.
 
 import enum
 
-from temporalio.client import Client, WorkflowExecutionStatus, WorkflowHandle
+from temporalio.client import Client, WorkflowExecutionStatus, WorkflowHandle, WorkflowHistory
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
@@ -43,8 +43,8 @@ class TemporalWorkflowGateway:
             raise ExternalServiceError(f"Temporal unavailable: {exc}") from exc
         return cls(client)
 
-    def _handle(self, workflow_id: str) -> WorkflowHandle:
-        return self._client.get_workflow_handle(workflow_id)
+    def _handle(self, workflow_id: str, run_id: str | None = None) -> WorkflowHandle:
+        return self._client.get_workflow_handle(workflow_id, run_id=run_id)
 
     async def state(self, workflow_id: str) -> WorkflowState:
         try:
@@ -90,6 +90,20 @@ class TemporalWorkflowGateway:
             ) from exc
         logger.info("Workflow signalled", extra={"workflow_id": workflow_id, "signal": signal})
         return WorkflowState.RUNNING
+
+    async def fetch_history(
+        self, workflow_id: str, *, run_id: str | None
+    ) -> tuple[WorkflowHistory, bool]:
+        """Return the run's history and whether that execution is still running (88.2.9)."""
+        handle = self._handle(workflow_id, run_id=run_id)
+        try:
+            description = await handle.describe()
+            history = await handle.fetch_history()
+        except RPCError as exc:
+            raise ExternalServiceError(
+                f"Temporal history fetch failed for workflow {workflow_id}: {exc}"
+            ) from exc
+        return history, description.status == WorkflowExecutionStatus.RUNNING
 
     async def start_mission_run(self, inp: MissionRunWorkflowInput) -> None:
         """Start the run's MissionRunWorkflow; a second start for the same run is rejected."""

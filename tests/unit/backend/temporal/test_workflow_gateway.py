@@ -92,3 +92,26 @@ async def test_connect_wraps_runtime_error():
     ):
         with pytest.raises(ExternalServiceError):
             await TemporalWorkflowGateway.connect()
+
+
+async def test_fetch_history_reports_running():
+    gateway, handle = _gateway(status=WorkflowExecutionStatus.RUNNING)
+    history = object()
+    handle.fetch_history = AsyncMock(return_value=history)
+
+    assert await gateway.fetch_history(WORKFLOW_ID, run_id="run-1") == (history, True)
+    gateway._client.get_workflow_handle.assert_called_once_with(WORKFLOW_ID, run_id="run-1")
+
+
+async def test_fetch_history_reports_closed():
+    gateway, handle = _gateway(status=WorkflowExecutionStatus.COMPLETED)
+    handle.fetch_history = AsyncMock(return_value=object())
+
+    _, running = await gateway.fetch_history(WORKFLOW_ID, run_id=None)
+    assert running is False
+
+
+async def test_fetch_history_wraps_rpc_error():
+    gateway, _ = _gateway(error=_rpc_error(RPCStatusCode.NOT_FOUND))
+    with pytest.raises(ExternalServiceError):
+        await gateway.fetch_history(WORKFLOW_ID, run_id=None)

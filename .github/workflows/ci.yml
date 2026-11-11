@@ -128,6 +128,8 @@ jobs:
 
           asyncio.run(main())
           EOF
+      - name: Temporal replay
+        run: pytest tests/unit/backend/temporal/test_replay_histories.py -q -p no:cacheprovider
       - name: Unit tests
         run: pytest tests/unit -q -p no:cacheprovider
       - name: Integration tests

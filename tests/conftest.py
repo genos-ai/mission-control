@@ -80,6 +80,11 @@ def is_sqlite() -> bool:
     return "sqlite" in get_test_database_url()
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """--record-histories regenerates the Temporal replay fixtures (Plan 88 step 88.2.9)."""
+    parser.addoption("--record-histories", action="store_true", default=False)
+
+
 # =============================================================================
 # Database Engine Fixtures
 # =============================================================================
