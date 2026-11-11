@@ -176,6 +176,42 @@ open on purpose.
   retry. Find where the ~3.5 extra minutes go (server heartbeat-timeout
   detection on the dev server, SDK heartbeat throttling, or retry
   scheduling) before tuning `execute_task.heartbeat_timeout_seconds`.
+- [ ] **Plan 88 Phase 2 drill findings (2026-11-11).**
+  - Worker `AgentRegistry` caches the catalog per process
+    (`core/agent_registry.py` `_ensure_loaded`); `POST/PATCH
+    /admin/catalog` never reaches a running worker, contradicting
+    AGENTS.md. Roster reads are fresh, so a new agent passes the roster
+    check and then fails with `KeyError` in the worker.
+  - `system.planning.agent` and `mission.workflow.agent` are enabled
+    catalog rows on every default team with no Python module; any task
+    the planner gives them fails as `PLATFORM_DEFECT`.
+  - The post-run reviewer's `plan_task_summary` (including `failures`)
+    is neither persisted nor logged; its decision cannot be audited.
+    `trace_execution.py` diagnoses a dispatch failure as a validation
+    failure.
+  - The post-run supervisor's LLM call is not in the run's cost
+    (p88-faildrill-a run #1 cost = planner only).
+  - Only the post-run reviewer can end a run `OBJECTIVE_MET`. In
+    p88-faildrill-b3 run #1 the wave-2 task completed, the reviewer still
+    chose `advance_refine`, the Director replied "objective met" and did
+    not refine, and the run ended `FAILED` "refine produced no tasks".
+- [ ] **Plan 88 Phase 2 refine fix review minors (90d242b2,
+  2026-11-11).**
+  - Timeouts are not tied: the Director turn (600s) now contains the
+    whole refine (`PlanRefineWorkflow` up to 2 x 600s) and the run's
+    `refine_wait_seconds` is 600s. The refine workflow is not cancelled
+    when the turn times out. Derive the refine's execution timeout from
+    the remaining wait; validate the ordering at config load.
+  - A refine failure reaches the run's end detail only if the Director
+    quotes it. Carry it structurally (e.g. `ChatTurnResult.refine_error`).
+  - `ChatTurnWorkflow` signals the parent on `execute_chat_turn` failure
+    only; a `persist_user_message` failure makes the run wait the full
+    `refine_wait_seconds`.
+  - The signal argument change relies on the Phase 2 drain exemption
+    (doc 29 rule 2.4); any later change to it needs `workflow.patched`.
+  - `refine_plan` is 109 lines; split it.
+  - Tool-fork path (`tool_fork_activities.py`) has no test of its own
+    for Director routing (d703d026 review).
 - [ ] **`missions.recurrence.enabled` ships as `true` (2026-11-11).**
   There is no per-environment config overlay, so production gets the
   committed value. Plan 88 requires schedules off in production until
