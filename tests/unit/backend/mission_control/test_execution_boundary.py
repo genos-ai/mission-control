@@ -4,6 +4,7 @@ No isolated workspace means no execution, never local execution: every path
 that used to fall back to the worker host now raises ExecutionEnvironmentError.
 """
 
+import dataclasses
 import sys
 import types
 import uuid
@@ -13,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_ai import UsageLimits
+from sqlalchemy.exc import SQLAlchemyError
 
 from modules.backend.agents.mission_control import runtime
 from modules.backend.agents.mission_control.dispatch.environment import resolve_execution_mode
@@ -23,7 +25,9 @@ from modules.backend.agents.mission_control.helpers.cli_executor import (
 )
 from modules.backend.agents.security.tool_runner import _run_tool_subprocess
 from modules.backend.core.config import find_project_root, get_app_config
+from modules.backend.core.exception_handlers import EXCEPTION_STATUS_MAP
 from modules.backend.core.exceptions import ExecutionEnvironmentError, ValidationError
+from modules.backend.models.execution_record import ExecutionRecordStatus
 from modules.backend.schemas.agent_config import AgentConfigSchema
 from modules.backend.schemas.workflow import WorkflowStepSchema
 from modules.backend.services import execution_environment
@@ -135,6 +139,7 @@ def _step_ctx() -> MagicMock:
     ctx = MagicMock()
     ctx.persistence.count_active = AsyncMock(return_value=0)
     ctx.persistence.save_execution = AsyncMock(return_value=MagicMock(id="rec-1"))
+    ctx.persistence.complete_execution = AsyncMock()
     return ctx
 
 
@@ -174,14 +179,14 @@ async def test_workflow_wave_passes_repo_root():
 
 
 async def test_workflow_step_env_error_fails_step():
-    """The env error goes through the step's handler, whose RuntimeError fails the run record.
+    """The env error goes through the step's handler: the step's record ends failed, not running.
 
-    Raised outside the try, an ExecutionEnvironmentError would escape
-    WorkflowRunService's (RuntimeError, ValueError, OSError) handler and
-    leave the run's ExecutionRecord RUNNING.
+    The handler re-raises as RuntimeError so WorkflowRunService's
+    (RuntimeError, ValueError, OSError) handler also fails the run.
     """
     handle_mission = AsyncMock()
     svc = _waves_service()
+    ctx = _step_ctx()
     env_error = ExecutionEnvironmentError("execution mode 'container' requires repo_root")
     with (
         patch(f"{_WAVES}.resolve_dispatch_params", AsyncMock(side_effect=env_error)),
@@ -192,12 +197,30 @@ async def test_workflow_step_env_error_fails_step():
         patch("modules.backend.services.session.SessionService", MagicMock()),
         pytest.raises(RuntimeError, match="requires repo_root") as exc_info,
     ):
-        await svc._execute_step(_run(), _STEP, str(uuid.uuid4()), {}, _step_ctx())
+        await svc._execute_step(_run(), _STEP, str(uuid.uuid4()), {}, ctx)
 
     assert exc_info.value.__cause__ is env_error
     handle_mission.assert_not_called()
     published = [c.args[1] for c in svc._event_bus.publish_to_mission.call_args_list]
     assert any(getattr(e, "level", None) == "error" for e in published)
+    ctx.persistence.complete_execution.assert_awaited_once()
+    call = ctx.persistence.complete_execution.call_args
+    assert call.args == ("rec-1", ExecutionRecordStatus.FAILED.value)
+    assert "requires repo_root" in call.kwargs["execution_outcome_json"]["error"]
+
+
+async def test_workflow_step_record_close_failure_keeps_step_error():
+    """A DB failure while closing the step record never masks the step's RuntimeError."""
+    svc = _waves_service()
+    ctx = _step_ctx()
+    ctx.persistence.complete_execution = AsyncMock(side_effect=SQLAlchemyError("session dead"))
+    env_error = ExecutionEnvironmentError("execution mode 'container' requires repo_root")
+    with (
+        patch(f"{_WAVES}.resolve_dispatch_params", AsyncMock(side_effect=env_error)),
+        patch("modules.backend.services.session.SessionService", MagicMock()),
+        pytest.raises(RuntimeError, match="requires repo_root"),
+    ):
+        await svc._execute_step(_run(), _STEP, str(uuid.uuid4()), {}, ctx)
 
 
 # =============================================================================
@@ -362,6 +385,22 @@ async def test_claude_code_passes_read_tools_and_empty_setting_sources(monkeypat
     assert captured["tools"] == ["Read", "Grep", "Glob"] == CLAUDE_CODE_READ_TOOLS
     assert captured["allowed_tools"] == ["Read", "Grep", "Glob"]
     assert captured["setting_sources"] == []
+
+
+def test_installed_claude_agent_sdk_accepts_boundary_options():
+    """The installed SDK must accept the options execute_claude_code relies on.
+
+    Releases before 0.1.19 have no ClaudeAgentOptions.tools; on those every
+    claude_code call would fail with a TypeError instead of running read-only.
+    """
+    sdk = pytest.importorskip("claude_agent_sdk")
+    names = {f.name for f in dataclasses.fields(sdk.ClaudeAgentOptions)}
+    used = {"system_prompt", "cwd", "max_turns", "tools", "allowed_tools", "setting_sources"}
+    assert used <= names
+
+
+def test_execution_environment_error_maps_to_503():
+    assert EXCEPTION_STATUS_MAP[ExecutionEnvironmentError] == 503
 
 
 # =============================================================================

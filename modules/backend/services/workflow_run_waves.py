@@ -23,9 +23,12 @@ import asyncio
 import uuid as _uuid
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import WorkflowOutputMappingError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.redaction import redact_secrets
 from modules.backend.events.types import (
     MissionPlanTaskStatusChangedEvent,
     SystemEvent,
@@ -34,6 +37,7 @@ from modules.backend.events.types import (
     WorkflowRunStartedEvent,
     WorkflowStepSkippedEvent,
 )
+from modules.backend.models.execution_record import ExecutionRecordStatus
 from modules.backend.models.task import TaskStatus
 from modules.backend.services.workflow_run_steps import control, io, sub_workflow
 from modules.backend.services.workflow_run_steps.helpers import (
@@ -705,6 +709,29 @@ class WorkflowRunWavesMixin:
                     mission_id=run.mission_id,
                 ),
             )
+            # Close the step's own record: left RUNNING it counts against
+            # workflows.max_concurrent_missions forever (count_active).
+            error_text = redact_secrets(f"{type(e).__name__}: {e}")
+            try:
+                await ctx.persistence.complete_execution(
+                    record.id,
+                    ExecutionRecordStatus.FAILED.value,
+                    execution_outcome_json={"error": error_text},
+                )
+            except SQLAlchemyError:
+                # The session may be unusable after the original failure;
+                # the step's RuntimeError below must still reach the run
+                # handler so the run and parent record are failed.
+                logger.error(
+                    "Failed to mark step execution record failed",
+                    extra={
+                        "mission_id": run.mission_id,
+                        "run_id": run.id,
+                        "step_id": step.id,
+                        "execution_record_id": record.id,
+                    },
+                    exc_info=True,
+                )
             raise RuntimeError(f"Step '{step.id}' execution failed: {type(e).__name__}: {e}") from e
 
         # 3. Extract outputs from the outcome.

@@ -94,6 +94,7 @@ Errors related to system operations.
 | `SYS_SERVICE_UNAVAILABLE` | 503 | Service temporarily down | Show retry message |
 | `SYS_DATABASE_ERROR` | 500 | Database operation failed | Show generic error |
 | `SYS_EXTERNAL_SERVICE_ERROR` | 502 | Third-party service failed | Show service error |
+| `SYS_ENV_UNAVAILABLE` | 503 | No isolated execution environment can be provided; execution refused (fail closed) | Show configuration error; do not retry unchanged |
 
 ### Rate Limiting Errors (RATE_*)
 
@@ -130,6 +131,7 @@ Backend exceptions map to error responses:
 | `RateLimitError` | `RATE_LIMITED` | 429 |
 | `ExternalServiceError` | `SYS_EXTERNAL_SERVICE_ERROR` | 502 |
 | `DatabaseError` | `SYS_DATABASE_ERROR` | 500 |
+| `ExecutionEnvironmentError` | `SYS_ENV_UNAVAILABLE` | 503 |
 
 ---
 

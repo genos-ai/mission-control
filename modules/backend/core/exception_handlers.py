@@ -23,6 +23,7 @@ from modules.backend.core.exceptions import (
     ConflictError,
     ContractViolationError,
     DatabaseError,
+    ExecutionEnvironmentError,
     ExternalServiceError,
     NotFoundError,
     QuotaExhaustedError,
@@ -47,6 +48,9 @@ EXCEPTION_STATUS_MAP: dict[type[ApplicationError], int] = {
     ConflictError: 409,
     ExternalServiceError: 502,
     DatabaseError: 503,
+    # Fail-closed execution boundary (Plan 88 3.8.5): no isolated
+    # environment can be provided, a deliberate refusal not a crash.
+    ExecutionEnvironmentError: 503,
     # Provider error taxonomy
     QuotaExhaustedError: 429,
     RateLimitedError: 429,

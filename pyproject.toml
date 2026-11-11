@@ -41,7 +41,7 @@ dependencies = [
     "pydantic-ai>=1.63.0",
     "jsonschema>=4.20.0",
     # CLI agent engines (Plan 55)
-    "claude-agent-sdk>=0.1.0",
+    "claude-agent-sdk>=0.1.19",  # first release with ClaudeAgentOptions.tools
     # Subscription-based model auth (Plan 55/58)
     "codex-auth>=0.1.0",
     # Azure Entra ID auth for Foundry provider (Plan 82)
