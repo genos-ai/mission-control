@@ -158,6 +158,22 @@ open on purpose.
     (`from temporalio.workflow import patched as p`).
   - `docs/10-reference-architecture/00-overview.md` still lists Optional
     Platform as 20-28 with no row for doc 29.
+- [ ] **lint-imports: two layer contracts broken since Plan 71
+  (2026-11-11).** Stale `ignore_imports` entries hid them until
+  b84f0bb0 removed them; main fails the same way. Owner decision: fix as
+  a separate layering task, no new ignores.
+  - services must not import agents: `catalog_seeder`, `model_provider`,
+    `workflow_architect`, `workflow_run_steps`, `workflow_run_waves`, and
+    `execution_cancellation -> workflow_gateway -> mission_run_workflow ->
+    task_activities -> agents`.
+  - core must not import services: `core.dependencies ->
+    services.mission`, `services.session`.
+- [ ] **`missions.recurrence.enabled` ships as `true` (2026-11-11).**
+  There is no per-environment config overlay, so production gets the
+  committed value. Plan 88 requires schedules off in production until
+  Phase 4 is complete. Owner decision: keep `true` for dev; Phase 4's
+  deploy steps must check the release value and the production schedule
+  count (doc 29 section 5 step 4).
 - [ ] **Task failure reasons are thrown away.** `failed_result`
   (`dispatch/result_builders.py:66-85`) accepts `reason` but discards
   it, and `TaskResult` (`schemas/execution_outcome.py`) has no
