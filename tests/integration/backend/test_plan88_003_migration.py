@@ -3,11 +3,11 @@
 Runs Alembic against a scratch PostgreSQL database created on the test server
 and dropped afterwards. The base tables predate Alembic, so the chain cannot
 run from an empty database: the scratch database is built from the current
-models, completed with the failure columns that plan88_002 creates but the
-models do not map until 88.2.3b, stamped plan88_003 and downgraded to
-plan88_002, which recreates an empty workflow_schedules. Each test seeds a
-workflow_schedules row at plan88_002, then upgrades. The tests are synchronous
-because Alembic's env.py drives its own event loop.
+models (which map the plan88_002 failure columns since 88.2.3b), stamped
+plan88_003 and downgraded to plan88_002, which recreates an empty
+workflow_schedules. Each test seeds a workflow_schedules row at plan88_002,
+then upgrades. The tests are synchronous because Alembic's env.py drives its
+own event loop.
 """
 
 import asyncio
@@ -19,7 +19,6 @@ import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -32,17 +31,6 @@ pytestmark = pytest.mark.integration
 
 _PREVIOUS = "plan88_002"
 _TARGET = "plan88_003"
-
-# plan88_002 creates these; the models map them only from 88.2.3b.
-_UNMAPPED_FAILURE_DDL = (
-    "ALTER TABLE tasks ADD COLUMN failure_origin VARCHAR(32), "
-    "ADD COLUMN failure_class VARCHAR(40), ADD COLUMN failure_fingerprint VARCHAR(64)",
-    "ALTER TABLE task_executions ADD COLUMN failure_origin VARCHAR(32), "
-    "ADD COLUMN failure_class VARCHAR(40), ADD COLUMN failure_fingerprint VARCHAR(64), "
-    "ADD COLUMN failure_json JSONB",
-    "CREATE INDEX ix_task_executions_failure_fingerprint "
-    "ON task_executions (failure_fingerprint)",
-)
 
 
 def _dsn(url: str) -> str:
@@ -80,8 +68,6 @@ async def _create_schema(url: str) -> None:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            for ddl in _UNMAPPED_FAILURE_DDL:
-                await conn.execute(text(ddl))
     finally:
         await engine.dispose()
 

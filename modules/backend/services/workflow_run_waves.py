@@ -27,6 +27,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import WorkflowOutputMappingError
+from modules.backend.core.failure_classification import (
+    WorkflowStepFailedError,
+    get_failure_classifier,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.core.redaction import redact_secrets
 from modules.backend.events.types import (
@@ -39,6 +43,7 @@ from modules.backend.events.types import (
 )
 from modules.backend.models.execution_record import ExecutionRecordStatus
 from modules.backend.models.task import TaskStatus
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.services.workflow_run_steps import control, io, sub_workflow
 from modules.backend.services.workflow_run_steps.helpers import (
     StepContext,
@@ -46,11 +51,12 @@ from modules.backend.services.workflow_run_steps.helpers import (
     build_step_objective,
     compute_waves,
     extract_default_agent_output,
-    extract_first_task_failure,
+    first_task_failure,
     resolve_dispatch_params,
     should_skip,
 )
 from modules.backend.services.workflow_run_steps.human_input import execute_human_input_step
+from modules.backend.tools.halt_workflow import WorkflowHaltedError
 
 if TYPE_CHECKING:
     from modules.backend.models.workflow_run import WorkflowRun
@@ -443,15 +449,14 @@ class WorkflowRunWavesMixin:
                         ts = TaskStatus.SKIPPED
                     else:
                         ts = TaskStatus.FAILED
-                        # Pull the most specific failure reason we can find.
-                        # Order: abort_reason on the outcome, first task_result's
-                        # failure path, fall back to a generic message.
-                        reason = (
-                            getattr(execution, "abort_reason", None)
-                            or extract_first_task_failure(execution)
+                        # The first failed task's classified summary, else the
+                        # outcome's abort reason, else a generic message.
+                        failure = first_task_failure(execution)
+                        _failure_reasons[step.id] = (
+                            (failure.summary if failure else None)
+                            or getattr(execution, "abort_reason", None)
                             or f"Step '{step.id}' execution failed (status={ex_status})"
                         )
-                        _failure_reasons[step.id] = str(reason)
                     _step_statuses.append((step.id, ts))
                 await self._sync_plan_task_states(
                     _plan_id,
@@ -536,7 +541,15 @@ class WorkflowRunWavesMixin:
         if node_type == "human_input":
             return await execute_human_input_step(self, run, step, completed_outcomes)
         if node_type == "tool_call":
-            return await io.execute_tool_call_step(self, run, step, completed_outcomes)
+            try:
+                return await io.execute_tool_call_step(self, run, step, completed_outcomes)
+            except WorkflowHaltedError as e:
+                failure = get_failure_classifier().agent_outcome(
+                    f"workflow:{step.id}", f"workflow halted: {e.reason}"
+                )
+                raise WorkflowStepFailedError(
+                    failure, f"Step '{step.id}' halted the workflow: {failure.summary}"
+                ) from e
         if node_type == "llm_call":
             return await io.execute_llm_call_step(self, run, step, completed_outcomes)
         if node_type == "branch":
@@ -684,7 +697,8 @@ class WorkflowRunWavesMixin:
             # Catch-all justified: wraps handle_mission(), a full agent
             # dispatch (LLM calls, tool calls, DB writes) whose exception
             # surface is unbounded — logged and emitted here for Console
-            # visibility, then re-raised as RuntimeError below.
+            # visibility, then re-raised below as WorkflowStepFailedError
+            # carrying the classified failure.
             import traceback
 
             tb_str = traceback.format_exception(e)
@@ -732,7 +746,10 @@ class WorkflowRunWavesMixin:
                     },
                     exc_info=True,
                 )
-            raise RuntimeError(f"Step '{step.id}' execution failed: {type(e).__name__}: {e}") from e
+            failure = get_failure_classifier().from_exception(e)
+            raise WorkflowStepFailedError(
+                failure, f"Step '{step.id}' execution failed: {failure.summary}"
+            ) from e
 
         # 3. Extract outputs from the outcome.
         # Plan 79 §8.3 — default-populate completed_outcomes[step.id] with the
@@ -795,14 +812,16 @@ class WorkflowRunWavesMixin:
         )
 
         if not success:
-            # Surface the real underlying failure (e.g. "Copilot quota
-            # exhausted (402): ...") that the retry handler captured.
-            # Without this, every step failure presents as a generic
-            # "Step 'X' execution failed", hiding root-cause signals
-            # from logs, SSE events, and the run-detail UI.
-            reason = getattr(outcome, "abort_reason", None) or extract_first_task_failure(outcome)
-            detail = f": {reason}" if reason else ""
-            raise RuntimeError(f"Step '{step.id}' execution failed{detail}")
+            # Surface the first failed task's classified failure, so the
+            # run stores it (error_data["failure"]) and the step message
+            # carries its summary instead of a generic "execution failed".
+            failure = first_task_failure(outcome) or get_failure_classifier().control(
+                FailureClass.RUN_ABORTED,
+                outcome.abort_reason or f"step '{step.id}' ended with status {outcome.status}",
+            )
+            raise WorkflowStepFailedError(
+                failure, f"Step '{step.id}' execution failed: {failure.summary}"
+            )
 
         result = VirtualExecution(
             id=record.id,

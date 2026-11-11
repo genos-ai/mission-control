@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from modules.backend.schemas.task_failure import FailureClass, TaskFailure
 
 
 class ExecutionStatus(StrEnum):
@@ -101,6 +103,7 @@ class RetryHistoryEntry(BaseModel):
     failure_tier: int  # 0=execution, 1=tier1, 2=tier2, 3=tier3
     failure_reason: str
     feedback_provided: str
+    failure_class: FailureClass | None = None
 
 
 class TaskResult(BaseModel):
@@ -129,6 +132,17 @@ class TaskResult(BaseModel):
         description="Structured patches to the PCD proposed by this agent",
     )
     skip_reason: str | None = None
+    failure: TaskFailure | None = None
+
+    @model_validator(mode="after")
+    def _failure_matches_status(self) -> TaskResult:
+        """A FAILED or TIMEOUT result carries a TaskFailure; any other status carries none."""
+        failed = self.status in (TaskStatus.FAILED, TaskStatus.TIMEOUT)
+        if failed and self.failure is None:
+            raise ValueError(f"TaskResult with status {self.status.value} requires a failure")
+        if not failed and self.failure is not None:
+            raise ValueError(f"TaskResult with status {self.status.value} must not carry a failure")
+        return self
 
 
 class GateDecisionRecord(BaseModel):

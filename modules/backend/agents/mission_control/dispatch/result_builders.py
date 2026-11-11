@@ -16,6 +16,7 @@ from modules.backend.agents.mission_control.outcome import (
     TaskStatus,
     TaskTokenUsage,
 )
+from modules.backend.schemas.task_failure import TaskFailure
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 
@@ -65,21 +66,31 @@ def skipped_result(
 
 def failed_result(
     task: TaskDefinition,
-    reason: str,
+    failure: TaskFailure,
+    *,
+    status: TaskStatus = TaskStatus.FAILED,
     retry_count: int = 0,
     retry_history: list[RetryHistoryEntry] | None = None,
     execution_id: str = "",
+    cost_usd: float = 0.0,
+    token_usage: TaskTokenUsage | None = None,
+    duration_seconds: float = 0.0,
 ) -> TaskResult:
-    """Create a failed TaskResult."""
+    """Create a failed (or timed-out) TaskResult carrying its classified failure.
+
+    The only failed-result builder (contracts 3.8.2). Spend already incurred
+    is passed through ``cost_usd``, ``token_usage`` and ``duration_seconds``.
+    """
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
-        status=TaskStatus.FAILED,
+        status=status,
         output_reference={},
-        token_usage=TaskTokenUsage(),
-        cost_usd=0.0,
-        duration_seconds=0.0,
+        token_usage=token_usage or TaskTokenUsage(),
+        cost_usd=cost_usd,
+        duration_seconds=duration_seconds,
         retry_count=retry_count,
         retry_history=retry_history or [],
         execution_id=execution_id,
+        failure=failure,
     )

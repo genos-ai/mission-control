@@ -1,7 +1,7 @@
 """Mission panel — DAG visualization with layer progress.
 
-Renders the TaskPlan as a text-based DAG showing layers, task status,
-agent assignments, and cost. Updated live as events arrive.
+Renders the TaskPlan as a text-based DAG showing layers, task status
+and agent assignments. Updated live as events arrive.
 """
 
 from __future__ import annotations
@@ -12,20 +12,20 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Label, Static
 
-from modules.backend.agents.mission_control.outcome import TaskResult
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.clients.common.gate_helpers import STATUS_ICONS, safe_css_id
+from modules.clients.tui.services.state import TaskStatusView
 
 
 def _task_status_icon(
     task_id: str,
     *,
     active_tasks: set[str],
-    results: dict[str, TaskResult],
+    results: dict[str, TaskStatusView],
 ) -> str:
     """Return the status icon for a task."""
     if task_id in results:
-        return STATUS_ICONS.get(results[task_id].status.value, STATUS_ICONS["pending"])
+        return STATUS_ICONS.get(results[task_id].status, STATUS_ICONS["pending"])
     if task_id in active_tasks:
         return STATUS_ICONS["running"]
     return STATUS_ICONS["pending"]
@@ -54,20 +54,17 @@ class TaskNode(Static):
         task_def: TaskDefinition,
         *,
         status_icon: str,
-        cost: float = 0.0,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._task_def = task_def
         self._status_icon = status_icon
-        self._cost = cost
 
     def compose(self) -> ComposeResult:
         agent = _agent_short_name(self._task_def.agent)
         desc = self._task_def.description[:35]
-        cost_str = f" ${self._cost:.3f}" if self._cost > 0 else ""
         yield Label(
-            f"  {self._status_icon} [{agent}] {desc}{cost_str}",
+            f"  {self._status_icon} [{agent}] {desc}",
             markup=True,
         )
 
@@ -104,7 +101,7 @@ class MissionPanel(Widget):
         super().__init__(**kwargs)
         self._plan: TaskPlan | None = None
         self._layers: list[list[str]] = []
-        self._results: dict[str, TaskResult] = {}
+        self._results: dict[str, TaskStatusView] = {}
         self._active_tasks: set[str] = set()
 
     def compose(self) -> ComposeResult:
@@ -133,7 +130,7 @@ class MissionPanel(Widget):
         task_id: str,
         *,
         active: bool = False,
-        result: TaskResult | None = None,
+        result: TaskStatusView | None = None,
     ) -> None:
         """Update a single task's status and refresh its node."""
         if result:
@@ -162,9 +159,8 @@ class MissionPanel(Widget):
             return
         done = len(self._results)
         total = len(self._plan.tasks)
-        cost = sum(r.cost_usd for r in self._results.values())
         title = self.query_one("#mission-panel-title", Label)
-        title.update(f"[bold]Mission Plan[/bold]  " f"[dim]{done}/{total} tasks  ${cost:.3f}[/dim]")
+        title.update(f"[bold]Mission Plan[/bold]  [dim]{done}/{total} tasks[/dim]")
 
     def _render_dag(self) -> None:
         """Render the full DAG — called once when plan is loaded."""
@@ -190,12 +186,10 @@ class MissionPanel(Widget):
                     active_tasks=self._active_tasks,
                     results=self._results,
                 )
-                cost_val = self._results[task_id].cost_usd if task_id in self._results else 0.0
                 safe_id = safe_css_id(task_id)
                 node = TaskNode(
                     task_def,
                     status_icon=icon,
-                    cost=cost_val,
                     id=f"task-{safe_id}",
                 )
                 scroll.mount(node)
@@ -217,8 +211,6 @@ class MissionPanel(Widget):
             active_tasks=self._active_tasks,
             results=self._results,
         )
-        cost_val = self._results[task_id].cost_usd if task_id in self._results else 0.0
         agent = _agent_short_name(task_def.agent)
         desc = task_def.description[:35]
-        cost_str = f" ${cost_val:.3f}" if cost_val > 0 else ""
-        node.update(f"  {icon} [{agent}] {desc}{cost_str}")
+        node.update(f"  {icon} [{agent}] {desc}")

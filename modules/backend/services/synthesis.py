@@ -62,8 +62,8 @@ def _build_prompt(outcome: ExecutionOutcome) -> str:
         if t.output_reference.get("summary"):
             entry["summary"] = t.output_reference["summary"]
         # Include failure reason
-        if t.status == "failed" and t.retry_history:
-            entry["failure_reason"] = t.retry_history[-1].failure_reason
+        if t.failure is not None:
+            entry["failure_reason"] = t.failure.summary
             entry["retries"] = t.retry_count
         if t.skip_reason:
             entry["skip_reason"] = t.skip_reason

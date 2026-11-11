@@ -875,6 +875,29 @@ class CliSchema(_StrictBase):
 
 
 # =============================================================================
+# failures.yaml (Plan 88 step 88.2.3b, contracts 3.4.9)
+# =============================================================================
+
+
+class FailureEvidenceBoundsSchema(_StrictBase):
+    max_message_chars: int = Field(..., ge=1)
+    max_summary_chars: int = Field(..., ge=1)
+    max_traceback_frames: int = Field(..., ge=1)
+
+
+class FailureSupervisorSchema(_StrictBase):
+    max_failure_digests: int = Field(..., ge=1)
+
+
+class FailuresSchema(_StrictBase):
+    """Task failure evidence bounds and retry policy (failures.yaml). Rules are code."""
+
+    evidence: FailureEvidenceBoundsSchema
+    supervisor: FailureSupervisorSchema
+    unknown_retryable: bool
+
+
+# =============================================================================
 # cost.yaml (Plan 60)
 # =============================================================================
 

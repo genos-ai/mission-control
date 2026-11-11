@@ -12,6 +12,19 @@ from typing import Any
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 
+class UpstreamOutputMissingError(KeyError):
+    """A from_upstream reference has no output to read (Plan 88, contracts 3.5.5)."""
+
+    def __init__(self, message: str, *, source_task: str, source_field: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.source_task = source_task
+        self.source_field = source_field
+
+    def __str__(self) -> str:
+        return self.message
+
+
 def topological_sort(plan: TaskPlan) -> list[list[str]]:
     """Sort tasks into execution layers. Each layer runs in parallel.
 
@@ -51,7 +64,7 @@ def resolve_upstream_inputs(
     """Resolve from_upstream references using outputs from completed tasks.
 
     Returns the merged input dict (static + resolved upstream).
-    Raises KeyError if a referenced task or field is missing.
+    Raises UpstreamOutputMissingError if a referenced task or field is missing.
     """
     resolved = dict(task.inputs.static)
 
@@ -61,14 +74,18 @@ def resolve_upstream_inputs(
         for ref in refs:
             source_output = completed_outputs.get(ref.source_task)
             if source_output is None:
-                raise KeyError(
+                raise UpstreamOutputMissingError(
                     f"Task '{task.task_id}': upstream task '{ref.source_task}' "
-                    f"has no output (did it fail?)"
+                    f"has no output (did it fail?)",
+                    source_task=ref.source_task,
+                    source_field=ref.source_field,
                 )
             if ref.source_field not in source_output:
-                raise KeyError(
+                raise UpstreamOutputMissingError(
                     f"Task '{task.task_id}': upstream task '{ref.source_task}' "
-                    f"output missing field '{ref.source_field}'"
+                    f"output missing field '{ref.source_field}'",
+                    source_task=ref.source_task,
+                    source_field=ref.source_field,
                 )
             values.append(source_output[ref.source_field])
         # Single ref → unwrap; list of refs → keep as list

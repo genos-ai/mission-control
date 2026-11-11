@@ -10,9 +10,25 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from modules.backend.agents.mission_control.gate import GateContext
-from modules.backend.agents.mission_control.outcome import ExecutionOutcome, TaskResult
+from modules.backend.agents.mission_control.outcome import ExecutionOutcome
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
 from modules.backend.schemas.task_plan import TaskPlan
+
+# ── Client-side task view ─────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class TaskStatusView:
+    """What the TUI knows about a finished task from its plan.step.completed event.
+
+    A display record only: the backend TaskResult (and its failure record)
+    is never rebuilt from SSE events.
+    """
+
+    task_id: str
+    agent_name: str
+    status: str  # a TaskStatus value: success, failed, timeout or skipped
+
 
 # ── Tab-specific sub-dataclasses ──────────────────────────────────────
 
@@ -73,7 +89,7 @@ class TuiState:
     mission_status: str = "idle"  # idle|planning|running|completed|failed
     task_plan: TaskPlan | None = None
     task_layers: list[list[str]] = field(default_factory=list)
-    task_results: dict[str, TaskResult] = field(default_factory=dict)
+    task_results: dict[str, TaskStatusView] = field(default_factory=dict)
     current_layer: int = 0
     execution_outcome: ExecutionOutcome | None = None
 

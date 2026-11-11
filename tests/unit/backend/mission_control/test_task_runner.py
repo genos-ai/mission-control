@@ -17,6 +17,7 @@ from modules.backend.agents.mission_control.roster import (
 )
 from modules.backend.agents.mission_control.runtime import DispatchRuntime
 from modules.backend.core.protocols import NoOpEventBus
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskDefinition
 
 
@@ -120,8 +121,8 @@ async def test_roster_miss_returns_failed_result():
     result = await _run(_task(agent="unknown_agent"), _runtime(execute_agent_fn=execute), bus=bus)
 
     assert result.status == TaskStatus.FAILED
-    assert task_runner.ROSTER_MISS_REASON == "Agent not found in roster"
-    assert any("Agent not found in roster" in e.narrative for e in bus.events)
+    assert result.failure.failure_class is FailureClass.PLATFORM_DEFECT
+    assert any(result.failure.summary in e.narrative for e in bus.events)
     execute.assert_not_awaited()
 
 
@@ -138,6 +139,7 @@ async def test_missing_upstream_returns_failed_result():
     result = await _run(task, _runtime(execute_agent_fn=execute))
 
     assert result.status == TaskStatus.FAILED
+    assert result.failure.failure_class is FailureClass.UPSTREAM_BLOCKED
     execute.assert_not_awaited()
 
 

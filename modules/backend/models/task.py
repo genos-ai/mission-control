@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+from modules.backend.schemas.task_failure import FailureClass, FailureOrigin
 
 
 class TaskStatus(str, enum.Enum):
@@ -215,6 +216,20 @@ class Task(UUIDMixin, TimestampMixin, Base):
         Text,
         nullable=True,
         comment="Why the task failed (if applicable)",
+    )
+
+    # Classification of the current attempt's failure (Plan 88, contracts 3.1.8 and 3.8.6).
+    failure_origin: Mapped[FailureOrigin | None] = mapped_column(
+        Enum(FailureOrigin, native_enum=False, length=32),
+        nullable=True,
+    )
+    failure_class: Mapped[FailureClass | None] = mapped_column(
+        Enum(FailureClass, native_enum=False, length=40),
+        nullable=True,
+    )
+    failure_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
     )
 
     cost_usd: Mapped[float] = mapped_column(

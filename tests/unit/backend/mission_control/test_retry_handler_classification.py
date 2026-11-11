@@ -4,9 +4,9 @@ Unit tests for retry_handler's provider-error reclassification (Plan 84 Phase 4.
 execute_task can raise a raw, unclassified SDK exception (e.g. from
 Anthropic/OpenAI/Foundry models running through PydanticAI) instead of
 one of our typed ProviderError subclasses (which only Copilot currently
-raises directly). The generic except Exception branch must classify
-these via classify_provider_error and re-dispatch into the same
-handling as the typed quota/transient branches, not generic failure.
+raises directly). The single except clause classifies it through the
+failure classifier (Plan 88, 88.2.3b), so quota and transient errors keep
+their retry behaviour.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -22,6 +22,7 @@ from modules.backend.agents.mission_control.roster import (
     RosterInterfaceSchema,
     RosterModelSchema,
 )
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskDefinition
 
 
@@ -53,7 +54,8 @@ async def test_raw_quota_error_fails_without_retry():
             execute_agent_fn=AsyncMock(),
         )
     assert result.status == TaskStatus.FAILED
-    assert "QuotaExhaustedError" in result.retry_history[0].failure_reason
+    assert result.failure.failure_class is FailureClass.QUOTA_EXHAUSTED
+    assert result.retry_history[0].failure_class is FailureClass.QUOTA_EXHAUSTED
     # Only one attempt — quota exhaustion never retries regardless of budget.
     assert mock_execute.await_count == 1
 
@@ -77,9 +79,16 @@ async def test_raw_transient_error_retries_then_fails():
 
 @pytest.mark.asyncio
 async def test_unrelated_error_falls_through_to_generic_handling():
-    """A plain, unclassifiable exception still hits the generic failure path."""
-    raw_exc = RuntimeError("some bug in agent code")
-    mock_execute = AsyncMock(side_effect=raw_exc)
+    """An exception raised outside the platform is UNKNOWN and retried per config.
+
+    The raising frame lives in this test module, not under modules/, so the
+    frame-path rule does not make it a platform defect.
+    """
+
+    async def _raise_outside_platform(**_kwargs):
+        raise RuntimeError("some bug in agent code")
+
+    mock_execute = AsyncMock(side_effect=_raise_outside_platform)
     with patch.object(retry_handler, "execute_task", mock_execute):
         result = await retry_handler.execute_with_retry(
             task=_task(),
@@ -88,6 +97,7 @@ async def test_unrelated_error_falls_through_to_generic_handling():
             execute_agent_fn=AsyncMock(),
         )
     assert result.status == TaskStatus.FAILED
+    assert result.failure.failure_class is FailureClass.UNKNOWN
     assert "some bug in agent code" in result.retry_history[0].failure_reason
     # retry_budget=1 → one retry attempted before giving up.
     assert mock_execute.await_count == 2

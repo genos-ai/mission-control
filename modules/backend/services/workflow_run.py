@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
+from modules.backend.core.failure_classification import WorkflowStepFailedError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.base import SYSTEM_CLI_ID
@@ -348,6 +349,8 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             run.status = WorkflowRunState.FAILED
             run.completed_at = utc_now()
             run.error_data = {"message": str(e), "type": type(e).__name__}
+            if isinstance(e, WorkflowStepFailedError):
+                run.error_data["failure"] = e.failure.model_dump(mode="json")
             run.result_summary = f"Workflow failed: {e}"
             exec_record.status = ExecutionRecordStatus.FAILED
             logger.error(

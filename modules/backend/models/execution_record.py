@@ -27,10 +27,12 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
+from modules.backend.schemas.task_failure import FailureClass, FailureOrigin
 
 
 class ExecutionRecordStatus(str, enum.Enum):
@@ -364,6 +366,25 @@ class TaskExecution(UUIDMixin, TimestampMixin, Base):
         String(100),
         nullable=True,
         comment="{mission_run_id}:{task_id}:{task.retry_count} (Plan 88, 3.1.9)",
+    )
+
+    # Classified failure of this attempt (Plan 88, contracts 3.1.8 and 3.8.6).
+    failure_origin: Mapped[FailureOrigin | None] = mapped_column(
+        Enum(FailureOrigin, native_enum=False, length=32),
+        nullable=True,
+    )
+    failure_class: Mapped[FailureClass | None] = mapped_column(
+        Enum(FailureClass, native_enum=False, length=40),
+        nullable=True,
+    )
+    failure_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+    )
+    failure_json: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
     )
 
     domain_tags: Mapped[list | None] = mapped_column(

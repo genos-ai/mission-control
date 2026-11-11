@@ -18,10 +18,16 @@ from modules.backend.agents.mission_control.dispatch.research_loop import (
 from modules.backend.agents.mission_control.outcome import TaskStatus
 from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.schemas.research import CoverageAnalysisData, CoveredQuestion, ResearchFinding
+from modules.backend.schemas.task_failure import FailureClass
+from modules.backend.schemas.task_plan import TaskDefinition
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _research_task(task_id: str) -> TaskDefinition:
+    return TaskDefinition(task_id=task_id, agent="research", description="research task")
 
 
 def _finding(
@@ -246,7 +252,7 @@ class TestExecuteResearchLoopHappyPath:
         executor = _make_executor(_happy_path_results(config))
 
         result = await execute_research_loop(
-            task_id="research-1",
+            task=_research_task("research-1"),
             query="what is X",
             config=config,
             event_bus=NoOpEventBus(),
@@ -280,7 +286,7 @@ class TestExecuteResearchLoopFailure:
             return {"output": {"not": "a valid decomposition"}, "_meta": {"cost_usd": 0.0}}
 
         result = await execute_research_loop(
-            task_id="research-2",
+            task=_research_task("research-2"),
             query="what is X",
             config=config,
             event_bus=NoOpEventBus(),
@@ -288,8 +294,8 @@ class TestExecuteResearchLoopFailure:
         )
 
         assert result.status == TaskStatus.FAILED
-        assert result.output_reference["error"]
-        assert "decompose" in result.output_reference["error"].lower()
+        assert result.failure.failure_class is FailureClass.AGENT_REPORTED_FAILURE
+        assert "decompose" in result.failure.summary.lower()
 
     @pytest.mark.asyncio
     async def test_exception_in_agent_call_surfaces_as_failed_result(self):
@@ -299,7 +305,7 @@ class TestExecuteResearchLoopFailure:
             raise RuntimeError("provider exploded")
 
         result = await execute_research_loop(
-            task_id="research-3",
+            task=_research_task("research-3"),
             query="what is X",
             config=config,
             event_bus=NoOpEventBus(),
@@ -307,4 +313,4 @@ class TestExecuteResearchLoopFailure:
         )
 
         assert result.status == TaskStatus.FAILED
-        assert "provider exploded" in result.output_reference["error"]
+        assert "provider exploded" in result.failure.summary

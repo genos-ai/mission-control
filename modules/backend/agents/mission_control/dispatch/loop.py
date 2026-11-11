@@ -42,6 +42,7 @@ from modules.backend.agents.mission_control.outcome import (
 from modules.backend.agents.mission_control.roster import Roster
 from modules.backend.agents.mission_control.runtime import DispatchRuntime
 from modules.backend.core.config import get_app_config
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import PlanCreatedEvent
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
@@ -237,11 +238,11 @@ async def _execute_layer(
             continue
 
         # A task that cannot start fails now, without waiting for approval.
-        reason = precheck_task(task, runtime.roster, completed_outputs)
-        if reason is not None:
-            task_results.append(failed_result(task, reason))
+        failure = precheck_task(task, runtime.roster, completed_outputs)
+        if failure is not None:
+            task_results.append(failed_result(task, failure))
             await emit_task_failure(
-                event_bus, session_id, mission_id, task.task_id, task.agent, reason
+                event_bus, session_id, mission_id, task.task_id, task.agent, failure.summary
             )
             continue
 
@@ -295,9 +296,10 @@ async def _execute_layer(
 
     for task, result in zip(layer_tasks, results):
         if isinstance(result, Exception):
-            task_results.append(failed_result(task, str(result)))
+            failure = get_failure_classifier().from_exception(result)
+            task_results.append(failed_result(task, failure))
             await emit_task_failure(
-                event_bus, session_id, mission_id, task.task_id, task.agent, str(result)
+                event_bus, session_id, mission_id, task.task_id, task.agent, failure.summary
             )
             continue
 

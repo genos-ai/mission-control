@@ -12,7 +12,10 @@ import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from modules.backend.agents.mission_control.dispatch.dag import resolve_upstream_inputs
+from modules.backend.agents.mission_control.dispatch.dag import (
+    UpstreamOutputMissingError,
+    resolve_upstream_inputs,
+)
 from modules.backend.agents.mission_control.dispatch.result_builders import failed_result
 from modules.backend.agents.mission_control.dispatch.step_executor import execute_with_step_events
 from modules.backend.agents.mission_control.gate import GateReviewer, NoOpGate
@@ -24,16 +27,16 @@ from modules.backend.agents.mission_control.models import (
 )
 from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus, TaskTokenUsage
 from modules.backend.agents.mission_control.roster import Roster
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import MissionNarrativeEvent, SystemEvent
+from modules.backend.schemas.task_failure import FailureClass, TaskFailure
 from modules.backend.schemas.task_plan import TaskDefinition
 
 if TYPE_CHECKING:
     from modules.backend.agents.mission_control.runtime import DispatchRuntime
 
 logger = get_logger(__name__)
-
-ROSTER_MISS_REASON = "Agent not found in roster"
 
 
 async def emit_task_failure(
@@ -72,8 +75,8 @@ def _task_route(task: TaskDefinition) -> str:
 
 def precheck_task(
     task: TaskDefinition, roster: Roster, upstream_outputs: dict[str, dict]
-) -> str | None:
-    """The reason the task cannot start, or None when it can.
+) -> TaskFailure | None:
+    """The failure that stops the task from starting, or None when it can start.
 
     A standard agent task fails when its agent is not in the roster; every
     task except a ``workflow:`` one fails when a from_upstream reference is
@@ -84,11 +87,12 @@ def precheck_task(
     if route == "workflow":
         return None
     if route == "agent" and roster.get_agent_by_name(task.agent) is None:
-        return ROSTER_MISS_REASON
+        return get_failure_classifier().roster_miss(task.agent)
     try:
         resolve_upstream_inputs(task, upstream_outputs)
-    except KeyError as e:
-        return str(e)
+    except UpstreamOutputMissingError as e:
+        ref = f"{e.source_task}.{e.source_field}"
+        return get_failure_classifier().upstream_blocked(ref, e.source_task)
     return None
 
 
@@ -113,10 +117,12 @@ async def run_single_task(
     """
     _gate = gate or NoOpGate()
 
-    reason = precheck_task(task, runtime.roster, upstream_outputs)
-    if reason is not None:
-        await emit_task_failure(event_bus, session_id, mission_id, task.task_id, task.agent, reason)
-        return failed_result(task, reason)
+    failure = precheck_task(task, runtime.roster, upstream_outputs)
+    if failure is not None:
+        await emit_task_failure(
+            event_bus, session_id, mission_id, task.task_id, task.agent, failure.summary
+        )
+        return failed_result(task, failure)
 
     route = _task_route(task)
     logger.info(
@@ -146,7 +152,7 @@ async def run_single_task(
     # eval/remediation agents, so the roster check does not apply.
     if route == "convergence_loop":
         return await _dispatch_convergence_loop(
-            task_id=task.task_id,
+            task=task,
             resolved_inputs=resolved_inputs,
             execute_agent_fn=runtime.execute_agent_fn,
             mission_id=mission_id,
@@ -158,7 +164,7 @@ async def run_single_task(
     # ── Research loop (Plan 40): same pattern as the convergence loop ──
     if route == "research_loop":
         return await _dispatch_research_loop(
-            task_id=task.task_id,
+            task=task,
             resolved_inputs=resolved_inputs,
             execute_agent_fn=runtime.execute_agent_fn,
             mission_id=mission_id,
@@ -192,7 +198,7 @@ async def run_single_task(
 
 async def _dispatch_convergence_loop(
     *,
-    task_id: str,
+    task: TaskDefinition,
     resolved_inputs: dict[str, Any],
     execute_agent_fn: ExecuteAgentFn,
     mission_id: str | None,
@@ -208,31 +214,28 @@ async def _dispatch_convergence_loop(
     standard path returns — so the dispatch loop aggregates it
     transparently alongside regular single-agent task results.
 
-    If ``loop_config`` is missing or malformed, returns a failed
-    ``TaskResult`` immediately rather than raising — matching the
-    error-result convention used by the rest of ``_execute_layer``.
+    A missing or malformed ``loop_config`` returns a failed ``TaskResult``
+    with a ``plan_invalid`` failure rather than raising.
     """
     from modules.backend.agents.mission_control.dispatch.convergence import (
         ConvergenceConfig,
         execute_convergence_loop,
     )
 
+    task_id = task.task_id
     loop_config_raw = resolved_inputs.get("loop_config")
     if not isinstance(loop_config_raw, dict):
         logger.warning(
             "convergence_loop task missing loop_config in inputs",
             extra={"task_id": task_id, "mission_id": mission_id},
         )
-        return TaskResult(
-            task_id=task_id,
-            agent_name="convergence",
-            status=TaskStatus.FAILED,
-            output_reference={
-                "error": "convergence_loop task requires a 'loop_config' dict "
-                "in inputs.static, but none was found."
-            },
-            cost_usd=0.0,
-            token_usage=TaskTokenUsage(),
+        return failed_result(
+            task,
+            get_failure_classifier().plan_invalid(
+                task.agent,
+                "convergence_loop task requires a 'loop_config' dict in inputs.static, "
+                "but none was found.",
+            ),
         )
 
     try:
@@ -251,13 +254,9 @@ async def _dispatch_convergence_loop(
             message=f"Task '{task_id}' has invalid convergence loop_config: {exc}"[:500],
             mission_id=mission_id,
         )
-        return TaskResult(
-            task_id=task_id,
-            agent_name="convergence",
-            status=TaskStatus.FAILED,
-            output_reference={"error": f"Invalid loop_config: {exc}"},
-            cost_usd=0.0,
-            token_usage=TaskTokenUsage(),
+        return failed_result(
+            task,
+            get_failure_classifier().plan_invalid(task.agent, f"Invalid loop_config: {exc}"),
         )
 
     return await execute_convergence_loop(
@@ -273,7 +272,7 @@ async def _dispatch_convergence_loop(
 
 async def _dispatch_research_loop(
     *,
-    task_id: str,
+    task: TaskDefinition,
     resolved_inputs: dict[str, Any],
     execute_agent_fn: ExecuteAgentFn,
     mission_id: str | None,
@@ -292,22 +291,20 @@ async def _dispatch_research_loop(
         execute_research_loop,
     )
 
+    task_id = task.task_id
     loop_config_raw = resolved_inputs.get("loop_config")
     if not isinstance(loop_config_raw, dict):
         logger.warning(
             "research_loop task missing loop_config in inputs",
             extra={"task_id": task_id, "mission_id": mission_id},
         )
-        return TaskResult(
-            task_id=task_id,
-            agent_name="research",
-            status=TaskStatus.FAILED,
-            output_reference={
-                "error": "research_loop task requires a 'loop_config' dict "
-                "in inputs.static, but none was found."
-            },
-            cost_usd=0.0,
-            token_usage=TaskTokenUsage(),
+        return failed_result(
+            task,
+            get_failure_classifier().plan_invalid(
+                task.agent,
+                "research_loop task requires a 'loop_config' dict in inputs.static, "
+                "but none was found.",
+            ),
         )
 
     try:
@@ -326,18 +323,14 @@ async def _dispatch_research_loop(
             message=f"Task '{task_id}' has invalid research loop_config: {exc}"[:500],
             mission_id=mission_id,
         )
-        return TaskResult(
-            task_id=task_id,
-            agent_name="research",
-            status=TaskStatus.FAILED,
-            output_reference={"error": f"Invalid loop_config: {exc}"},
-            cost_usd=0.0,
-            token_usage=TaskTokenUsage(),
+        return failed_result(
+            task,
+            get_failure_classifier().plan_invalid(task.agent, f"Invalid loop_config: {exc}"),
         )
 
     query = resolved_inputs.get("query", "")
     return await execute_research_loop(
-        task_id=task_id,
+        task=task,
         query=query,
         config=config,
         execute_agent_fn=execute_agent_fn,
@@ -387,6 +380,7 @@ async def _dispatch_workflow_task(
         assigned_agent=f"workflow:{workflow_name}",
     )
 
+    agent_name = f"workflow:{workflow_name}"
     status = TaskStatus.FAILED
     try:
         async with WorkflowRunService.factory(event_bus=event_bus) as svc:
@@ -406,7 +400,7 @@ async def _dispatch_workflow_task(
 
         result = TaskResult(
             task_id=task.task_id,
-            agent_name=f"workflow:{workflow_name}",
+            agent_name=agent_name,
             status=status,
             output_reference={
                 "workflow_run_id": str(run.id),
@@ -417,6 +411,7 @@ async def _dispatch_workflow_task(
             cost_usd=run.total_cost_usd or 0.0,
             duration_seconds=duration,
             token_usage=TaskTokenUsage(),
+            failure=_workflow_run_failure(run) if status == TaskStatus.FAILED else None,
         )
     except Exception as e:
         # Catch-all justified: this is a task-dispatch boundary wrapping
@@ -436,13 +431,15 @@ async def _dispatch_workflow_task(
             },
             exc_info=True,
         )
+        status = TaskStatus.FAILED
         result = TaskResult(
             task_id=task.task_id,
-            agent_name=f"workflow:{workflow_name}",
+            agent_name=agent_name,
             status=TaskStatus.FAILED,
-            output_reference={"error": str(e)},
+            output_reference={},
             cost_usd=0.0,
             token_usage=TaskTokenUsage(),
+            failure=get_failure_classifier().from_exception(e),
         )
     finally:
         status_str = "success" if status == TaskStatus.SUCCESS else "failed"
@@ -458,6 +455,20 @@ async def _dispatch_workflow_task(
         )
 
     return result
+
+
+def _workflow_run_failure(run: Any) -> TaskFailure:
+    """The failure a failed workflow run stored, or a run-aborted record when it stored none."""
+    error_data = run.error_data or {}
+    stored = error_data.get("failure")
+    if stored is not None:
+        return TaskFailure.model_validate(stored)
+    return get_failure_classifier().control(
+        FailureClass.RUN_ABORTED,
+        error_data.get("message")
+        or run.result_summary
+        or f"workflow run {run.id} did not complete",
+    )
 
 
 async def _inject_context(

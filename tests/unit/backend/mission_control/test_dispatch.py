@@ -478,7 +478,8 @@ class TestDispatch:
         outcome = await _dispatch_seeded(db_session_factory, plan, roster, mock_execute, 10.0)
         assert outcome.task_results[0].status == TaskStatus.TIMEOUT
         assert call_count == 3  # initial + 2 retries
-        assert len(outcome.task_results[0].retry_history) == 2
+        # Every attempt is recorded, the final failing one included (88.2.3b).
+        assert len(outcome.task_results[0].retry_history) == 3
 
     @pytest.mark.asyncio
     async def test_execution_error_retries_then_fails(self, db_session_factory):
@@ -497,7 +498,8 @@ class TestDispatch:
         outcome = await _dispatch_seeded(db_session_factory, plan, roster, mock_execute, 10.0)
         assert outcome.task_results[0].status == TaskStatus.FAILED
         assert call_count == 3  # initial + 2 retries
-        assert len(outcome.task_results[0].retry_history) == 2
+        # Every attempt is recorded, the final failing one included (88.2.3b).
+        assert len(outcome.task_results[0].retry_history) == 3
         assert "Error on attempt 1" in outcome.task_results[0].retry_history[0].failure_reason
 
     @pytest.mark.asyncio
@@ -1187,7 +1189,7 @@ class TestWorkflowTaskDispatch:
 
         result = outcome.task_results[0]
         assert result.status == TaskStatus.FAILED
-        assert "not found" in result.output_reference.get("error", "")
+        assert "not found" in result.failure.summary
 
     @pytest.mark.asyncio
     async def test_mixed_plan_standard_and_workflow(self, db_session_factory):

@@ -27,6 +27,7 @@ from modules.backend.core.logging import get_logger
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from modules.backend.schemas.task_failure import TaskFailure
     from modules.backend.schemas.workflow import WorkflowStepSchema
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
 
@@ -202,39 +203,11 @@ async def resolve_dispatch_params(
     )
 
 
-def extract_first_task_failure(execution: Any) -> str | None:
-    """Pull a human-meaningful failure reason from an ExecutionOutcome.
-
-    Looks at the first task_results entry's output_reference,
-    retry_history, and verification_outcome for any error /
-    failure_reason / abort_reason hint. Returns None when we can't
-    find a specific reason — caller should fall back to a generic
-    message.
-    """
-    task_results = getattr(execution, "task_results", None) or []
-    if not task_results:
-        return None
-    first = task_results[0]
-    output = getattr(first, "output_reference", None) or {}
-    if isinstance(output, dict):
-        for key in ("error", "failure_reason", "abort_reason"):
-            value = output.get(key)
-            if value:
-                return str(value)
-    retry_history = getattr(first, "retry_history", None) or []
-    if retry_history:
-        last = retry_history[-1]
-        reason = getattr(last, "failure_reason", None)
-        if reason:
-            return str(reason)
-    verification = getattr(first, "verification_outcome", None)
-    if verification:
-        for tier_attr in ("tier_3", "tier_2", "tier_1"):
-            tier = getattr(verification, tier_attr, None)
-            tier_status = getattr(tier, "status", None) if tier else None
-            tier_reason = getattr(tier, "failure_reason", None) if tier else None
-            if tier_status == "fail" and tier_reason:
-                return f"{tier_attr}: {tier_reason}"
+def first_task_failure(outcome: Any) -> TaskFailure | None:
+    """The first failed task's classified failure in an ExecutionOutcome, or None."""
+    for result in getattr(outcome, "task_results", None) or []:
+        if result.failure is not None:
+            return result.failure
     return None
 
 

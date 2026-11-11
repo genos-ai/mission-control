@@ -2,8 +2,8 @@
 
 import pytest
 
-from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
 from modules.backend.schemas.task_plan import TaskDefinition, TaskInputs, TaskPlan
+from modules.clients.tui.services.state import TaskStatusView
 from modules.clients.tui.widgets.mission_panel import (
     MissionPanel,
     _agent_short_name,
@@ -109,28 +109,28 @@ class TestTaskStatusIcon:
         assert "●" in icon
 
     def test_success(self):
-        result = TaskResult(task_id="t1", agent_name="a", status=TaskStatus.SUCCESS)
+        result = TaskStatusView(task_id="t1", agent_name="a", status="success")
         icon = _task_status_icon("t1", active_tasks=set(), results={"t1": result})
         assert "✓" in icon
 
     def test_failed(self):
-        result = TaskResult(task_id="t1", agent_name="a", status=TaskStatus.FAILED)
+        result = TaskStatusView(task_id="t1", agent_name="a", status="failed")
         icon = _task_status_icon("t1", active_tasks=set(), results={"t1": result})
         assert "✗" in icon
 
     def test_timeout(self):
-        result = TaskResult(task_id="t1", agent_name="a", status=TaskStatus.TIMEOUT)
+        result = TaskStatusView(task_id="t1", agent_name="a", status="timeout")
         icon = _task_status_icon("t1", active_tasks=set(), results={"t1": result})
         assert "⏱" in icon
 
     def test_skipped(self):
-        result = TaskResult(task_id="t1", agent_name="a", status=TaskStatus.SKIPPED)
+        result = TaskStatusView(task_id="t1", agent_name="a", status="skipped")
         icon = _task_status_icon("t1", active_tasks=set(), results={"t1": result})
         assert "⊘" in icon
 
     def test_result_takes_priority_over_active(self):
         """If a task has a result, that overrides the active state."""
-        result = TaskResult(task_id="t1", agent_name="a", status=TaskStatus.SUCCESS)
+        result = TaskStatusView(task_id="t1", agent_name="a", status="success")
         icon = _task_status_icon("t1", active_tasks={"t1"}, results={"t1": result})
         assert "✓" in icon
 
@@ -200,7 +200,7 @@ class TestMissionPanel:
 
     @pytest.mark.asyncio
     async def test_header_shows_progress(self):
-        """Header should show task count and cost after loading a plan."""
+        """Header should show the task count after loading a plan."""
         from textual.app import App, ComposeResult
         from textual.widgets import Label
 
@@ -279,11 +279,10 @@ class TestMissionPanel:
             panel.load_plan(plan, layers)
             await pilot.pause()
 
-            result = TaskResult(
+            result = TaskStatusView(
                 task_id="task-0",
                 agent_name="software.quality.agent-0",
-                status=TaskStatus.SUCCESS,
-                cost_usd=0.01,
+                status="success",
             )
             panel.update_task_status("task-0", result=result)
             await pilot.pause()
@@ -311,43 +310,14 @@ class TestMissionPanel:
             panel.set_active_task("task-0")
             assert "task-0" in panel._active_tasks
 
-            result = TaskResult(
+            result = TaskStatusView(
                 task_id="task-0",
                 agent_name="a",
-                status=TaskStatus.SUCCESS,
+                status="success",
             )
             panel.update_task_status("task-0", result=result)
             await pilot.pause()
             assert "task-0" not in panel._active_tasks
-
-    @pytest.mark.asyncio
-    async def test_cost_displayed_for_completed_task(self):
-        """Completed tasks with cost should show cost in the header total."""
-        from textual.app import App, ComposeResult
-        from textual.widgets import Label
-
-        plan = _make_plan(1)
-        layers = _make_layers(plan)
-
-        class TestApp(App):
-            def compose(self) -> ComposeResult:
-                yield MissionPanel(id="mission-panel")
-
-        async with TestApp().run_test() as pilot:
-            panel = pilot.app.query_one("#mission-panel", MissionPanel)
-            panel.load_plan(plan, layers)
-
-            result = TaskResult(
-                task_id="task-0",
-                agent_name="a",
-                status=TaskStatus.SUCCESS,
-                cost_usd=0.123,
-            )
-            panel.update_task_status("task-0", result=result)
-            await pilot.pause()
-
-            title = panel.query_one("#mission-panel-title", Label)
-            assert "0.123" in str(title.render())
 
     @pytest.mark.asyncio
     async def test_no_plan_render_noop(self):

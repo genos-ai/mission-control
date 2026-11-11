@@ -33,6 +33,7 @@ from modules.backend.agents.mission_control.outcome import (
     TaskStatus,
     TaskTokenUsage,
 )
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -282,10 +283,19 @@ async def execute_convergence_loop(
         outcome=outcome,
     )
 
+    agent_name = f"convergence({config.evaluation_agent},{config.remediation_agent})"
+    converged_ok = outcome == "converged"
     return TaskResult(
         task_id=task_id,
-        agent_name=f"convergence({config.evaluation_agent},{config.remediation_agent})",
-        status=TaskStatus.SUCCESS if outcome == "converged" else TaskStatus.FAILED,
+        agent_name=agent_name,
+        status=TaskStatus.SUCCESS if converged_ok else TaskStatus.FAILED,
+        failure=(
+            None
+            if converged_ok
+            else get_failure_classifier().agent_outcome(
+                agent_name, f"convergence loop ended without converging: {outcome}"
+            )
+        ),
         output_reference={
             "outcome": outcome,
             "total_cycles": len(cycles),
@@ -428,19 +438,30 @@ def _to_task_result(
 ) -> TaskResult:
     """Convert a raw agent execution result to a TaskResult."""
     if isinstance(raw_result, dict):
+        success = bool(raw_result.get("success", True))
         return TaskResult(
             task_id=task_id,
             agent_name=agent_name,
-            status=TaskStatus.SUCCESS if raw_result.get("success", True) else TaskStatus.FAILED,
+            status=TaskStatus.SUCCESS if success else TaskStatus.FAILED,
             output_reference=raw_result.get("output", {}),
             cost_usd=raw_result.get("cost_usd", 0.0),
             token_usage=TaskTokenUsage(
                 input=raw_result.get("input_tokens", 0),
                 output=raw_result.get("output_tokens", 0),
             ),
+            failure=(
+                None
+                if success
+                else get_failure_classifier().agent_outcome(
+                    agent_name, "agent reported success: False"
+                )
+            ),
         )
     return TaskResult(
         task_id=task_id,
         agent_name=agent_name,
         status=TaskStatus.FAILED,
+        failure=get_failure_classifier().agent_outcome(
+            agent_name, f"agent returned a non-dict result ({type(raw_result).__name__})"
+        ),
     )

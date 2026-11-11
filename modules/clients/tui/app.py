@@ -23,7 +23,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Input, Label, Static
 from textual.worker import Worker
 
-from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus
+from modules.backend.agents.mission_control.outcome import TaskStatus
 from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.task_plan import TaskPlan
@@ -46,7 +46,7 @@ from modules.clients.tui.screens.workspace import MissionWorkspaceScreen
 from modules.clients.tui.services.event_listener import TuiEventBus
 from modules.clients.tui.services.gate_reviewer import TuiGateReviewer
 from modules.clients.tui.services.service_bridge import ServiceBridge
-from modules.clients.tui.services.state import TuiState
+from modules.clients.tui.services.state import TaskStatusView, TuiState
 from modules.clients.tui.widgets.agent_detail import AgentDetailWidget
 from modules.clients.tui.widgets.agent_sidebar import AgentSidebar, MissionSummary
 from modules.clients.tui.widgets.cost_bar import CostBar
@@ -430,13 +430,13 @@ class MissionControlApp(App):
             self._sidebar_set_active(agent, False)
             status = getattr(event, "status", "success")
             self._sidebar_set_status(agent, status)
-            result = TaskResult(
+            result = TaskStatusView(
                 task_id=step_id,
                 agent_name=agent,
                 status=(
-                    TaskStatus(status)
+                    status
                     if status in TaskStatus.__members__.values()
-                    else TaskStatus.SUCCESS
+                    else TaskStatus.SUCCESS.value
                 ),
             )
             self.state.task_results[step_id] = result

@@ -6,7 +6,8 @@ Deliberately halt the current workflow run with status=failed
 fail loud rather than silently completing the workflow with no
 deliverable.
 
-Implementation: raises RuntimeError. The tool_call dispatcher's
+Implementation: raises WorkflowHaltedError, a RuntimeError subclass
+carrying the reason (Plan 88, contracts 3.5.5). The tool_call dispatcher's
 existing exception path explicitly re-raises RuntimeError (see
 workflow_run_steps/io.py exception handler in execute_tool_call_step),
 which then propagates up to the wave executor and triggers
@@ -23,6 +24,14 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+class WorkflowHaltedError(RuntimeError):
+    """The workflow halted itself through halt_workflow; carries the reason."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Workflow halted: {reason}")
+        self.reason = reason
+
+
 async def halt_workflow(*, reason: str, channel: str = "sse") -> None:
     """Halt the workflow with a clear failure status.
 
@@ -36,15 +45,15 @@ async def halt_workflow(*, reason: str, channel: str = "sse") -> None:
             failure to SSE subscribers regardless.
 
     Raises:
-        RuntimeError: Always. The tool_call dispatcher re-raises
-            RuntimeError so the run is marked failed rather than
-            silently completed.
+        WorkflowHaltedError: Always. It is a RuntimeError, which the
+            tool_call dispatcher re-raises so the run is marked failed
+            rather than silently completed.
     """
     logger.warning(
         "halt_workflow invoked — workflow will be marked failed",
         extra={"reason": reason, "channel": channel},
     )
-    raise RuntimeError(f"Workflow halted: {reason}")
+    raise WorkflowHaltedError(reason)
 
 
 TOOL_DEF = {

@@ -18,6 +18,7 @@ from typing import Any, ClassVar
 from pydantic import ValidationError
 from pydantic_ai import UsageLimits
 
+from modules.backend.agents.mission_control.dispatch.result_builders import failed_result
 from modules.backend.agents.mission_control.gate import (
     GateAction,
     GateContext,
@@ -30,6 +31,7 @@ from modules.backend.agents.mission_control.models import (
     ExecuteAgentFn,
 )
 from modules.backend.agents.mission_control.outcome import TaskResult, TaskStatus, TaskTokenUsage
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.logging import get_logger
 from modules.backend.schemas.research import (
     CoverageAnalysisData,
@@ -37,6 +39,7 @@ from modules.backend.schemas.research import (
     ResearchFinding,
     SearchFindings,
 )
+from modules.backend.schemas.task_plan import TaskDefinition
 
 logger = get_logger(__name__)
 
@@ -171,7 +174,7 @@ def compress_findings(all_findings: list[ResearchFinding], max_count: int) -> li
 
 async def execute_research_loop(
     *,
-    task_id: str,
+    task: TaskDefinition,
     query: str,
     config: ResearchConfig,
     execute_agent_fn: ExecuteAgentFn,
@@ -190,8 +193,9 @@ async def execute_research_loop(
     Phase 6: Build result
 
     event_bus is required — pass a real SessionEventBus; NoOpEventBus is
-    for tests only.
+    for tests only. A failure keeps the spend already incurred.
     """
+    task_id = task.task_id
     logger.info(
         "TRACE >>> execute_research_loop entered",
         extra={
@@ -269,12 +273,14 @@ async def execute_research_loop(
         decomposition = _parse_output(decompose_result, ResearchDecomposition)
         if decomposition is None:
             await _narrative("error", "Failed to decompose research query")
-            return _failed_result(
-                task_id,
-                "Strategist failed to decompose query",
-                total_cost,
-                total_tokens,
-                start_time,
+            return failed_result(
+                task,
+                get_failure_classifier().agent_outcome(
+                    task.agent, "Strategist failed to decompose query"
+                ),
+                cost_usd=total_cost,
+                token_usage=total_tokens,
+                duration_seconds=time.monotonic() - start_time,
             )
 
         sub_questions = decomposition.sub_questions
@@ -667,7 +673,6 @@ async def execute_research_loop(
         # I/O across many iterations) whose exception surface is
         # unbounded — any failure must convert to a failed TaskResult with
         # a ResearchFailedEvent rather than crash the dispatch loop.
-        duration = time.monotonic() - start_time
         logger.error(
             "Research loop failed",
             extra={"task_id": task_id, "mission_id": mission_id},
@@ -683,7 +688,13 @@ async def execute_research_loop(
             iteration=len(rounds),
             cost_usd=total_cost,
         )
-        return _failed_result(task_id, str(e), total_cost, total_tokens, start_time)
+        return failed_result(
+            task,
+            get_failure_classifier().from_exception(e),
+            cost_usd=total_cost,
+            token_usage=total_tokens,
+            duration_seconds=time.monotonic() - start_time,
+        )
 
 
 # =============================================================================
@@ -769,22 +780,3 @@ def _accumulate_tokens(total: TaskTokenUsage, result: dict) -> None:
     total.input += meta.get("input_tokens", 0)
     total.output += meta.get("output_tokens", 0)
     total.thinking += meta.get("thinking_tokens", 0)
-
-
-def _failed_result(
-    task_id: str,
-    error: str,
-    cost: float,
-    tokens: TaskTokenUsage,
-    start_time: float,
-) -> TaskResult:
-    """Build a failed TaskResult."""
-    return TaskResult(
-        task_id=task_id,
-        agent_name="research",
-        status=TaskStatus.FAILED,
-        output_reference={"error": error[:500]},
-        cost_usd=cost,
-        token_usage=tokens,
-        duration_seconds=time.monotonic() - start_time,
-    )

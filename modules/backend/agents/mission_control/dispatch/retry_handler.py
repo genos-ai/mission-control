@@ -7,12 +7,8 @@ and post-task checkpoints.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import Any
-
-from pydantic import ValidationError as PydanticValidationError
-from pydantic_ai.exceptions import IncompleteToolCall, UnexpectedModelBehavior, UsageLimitExceeded
 
 from modules.backend.agents.mission_control.dispatch.result_builders import (
     append_feedback,
@@ -35,27 +31,20 @@ from modules.backend.agents.mission_control.outcome import (
 )
 from modules.backend.agents.mission_control.roster import RosterAgentEntry
 from modules.backend.core.exceptions import (
-    QuotaExhaustedError,
-    RateLimitedError,
-    TransientProviderError,
+    ProviderError,
     classify_provider_error,
     log_provider_error,
 )
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.logging import get_logger
+from modules.backend.schemas.task_failure import (
+    FailureClass,
+    FailureOrigin,
+    TaskFailure,
+)
 from modules.backend.schemas.task_plan import TaskDefinition
 
 logger = get_logger(__name__)
-
-# PydanticAI-native validation failures — the model responded but with
-# wrong-shape output. PydanticAI has already retried internally before
-# surfacing these. We keep catching them as the original exception
-# types (not wrapped) because PydanticAI raises them; wrapping would
-# require boundary code in every provider adapter.
-_CONTRACT_FAILURE_EXCEPTIONS = (
-    PydanticValidationError,
-    UnexpectedModelBehavior,
-    IncompleteToolCall,
-)
 
 
 async def execute_with_retry(
@@ -72,6 +61,8 @@ async def execute_with_retry(
     """Execute a task with 3-tier verification and retry-with-feedback.
 
     gate is always provided by dispatch() — defaults to NoOpGate there.
+    An exception from the agent run is classified once (contracts 3.8.3);
+    ``TaskFailure.retryable`` is the only retry decision.
     """
     _gate: GateReviewer = gate or NoOpGate()
     retry_budget = roster_entry.constraints.retry_budget
@@ -89,260 +80,47 @@ async def execute_with_retry(
                 execute_agent_fn=execute_agent_fn,
                 instructions=instructions,
             )
-        except QuotaExhaustedError as e:
-            # Provider quota exhausted — no retry. Log via the helper
-            # so the structured-log shape (provider, model, request_id,
-            # remediation) matches every other quota log site in the
-            # codebase. Catch sites add their situational context.
-            duration = time.monotonic() - task_start
-            log_provider_error(
-                logger,
-                e,
-                event="Task failed (no retry): provider quota exhausted",
-                task_id=task.task_id,
-                agent=task.agent,
-                mission_id=mission_id,
+        except Exception as raw:
+            # Catch-all justified: this wraps the agent/provider call
+            # (execute_task), whose exception surface is unbounded. Every
+            # exception becomes a classified TaskFailure; the class alone
+            # decides whether the same agent retries.
+            failure = get_failure_classifier().from_exception(raw)
+            will_retry = failure.retryable and attempt < retry_budget
+            feedback = f"Previous attempt failed ({failure.failure_class.value}): {failure.summary}"
+            retry_history.append(
+                RetryHistoryEntry(
+                    attempt=attempt + 1,
+                    failure_tier=0,
+                    failure_reason=failure.summary,
+                    feedback_provided=feedback if will_retry else "",
+                    failure_class=failure.failure_class,
+                )
+            )
+            _log_attempt_failure(
+                raw,
+                failure,
+                task=task,
+                roster_entry=roster_entry,
                 attempt=attempt,
+                attempts_remaining=retry_budget - attempt if will_retry else 0,
+                mission_id=mission_id,
             )
-            retry_history.append(
-                RetryHistoryEntry(
-                    attempt=attempt + 1,
-                    failure_tier=0,
-                    failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
-                    feedback_provided="",
-                )
-            )
-            return failed_result(
-                task,
-                f"{type(e).__name__}: {str(e)[:300]}",
-                retry_count=attempt,
-                retry_history=retry_history,
-                execution_id=execution_id,
-            )
-        except (TransientProviderError, RateLimitedError, asyncio.TimeoutError) as e:
-            # Transient infrastructure failure: SDK session loss,
-            # rate-limit hiccup, or wall-clock timeout. Retry with
-            # feedback if budget remains. RateLimitedError SHOULD use
-            # exponential backoff once we have any provider that
-            # actually raises it — current implementation retries
-            # immediately like other transients.
-            duration = time.monotonic() - task_start
-            is_timeout = isinstance(e, asyncio.TimeoutError)
-            failure_label = "Timeout" if is_timeout else type(e).__name__
-            feedback_msg = (
-                "Previous attempt timed out. Complete the task more efficiently."
-                if is_timeout
-                else "Previous attempt produced no response (infrastructure hiccup). Retry."
-            )
-            if is_timeout:
-                # best-effort — no event_bus reachable here (would require a
-                # signature change threading it through every caller); the
-                # eventual TaskResult (retry_history/status) is the
-                # established visibility mechanism, surfaced in the Plan tab.
-                logger.warning(
-                    "Task execution: timeout, will retry",
-                    extra={
-                        "task_id": task.task_id,
-                        "agent": task.agent,
-                        "attempt": attempt,
-                        "attempts_remaining": retry_budget - attempt,
-                        "mission_id": mission_id,
-                    },
-                )
-            else:
-                # Transient ProviderError — use the helper so the
-                # provider/model/request_id make it into the log.
-                log_provider_error(
-                    logger,
-                    e,
-                    event="Task execution: transient provider failure, will retry",
-                    task_id=task.task_id,
-                    agent=task.agent,
-                    attempt=attempt,
-                    attempts_remaining=retry_budget - attempt,
-                    mission_id=mission_id,
-                )
-            if attempt < retry_budget:
-                retry_history.append(
-                    RetryHistoryEntry(
-                        attempt=attempt + 1,
-                        failure_tier=0,
-                        failure_reason=failure_label,
-                        feedback_provided=feedback_msg,
-                    )
-                )
-                instructions = append_feedback(task.instructions, feedback_msg)
+            if will_retry:
+                instructions = append_feedback(task.instructions, feedback)
                 continue
-
-            status = TaskStatus.TIMEOUT if is_timeout else TaskStatus.FAILED
-            return TaskResult(
-                task_id=task.task_id,
-                agent_name=task.agent,
-                status=status,
-                output_reference={},
-                token_usage=TaskTokenUsage(),
-                cost_usd=0.0,
-                duration_seconds=round(duration, 2),
-                retry_count=attempt,
-                retry_history=retry_history,
-                execution_id=execution_id,
-            )
-        except _CONTRACT_FAILURE_EXCEPTIONS as e:
-            # The model responded but its output doesn't satisfy the
-            # contract (wrong shape, missing required fields, didn't
-            # call the output tool). PydanticAI has already retried
-            # internally; another full retry here will almost always
-            # produce the same wrong shape. Fail fast so the operator
-            # sees the actual schema delta instead of three identical
-            # errors in a row.
-            duration = time.monotonic() - task_start
-            # best-effort — no event_bus reachable here; the returned
-            # failed_result (retry_history/status) is the established
-            # visibility mechanism, surfaced in the Plan tab.
-            logger.error(
-                "Task failed: output contract violation (no retry)",
-                extra={
-                    "task_id": task.task_id,
-                    "agent": task.agent,
-                    "exception_type": type(e).__name__,
-                    "error": str(e)[:2000],
-                    "attempt": attempt,
-                    "mission_id": mission_id,
-                },
-            )
-            retry_history.append(
-                RetryHistoryEntry(
-                    attempt=attempt + 1,
-                    failure_tier=0,
-                    failure_reason=f"{type(e).__name__}: {str(e)[:500]}",
-                    feedback_provided="",
-                )
-            )
             return failed_result(
                 task,
-                str(e),
+                failure,
+                status=(
+                    TaskStatus.TIMEOUT
+                    if failure.failure_class is FailureClass.TIMEOUT
+                    else TaskStatus.FAILED
+                ),
                 retry_count=attempt,
                 retry_history=retry_history,
                 execution_id=execution_id,
-            )
-        except Exception as raw_e:
-            # Catch-all justified: this wraps the actual agent/provider
-            # call (execute_task), whose exception surface is unbounded —
-            # network errors, auth failures, quota, or bugs in agent code
-            # all need to convert to a failed TaskResult rather than crash
-            # the dispatch loop for the whole mission.
-            #
-            # Anthropic/OpenAI/Foundry run through PydanticAI models whose
-            # SDK errors surface here unclassified (unlike Copilot, which
-            # classifies before raising). Reclassify so quota/transient
-            # failures get the same handling as the typed except clauses
-            # above instead of being treated as generic failures.
-            model_name = roster_entry.model.name if roster_entry.model else ""
-            provider = model_name.split(":", 1)[0] if ":" in model_name else model_name
-            e = classify_provider_error(raw_e, provider=provider, model=model_name)
-
-            if isinstance(e, QuotaExhaustedError):
-                log_provider_error(
-                    logger,
-                    e,
-                    event="Task failed (no retry): provider quota exhausted",
-                    task_id=task.task_id,
-                    agent=task.agent,
-                    mission_id=mission_id,
-                    attempt=attempt,
-                )
-                retry_history.append(
-                    RetryHistoryEntry(
-                        attempt=attempt + 1,
-                        failure_tier=0,
-                        failure_reason=f"{type(e).__name__}: {str(e)[:400]}",
-                        feedback_provided="",
-                    )
-                )
-                return failed_result(
-                    task,
-                    f"{type(e).__name__}: {str(e)[:300]}",
-                    retry_count=attempt,
-                    retry_history=retry_history,
-                    execution_id=execution_id,
-                )
-
-            if isinstance(e, (TransientProviderError, RateLimitedError)):
-                log_provider_error(
-                    logger,
-                    e,
-                    event="Task execution: transient provider failure, will retry",
-                    task_id=task.task_id,
-                    agent=task.agent,
-                    attempt=attempt,
-                    attempts_remaining=retry_budget - attempt,
-                    mission_id=mission_id,
-                )
-                feedback_msg = (
-                    "Previous attempt produced no response (infrastructure hiccup). Retry."
-                )
-                if attempt < retry_budget:
-                    retry_history.append(
-                        RetryHistoryEntry(
-                            attempt=attempt + 1,
-                            failure_tier=0,
-                            failure_reason=type(e).__name__,
-                            feedback_provided=feedback_msg,
-                        )
-                    )
-                    instructions = append_feedback(task.instructions, feedback_msg)
-                    continue
-
-                duration = time.monotonic() - task_start
-                return TaskResult(
-                    task_id=task.task_id,
-                    agent_name=task.agent,
-                    status=TaskStatus.FAILED,
-                    output_reference={},
-                    token_usage=TaskTokenUsage(),
-                    cost_usd=0.0,
-                    duration_seconds=round(duration, 2),
-                    retry_count=attempt,
-                    retry_history=retry_history,
-                    execution_id=execution_id,
-                )
-
-            duration = time.monotonic() - task_start
-            is_token_limit = isinstance(e, UsageLimitExceeded)
-            # best-effort — no event_bus reachable here; the eventual
-            # TaskResult (retry_history/status) is the established
-            # visibility mechanism, surfaced in the Plan tab.
-            logger.error(
-                "Task execution failed",
-                extra={
-                    "task_id": task.task_id,
-                    "error": str(e),
-                    "attempt": attempt,
-                    "token_limit_exceeded": is_token_limit,
-                    "mission_id": mission_id,
-                },
-            )
-            if attempt < retry_budget and not is_token_limit:
-                retry_history.append(
-                    RetryHistoryEntry(
-                        attempt=attempt + 1,
-                        failure_tier=0,
-                        failure_reason=str(e),
-                        feedback_provided=f"Previous attempt failed: {e}",
-                    )
-                )
-                instructions = append_feedback(
-                    task.instructions,
-                    f"Previous attempt failed with error: {e}. Avoid this error.",
-                )
-                continue
-
-            return failed_result(
-                task,
-                str(e),
-                retry_count=attempt,
-                retry_history=retry_history,
-                execution_id=execution_id,
+                duration_seconds=round(time.monotonic() - task_start, 2),
             )
 
         duration = time.monotonic() - task_start
@@ -415,7 +193,53 @@ async def execute_with_retry(
             continue
         return result
 
-    return failed_result(task, "Exhausted retry budget")
+    # Every path of the final attempt returns; reaching here is a dispatch bug.
+    raise RuntimeError(f"retry loop for task '{task.task_id}' ended without a result")
+
+
+def _log_attempt_failure(
+    raw: BaseException,
+    failure: TaskFailure,
+    *,
+    task: TaskDefinition,
+    roster_entry: RosterAgentEntry,
+    attempt: int,
+    attempts_remaining: int,
+    mission_id: str | None,
+) -> None:
+    """Log one failed attempt: provider errors with their labels, others by class."""
+    event = "Task attempt failed, will retry" if attempts_remaining else "Task failed (no retry)"
+    if failure.origin is FailureOrigin.PROVIDER:
+        model_name = roster_entry.model.name if roster_entry.model else ""
+        provider = model_name.split(":", 1)[0] if ":" in model_name else model_name
+        typed = classify_provider_error(raw, provider=provider, model=model_name)
+        if isinstance(typed, ProviderError):
+            log_provider_error(
+                logger,
+                typed,
+                event=event,
+                task_id=task.task_id,
+                agent=task.agent,
+                attempt=attempt,
+                attempts_remaining=attempts_remaining,
+                failure_class=failure.failure_class.value,
+                mission_id=mission_id,
+            )
+            return
+    logger.error(
+        event,
+        extra={
+            "task_id": task.task_id,
+            "agent": task.agent,
+            "attempt": attempt,
+            "attempts_remaining": attempts_remaining,
+            "failure_class": failure.failure_class.value,
+            "failure_origin": failure.origin.value,
+            "fingerprint": failure.fingerprint,
+            "summary": failure.summary,
+            "mission_id": mission_id,
+        },
+    )
 
 
 async def _handle_verification_failure(
@@ -461,7 +285,9 @@ async def _handle_verification_failure(
         if gate_decision.action == GateAction.ABORT:
             return failed_result(
                 task,
-                "Aborted at verification gate",
+                get_failure_classifier().control(
+                    FailureClass.CANCELLED, "aborted at verification_failed gate"
+                ),
                 retry_count=attempt,
                 retry_history=retry_history,
                 execution_id=execution_id,
@@ -501,6 +327,7 @@ async def _handle_verification_failure(
             new_instructions = gate_decision.modified_instructions
         return new_instructions
 
+    verification_outcome = build_verification_outcome(verification)
     return TaskResult(
         task_id=task.task_id,
         agent_name=task.agent,
@@ -509,10 +336,11 @@ async def _handle_verification_failure(
         token_usage=token_usage,
         cost_usd=cost_usd,
         duration_seconds=round(duration, 2),
-        verification_outcome=build_verification_outcome(verification),
+        verification_outcome=verification_outcome,
         retry_count=attempt,
         retry_history=retry_history,
         execution_id=execution_id,
+        failure=get_failure_classifier().verification_failed(task.agent, verification_outcome),
     )
 
 
@@ -555,7 +383,7 @@ async def _handle_post_task_gate(
     if gate_decision.action == GateAction.ABORT:
         return failed_result(
             task,
-            "Aborted at post_task gate",
+            get_failure_classifier().control(FailureClass.CANCELLED, "aborted at post_task gate"),
             retry_count=attempt,
             retry_history=retry_history,
             execution_id=execution_id,

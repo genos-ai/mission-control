@@ -1,0 +1,22 @@
+# =============================================================================
+# Task Failure Evidence Configuration (Plan 88, contracts 3.4.9 and 3.8)
+# =============================================================================
+#   Bounds and policy for the typed task failure record. Classification rules
+#   are code (core/failure_classification.py), never config.
+#
+# Available options:
+#   evidence.max_message_chars          - FailureEvidence.message length after redaction (integer, >= 1)
+#   evidence.max_summary_chars          - TaskFailure.summary length (integer, >= 1)
+#   evidence.max_traceback_frames       - Innermost frames kept in FailureEvidence.traceback_tail (integer, >= 1)
+#   supervisor.max_failure_digests      - Failure digests in the post-run summary and the refine prompt;
+#                                         overflow is counted, never silent (integer, >= 1)
+#   unknown_retryable                   - Whether FailureClass.UNKNOWN may retry inside the task (boolean)
+# =============================================================================
+
+evidence:
+  max_message_chars: 2000        # FailureEvidence.message, after redact_secrets
+  max_summary_chars: 300         # TaskFailure.summary
+  max_traceback_frames: 8        # innermost frames kept in FailureEvidence.traceback_tail
+supervisor:
+  max_failure_digests: 10        # post-run summary["failures"] and REFINE_PROMPT digests; overflow is counted, never silent
+unknown_retryable: true          # retry policy for FailureClass.UNKNOWN (today's behaviour: retry)

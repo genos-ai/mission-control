@@ -31,6 +31,7 @@ from modules.backend.core.config_schema import (
     DatabaseSchema,
     EventsSchema,
     ExecutionsSchema,
+    FailuresSchema,
     FeaturesSchema,
     GateSchema,
     GatewaySchema,
@@ -161,6 +162,7 @@ class AppConfig:
         self._models = _load_validated(ModelsSchema, "models.yaml")
         self._cost = _load_validated(CostSchema, "cost.yaml")
         self._cli = _load_validated(CliSchema, "cli.yaml")
+        self._failures = _load_validated(FailuresSchema, "failures.yaml")
         self._security_assessment = _load_validated_optional(
             SecurityAssessmentSchema,
             "security_assessment.yaml",
@@ -261,6 +263,11 @@ class AppConfig:
     def cli(self) -> CliSchema:
         """User CLI presentation settings (Plan 88 step 88.1.13)."""
         return self._cli
+
+    @property
+    def failures(self) -> FailuresSchema:
+        """Task failure evidence bounds and retry policy (Plan 88 step 88.2.3b)."""
+        return self._failures
 
     @property
     def security_assessment(self) -> SecurityAssessmentSchema:
