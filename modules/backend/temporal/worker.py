@@ -78,6 +78,7 @@ from modules.backend.temporal.supervisor_activities import (
     start_director_turn,
 )
 from modules.backend.temporal.system_schedules import register_system_schedules
+from modules.backend.temporal.task_activities import execute_plan_task, resolve_failed_task
 from modules.backend.temporal.tool_fork_activities import (
     execute_design_workflow,
     execute_run_workflow,
@@ -136,6 +137,9 @@ async def start_worker() -> None:
             fetch_run_task_graph,
             set_mission_run_status,
             finalise_mission_run,
+            # Per-task execution (Plan 88 step 88.2.4)
+            execute_plan_task,
+            resolve_failed_task,
             # Mission schedules (Plan 88 step 88.1.8)
             claim_occurrence,
             # Supervisor loop (Plan 52 Phase C)

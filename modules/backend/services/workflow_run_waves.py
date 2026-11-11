@@ -43,7 +43,7 @@ from modules.backend.events.types import (
 )
 from modules.backend.models.execution_record import ExecutionRecordStatus
 from modules.backend.models.task import TaskStatus
-from modules.backend.schemas.task_failure import FailureClass
+from modules.backend.schemas.task_failure import FailureClass, TaskFailure
 from modules.backend.services.workflow_run_steps import control, io, sub_workflow
 from modules.backend.services.workflow_run_steps.helpers import (
     StepContext,
@@ -119,12 +119,14 @@ class WorkflowRunWavesMixin:
         step_updates: list[tuple[str, TaskStatus]],
         session_id: str,
         *,
-        failure_reason: str | None = None,
-        failure_reasons: dict[str, str] | None = None,
+        failures: dict[str, TaskFailure] | None = None,
         cost_map: dict[str, float] | None = None,
         step_task_map: dict[str, str] | None = None,
     ) -> None:
         """Batch update Task statuses for Kanban board visibility.
+
+        A FAILED step's task gets its TaskFailure from ``failures``, else
+        control(RUN_ABORTED) (contracts 3.8.6).
 
         Uses a separate DB session to avoid interfering with the main
         workflow session. Best-effort — failures are logged, not raised.
@@ -156,10 +158,10 @@ class WorkflowRunWavesMixin:
                     if to_status == TaskStatus.RUNNING:
                         task.last_attempt_at = utc_now()
                     if to_status == TaskStatus.FAILED:
-                        # Prefer per-step reason; fall back to shared one.
-                        reason = (failure_reasons or {}).get(step_id) or failure_reason
-                        if reason:
-                            task.failure_reason = reason[:500]
+                        failure = (failures or {}).get(step_id) or get_failure_classifier().control(
+                            FailureClass.RUN_ABORTED, f"Step '{step_id}' failed"
+                        )
+                        task_repo.set_failure(task, failure)
                     if cost_map and step_id in cost_map:
                         task.cost_usd = cost_map[step_id]
 
@@ -429,7 +431,7 @@ class WorkflowRunWavesMixin:
                     for s, (ex, _) in zip(wave_steps, results)
                 }
                 _step_statuses: list[tuple[str, TaskStatus]] = []
-                _failure_reasons: dict[str, str] = {}
+                _failures: dict[str, TaskFailure] = {}
                 for step, (execution, _) in zip(wave_steps, results):
                     ex_status = (
                         execution.status
@@ -449,13 +451,14 @@ class WorkflowRunWavesMixin:
                         ts = TaskStatus.SKIPPED
                     else:
                         ts = TaskStatus.FAILED
-                        # The first failed task's classified summary, else the
-                        # outcome's abort reason, else a generic message.
-                        failure = first_task_failure(execution)
-                        _failure_reasons[step.id] = (
-                            (failure.summary if failure else None)
-                            or getattr(execution, "abort_reason", None)
-                            or f"Step '{step.id}' execution failed (status={ex_status})"
+                        # The first failed task's classified failure, else a run
+                        # abort carrying the outcome's abort reason.
+                        _failures[step.id] = first_task_failure(
+                            execution
+                        ) or get_failure_classifier().control(
+                            FailureClass.RUN_ABORTED,
+                            getattr(execution, "abort_reason", None)
+                            or f"Step '{step.id}' execution failed (status={ex_status})",
                         )
                     _step_statuses.append((step.id, ts))
                 await self._sync_plan_task_states(
@@ -465,7 +468,7 @@ class WorkflowRunWavesMixin:
                     session_id,
                     cost_map=_cost_map,
                     step_task_map=_step_task_map,
-                    failure_reasons=_failure_reasons or None,
+                    failures=_failures or None,
                 )
 
     async def _execute_wave(

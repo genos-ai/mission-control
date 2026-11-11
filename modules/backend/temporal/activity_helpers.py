@@ -8,6 +8,7 @@ Keeps activity modules thin by extracting common patterns
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from temporalio import activity
 
@@ -16,22 +17,32 @@ from modules.backend.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-@asynccontextmanager
-async def heartbeat_every(interval_seconds: int, phase: str) -> AsyncIterator[None]:
-    """Heartbeat {"phase": phase} every interval_seconds while the block runs.
+@dataclass
+class HeartbeatState:
+    """The phase heartbeat_every reports; the caller may change it while the block runs."""
 
-    Callers read the interval from
-    temporal.mission_run.task_heartbeat_interval_seconds; workflows never read config.
+    phase: str
+
+
+@asynccontextmanager
+async def heartbeat_every(interval_seconds: float, *, phase: str) -> AsyncIterator[HeartbeatState]:
+    """Heartbeat {"phase": state.phase} on entry and then every interval_seconds.
+
+    Callers pass the interval (temporal.mission_run.task_heartbeat_interval_seconds,
+    read by the activity or carried in its input); workflows never read config.
+    The beating task is cancelled on exit.
     """
+    state = HeartbeatState(phase=phase)
 
     async def _beat() -> None:
         while True:
-            activity.heartbeat({"phase": phase})
             await asyncio.sleep(interval_seconds)
+            activity.heartbeat({"phase": state.phase})
 
+    activity.heartbeat({"phase": state.phase})
     beat = asyncio.create_task(_beat())
     try:
-        yield
+        yield state
     finally:
         beat.cancel()
 

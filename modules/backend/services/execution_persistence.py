@@ -36,6 +36,7 @@ from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.execution_record import ExecutionRecordRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_record import ExecutionCostBreakdown
+from modules.backend.schemas.task_failure import TaskFailure
 from modules.backend.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -237,12 +238,14 @@ class ExecutionPersistenceService(BaseService):
         domain_tags: list[str] | None = None,
         mission_run_id: str | None = None,
         idempotency_key: str | None = None,
+        failure: TaskFailure | None = None,
     ) -> TaskExecution:
         """Persist a single task execution result.
 
         mission_run_id links the row to its run and idempotency_key
         (`{mission_run_id}:{task_id}:{retry_count}`, 3.1.9) makes a retried
-        activity's write unique; both None outside a mission run.
+        activity's write unique; both None outside a mission run. ``failure``
+        is the attempt's classified failure (contracts 3.8.6), None unless it failed.
         """
         config = get_app_config().executions
 
@@ -284,6 +287,7 @@ class ExecutionPersistenceService(BaseService):
             mission_run_id=mission_run_id,
             idempotency_key=idempotency_key,
         )
+        self._repo.set_task_execution_failure(execution, failure)
 
         self._session.add(execution)
         await self._session.flush()

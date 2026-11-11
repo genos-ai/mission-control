@@ -18,7 +18,7 @@ from modules.backend.schemas.execution_outcome import (
 )
 
 _SERVICE = "modules.backend.agents.mission_control.persistence_bridge.ExecutionPersistenceService"
-_BRIDGE = "modules.backend.agents.mission_control.persistence_bridge"
+_TASK_PERSISTENCE = "modules.backend.services.task_result_persistence"
 
 
 def _outcome() -> ExecutionOutcome:
@@ -62,7 +62,7 @@ async def test_artifact_failure_does_not_raise():
             AsyncMock(return_value={}),
         ),
         patch(
-            f"{_BRIDGE}._maybe_create_artifact",
+            f"{_TASK_PERSISTENCE}._maybe_create_artifact",
             AsyncMock(side_effect=RuntimeError("artifact boom")),
         ) as maybe_create,
     ):

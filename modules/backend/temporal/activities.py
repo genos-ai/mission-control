@@ -88,7 +88,7 @@ async def execute_mission(input: ExecuteWaveInput) -> MissionExecutionResult:
                 "execute_mission dispatching",
                 extra={"mission_run_id": input.mission_run_id, "owner": str(mission.owner_id)},
             )
-            async with heartbeat_every(interval, "executing"):
+            async with heartbeat_every(interval, phase="executing"):
                 result = await svc.dispatch_approved(
                     input.mission_run_id,
                     mission.owner_id,

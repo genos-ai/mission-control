@@ -24,6 +24,7 @@ from modules.backend.events.mission_run_types import (
     MissionRunStatusChangedEvent,
     MissionScheduleChangedEvent,
     MissionScheduleSyncFailedEvent,
+    TaskFailedEvent,
 )
 
 logger = get_logger(__name__)
@@ -833,6 +834,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "mission_run.occurrence_recorded": MissionRunOccurrenceRecordedEvent,
     "mission_schedule.changed": MissionScheduleChangedEvent,
     "mission_schedule.sync_failed": MissionScheduleSyncFailedEvent,
+    "task.failed": TaskFailedEvent,
 }
 
 

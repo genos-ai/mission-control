@@ -12,11 +12,13 @@ import json
 from typing import TYPE_CHECKING
 
 from modules.backend.core.exceptions import ValidationError
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.utils import utc_now
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.execution_outcome import TaskStatus as OutcomeStatus
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 
 if TYPE_CHECKING:
@@ -254,14 +256,7 @@ async def write_back_task_results(
         task.duration_seconds = float(task_result.duration_seconds or 0.0)
 
         if new_status == TaskStatus.FAILED:
-            task.failure_reason = (
-                getattr(
-                    task_result,
-                    "failure_reason",
-                    None,
-                )
-                or "Task failed during dispatch"
-            )
+            orchestrator._task_repo.set_failure(task, task_result.failure)
             task.retry_count += 1
         else:
             output = task_result.output_reference
@@ -270,7 +265,7 @@ async def write_back_task_results(
                     task.result_summary = json.dumps(output, default=str)
                 except (TypeError, ValueError):
                     task.result_summary = str(output)
-            task.failure_reason = None
+            orchestrator._task_repo.set_failure(task, None)
 
         updated_ids.append(task_id)
 
@@ -281,9 +276,13 @@ async def write_back_task_results(
         if task is None or task.status not in _dispatchable:
             continue
         task.status = TaskStatus.FAILED
-        task.failure_reason = (
-            "Task was dispatched but did not report a result. "
-            "This usually indicates a mid-run abort or dispatcher bug."
+        orchestrator._task_repo.set_failure(
+            task,
+            get_failure_classifier().control(
+                FailureClass.RUN_ABORTED,
+                "Task was dispatched but did not report a result. "
+                "This usually indicates a mid-run abort or dispatcher bug.",
+            ),
         )
         task.retry_count += 1
         updated_ids.append(task_id)

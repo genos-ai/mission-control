@@ -303,3 +303,33 @@ class ExecuteWaveInput:
     mission_run_id: str
     session_id: str
     execution_record_id: str
+
+
+@dataclass(frozen=True)
+class ExecuteTaskInput:
+    mission_run_id: str
+    task_id: str
+    session_id: str
+    execution_record_id: str
+    budget_headroom_usd: float | None  # None in Phases 2-3; 88.4.6 sets it under p88-budget-caps
+    heartbeat_interval_seconds: int
+
+
+@dataclass(frozen=True)
+class ExecuteTaskResult:
+    task_id: str
+    status: str  # "completed" | "failed" | "skipped" (lowercase TaskStatus values, 3.0.2)
+    verification_failed: bool
+    cost_usd: float
+    idempotent_replay: bool
+    failure_reason: str | None  # TaskFailure.summary (contracts 3.8)
+    failure_origin: str | None  # FailureOrigin value; set exactly when status == "failed"
+    failure_class: str | None  # FailureClass value
+    failure_fingerprint: str | None
+
+
+@dataclass(frozen=True)
+class ResolveTaskInput:
+    mission_run_id: str
+    task_id: str
+    action: str  # "retry" | "skip"

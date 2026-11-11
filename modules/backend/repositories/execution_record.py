@@ -20,6 +20,7 @@ from modules.backend.models.execution_record import (
     TaskExecution,
 )
 from modules.backend.repositories.base import BaseRepository
+from modules.backend.schemas.task_failure import TaskFailure
 
 logger = get_logger(__name__)
 
@@ -83,6 +84,23 @@ class ExecutionRecordRepository(BaseRepository[ExecutionRecord]):
         """The mission run's single ExecutionRecord (uq_execution_records_run)."""
         stmt = select(ExecutionRecord).where(ExecutionRecord.mission_run_id == mission_run_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_task_execution_by_key(self, idempotency_key: str) -> TaskExecution | None:
+        """The task execution recorded under ``idempotency_key`` (3.1.9), if any."""
+        stmt = select(TaskExecution).where(TaskExecution.idempotency_key == idempotency_key)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    def set_task_execution_failure(execution: TaskExecution, failure: TaskFailure | None) -> None:
+        """Write one attempt's failure record onto its task execution; None clears it.
+
+        The task_executions twin of TaskRepository.set_failure and the only writer
+        of failure_origin, failure_class, failure_fingerprint and failure_json there.
+        """
+        execution.failure_origin = failure.origin if failure is not None else None
+        execution.failure_class = failure.failure_class if failure is not None else None
+        execution.failure_fingerprint = failure.fingerprint if failure is not None else None
+        execution.failure_json = failure.model_dump(mode="json") if failure is not None else None
 
     async def get_by_session(self, session_id: str) -> list[ExecutionRecord]:
         """Get all execution records for a session, newest first."""

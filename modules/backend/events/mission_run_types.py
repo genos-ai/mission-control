@@ -6,9 +6,11 @@ values. Error text is redacted with core.redaction.redact_secrets before it
 is put in a payload.
 """
 
+import uuid
 from datetime import datetime
 
 from modules.backend.events.base import SessionEvent
+from modules.backend.schemas.execution_outcome import TaskResult
 
 
 class MissionRunCreatedEvent(SessionEvent):
@@ -67,3 +69,40 @@ class MissionScheduleSyncFailedEvent(SessionEvent):
     mission_run_id: str | None
     schedule_id: str
     error: str
+
+
+class TaskFailedEvent(SessionEvent):
+    """A task attempt failed; published once, after its record commits (display only)."""
+
+    event_type: str = "task.failed"
+    mission_id: str
+    mission_run_id: str | None
+    task_id: str
+    agent_name: str
+    origin: str
+    failure_class: str
+    fingerprint: str
+    summary: str
+    retryable: bool
+
+
+def task_failed_event(
+    result: TaskResult, *, mission_id: str, mission_run_id: str, session_id: str
+) -> TaskFailedEvent:
+    """The TaskFailedEvent for a failed TaskResult; its summary is already redacted (3.8.1)."""
+    failure = result.failure
+    if failure is None:
+        raise ValueError(f"TaskResult {result.task_id} carries no failure")
+    return TaskFailedEvent(
+        session_id=uuid.UUID(session_id),
+        source="execute_plan_task",
+        mission_id=mission_id,
+        mission_run_id=mission_run_id,
+        task_id=result.task_id,
+        agent_name=result.agent_name,
+        origin=failure.origin.value,
+        failure_class=failure.failure_class.value,
+        fingerprint=failure.fingerprint,
+        summary=failure.summary,
+        retryable=failure.retryable,
+    )

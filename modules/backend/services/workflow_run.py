@@ -25,13 +25,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
-from modules.backend.core.failure_classification import WorkflowStepFailedError
+from modules.backend.core.failure_classification import (
+    WorkflowStepFailedError,
+    get_failure_classifier,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
+from modules.backend.schemas.task_failure import FailureClass, TaskFailure
 from modules.backend.schemas.workflow import WorkflowParameterSchema, WorkflowSchema
 from modules.backend.services.base import BaseService
 from modules.backend.services.workflow import WorkflowService
@@ -392,7 +396,8 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                     )
 
             # Mark remaining plan tasks as FAILED for Kanban board
-            await self._fail_remaining_plan_tasks(mission_id, session.id, str(e))
+            step_failure = e.failure if isinstance(e, WorkflowStepFailedError) else None
+            await self._fail_remaining_plan_tasks(mission_id, session.id, str(e), step_failure)
 
         # Sync the parent ExecutionRecord with workflow outcome
         exec_record.total_cost_usd = run.total_cost_usd
@@ -563,8 +568,13 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
         mission_id: str,
         session_id: str,
         error: str,
+        step_failure: TaskFailure | None,
     ) -> None:
-        """Mark any RUNNING/APPROVED plan tasks as FAILED after workflow failure."""
+        """Mark any RUNNING/APPROVED plan tasks as FAILED after workflow failure.
+
+        Each gets the failed step's TaskFailure, or control(RUN_ABORTED, error)
+        when the run failed without one (contracts 3.8.6).
+        """
         try:
             from modules.backend.core.database import get_async_session
             from modules.backend.events.types import MissionPlanTaskStatusChangedEvent
@@ -581,11 +591,14 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
                 task_repo = TaskRepository(db)
                 import uuid as _uuid
 
+                failure = step_failure or get_failure_classifier().control(
+                    FailureClass.RUN_ABORTED, error
+                )
                 for task in await task_repo.get_by_plan_id(plan.id):
                     if task.status in (TaskStatus.RUNNING, TaskStatus.APPROVED):
                         from_status = task.status
                         task.status = TaskStatus.FAILED
-                        task.failure_reason = error[:500]
+                        task_repo.set_failure(task, failure)
 
                         if self._event_bus:
                             try:

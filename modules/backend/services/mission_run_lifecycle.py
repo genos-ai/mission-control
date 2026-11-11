@@ -15,6 +15,7 @@ from modules.backend.core.exceptions import (
     RunStartRejectedError,
     ValidationError,
 )
+from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.redaction import redact_secrets
 from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import ExecutionRecordStatus
@@ -31,6 +32,7 @@ from modules.backend.repositories.workflow_definition import (
     WorkflowDefinitionRepository,
 )
 from modules.backend.schemas.session import SessionCreate
+from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.session import SessionService
@@ -47,6 +49,12 @@ from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
 _RUNNABLE_GATE_MODES = frozenset({GateMode.MANUAL, GateMode.AI_ASSISTED, GateMode.AUTONOMOUS})
 _OWNER_NOT_USER = "owner not a platform user"
+_ORPHAN_REASONS = frozenset(
+    {
+        MissionRunStatusReason.ORPHANED_WORKFLOW_CLOSED,
+        MissionRunStatusReason.ORPHANED_WORKFLOW_NOT_FOUND,
+    }
+)
 # NotificationKind values (contract 3.6.2); the enum arrives in 88.4.3.
 RUN_SUCCEEDED = "run_succeeded"
 RUN_FAILED = "run_failed"
@@ -293,10 +301,15 @@ class MissionRunLifecycleMixin:
             reason = MissionRunStatusReason(run.cancel_reason)
 
         failure_reason = reason.value if reason is not None else status.value
+        classifier = get_failure_classifier()
+        if reason in _ORPHAN_REASONS:
+            failure = classifier.orphaned(detail or failure_reason)
+        else:
+            failure = classifier.control(FailureClass.RUN_ABORTED, failure_reason)
         for task in await self._tasks.list_by_run(run_id):
             if task.status in (TaskStatus.QUEUED, TaskStatus.RUNNING):
                 task.transition_status(TaskStatus.FAILED)
-                task.failure_reason = failure_reason
+                self._tasks.set_failure(task, failure)
         await self._session.flush()
         await self._tasks.release_to_backlog(run_id, [TaskStatus.PROPOSED, TaskStatus.APPROVED])
 

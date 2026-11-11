@@ -243,8 +243,11 @@ class MissionContextManager(BaseService):
         agent_id: str | None = None,
         mission_id_ref: str | None = None,
         task_id: str | None = None,
+        mission_run_id: str | None = None,
     ) -> tuple[int, list[str]]:
         """Apply context updates to the MCD.
+
+        ``mission_run_id`` attributes every inserted ContextChange to its run.
 
         Returns (new_version, list_of_errors).
         Errors are logged and skipped — they do not fail the operation.
@@ -341,6 +344,7 @@ class MissionContextManager(BaseService):
                 agent_id=agent_id,
                 mission_id=mission_id_ref,
                 task_id=task_id,
+                mission_run_id=mission_run_id,
                 reason=change["reason"],
             )
 

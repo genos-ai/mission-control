@@ -43,7 +43,7 @@ class TaskStatus(str, enum.Enum):
         approved  -> queued | cancelled
         queued    -> running
         running   -> completed | failed | skipped
-        failed    -> approved        (via retry)
+        failed    -> approved | skipped (retry, or a gate skip)
     """
 
     PROPOSED = "proposed"
@@ -61,7 +61,7 @@ VALID_TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.APPROVED: frozenset({TaskStatus.QUEUED, TaskStatus.CANCELLED}),
     TaskStatus.QUEUED: frozenset({TaskStatus.RUNNING, TaskStatus.FAILED}),
     TaskStatus.RUNNING: frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.SKIPPED}),
-    TaskStatus.FAILED: frozenset({TaskStatus.APPROVED}),
+    TaskStatus.FAILED: frozenset({TaskStatus.APPROVED, TaskStatus.SKIPPED}),
     TaskStatus.COMPLETED: frozenset(),
     TaskStatus.SKIPPED: frozenset(),
     TaskStatus.CANCELLED: frozenset(),

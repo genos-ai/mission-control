@@ -72,7 +72,7 @@ async def plan_mission_run(input: PlanRunInput) -> PlanRunResult:
 
     interval = get_app_config().temporal.mission_run.task_heartbeat_interval_seconds
     async with (
-        heartbeat_every(interval, "planning"),
+        heartbeat_every(interval, phase="planning"),
         _run_service(bind_to_run_id=input.mission_run_id) as svc,
     ):
         return await svc.plan(input.mission_run_id, input.session_id)

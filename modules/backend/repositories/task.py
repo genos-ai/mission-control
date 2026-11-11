@@ -21,6 +21,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
 from modules.backend.models.task import TERMINAL_TASK_STATUSES, Task, TaskDependency, TaskStatus
 from modules.backend.repositories.base import BaseRepository
+from modules.backend.schemas.task_failure import TaskFailure
 
 logger = get_logger(__name__)
 
@@ -197,7 +198,29 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.session.execute(query.order_by(Task.created_at))
         return list(result.scalars().all())
 
+    async def get_in_run(
+        self, task_id: str, run_id: str, *, for_update: bool = False
+    ) -> Task | None:
+        """The task when it belongs to the run, else None; ``for_update`` locks the row."""
+        query = select(Task).where(Task.id == task_id, Task.mission_run_id == run_id)
+        if for_update:
+            query = query.execution_options(populate_existing=True).with_for_update()
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
     # ── Single task operations ─────────────────────────────────────────────
+
+    @staticmethod
+    def set_failure(task: Task, failure: TaskFailure | None) -> None:
+        """Write the current attempt's failure record onto the task; None clears it.
+
+        The only writer of failure_reason, failure_origin, failure_class and
+        failure_fingerprint (contracts 3.8.6). Enum members are stored by name.
+        """
+        task.failure_reason = failure.summary if failure is not None else None
+        task.failure_origin = failure.origin if failure is not None else None
+        task.failure_class = failure.failure_class if failure is not None else None
+        task.failure_fingerprint = failure.fingerprint if failure is not None else None
 
     async def create_task(
         self,

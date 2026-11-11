@@ -556,7 +556,8 @@ class MissionPlanService(BaseService):
         task.approved_by_user_id = user_id
         task.approved_at = utc_now()
         task.retry_count += 1
-        task.failure_reason = None
+        # The attempt's failure stays on its task_executions row (contracts 3.8.6).
+        self._task_repo.set_failure(task, None)
         await self._session.flush()
         self._log_operation(
             "MissionPlan task retried",
