@@ -16,6 +16,7 @@ from modules.backend.agents.mission_control.dispatch.result_builders import fail
 from modules.backend.agents.mission_control.dispatch.task_runner import run_single_task
 from modules.backend.agents.mission_control.runtime import build_dispatch_runtime
 from modules.backend.core.config import get_redis_url
+from modules.backend.core.copilot_model import CopilotModel
 from modules.backend.core.database import get_async_session
 from modules.backend.core.exceptions import ExecutionEnvironmentError
 from modules.backend.core.failure_classification import get_failure_classifier
@@ -117,6 +118,7 @@ async def execute_plan_task(input: ExecuteTaskInput) -> ExecuteTaskResult:
             claim = await RunTaskExecutionService(db).claim(input.mission_run_id, input.task_id)
         if claim.outcome == "replay":
             return claim.stored
+        await CopilotModel.ensure_healthy()  # 88.2.5
         hb.phase = "agent"
         try:
             result = await _run_agent(input, claim)

@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 
@@ -373,6 +375,7 @@ class CopilotModel(Model):
     _client: Any = None
     _started: bool = False
     _lock: asyncio.Lock | None = None
+    _last_health_check: float = 0.0  # time.monotonic() of the last ensure_healthy check
 
     def __init__(
         self,
@@ -416,10 +419,77 @@ class CopilotModel(Model):
     def system(self) -> str:
         return "copilot"
 
+    # ---- Shared client lifecycle (Plan 88 step 88.2.5) ----
+
+    @classmethod
+    def _get_lock(cls) -> asyncio.Lock:
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        return cls._lock
+
+    @classmethod
+    async def _reset_client(cls) -> None:
+        """Stop and drop the shared client so the next request starts a new one.
+
+        Caller holds the lock.
+        """
+        if cls._client is not None:
+            await cls._client.force_stop()
+        cls._client, cls._started = None, False
+
+    @classmethod
+    async def ensure_healthy(cls) -> None:
+        """Restart the shared client when it is disconnected, unresponsive or unauthenticated.
+
+        Called at the start of every ``execute_plan_task``. No-op when no client
+        exists yet or the last check is younger than
+        ``providers.copilot_client.health_check_interval_seconds``.
+        """
+        cfg = get_app_config().providers.copilot_client
+        if (
+            cls._client is None
+            or time.monotonic() - cls._last_health_check < cfg.health_check_interval_seconds
+        ):
+            return
+        # The SDK's JSON-RPC errors are not exported from the package root.
+        from copilot._jsonrpc import JsonRpcError, ProcessExitedError
+
+        async with cls._get_lock():
+            if cls._client is None:  # reset by a concurrent caller while we waited
+                return
+            healthy = cls._client.get_state() == "connected"
+            if healthy:
+                try:
+                    await asyncio.wait_for(cls._client.ping(), timeout=cfg.ping_timeout_seconds)
+                    healthy = (await cls._client.get_auth_status()).isAuthenticated
+                except (
+                    TimeoutError,
+                    OSError,
+                    RuntimeError,
+                    JsonRpcError,
+                    ProcessExitedError,
+                ):
+                    healthy = False
+            if not healthy:
+                logger.warning(
+                    "Copilot client unhealthy, restarting",
+                    extra={"state": cls._client.get_state()},
+                )
+                await cls._reset_client()
+            cls._last_health_check = time.monotonic()
+
+    @classmethod
+    async def _reset_on_transient(cls, classified: BaseException) -> None:
+        """Drop the shared client after a transient provider error.
+
+        The next call then starts a new client.
+        """
+        if isinstance(classified, TransientProviderError):
+            async with cls._get_lock():
+                await cls._reset_client()
+
     async def _ensure_client(self) -> None:
-        if CopilotModel._lock is None:
-            CopilotModel._lock = asyncio.Lock()
-        async with CopilotModel._lock:
+        async with CopilotModel._get_lock():
             if CopilotModel._client is None:
                 try:
                     from copilot import CopilotClient
@@ -640,6 +710,7 @@ class CopilotModel(Model):
                 await self._cleanup_session()
                 log_provider_error(logger, classified)
                 raise classified from exc
+            await CopilotModel._reset_on_transient(classified)
             raise
         return await self._wait_for_response()
 
@@ -654,6 +725,7 @@ class CopilotModel(Model):
                 if isinstance(classified, CopilotQuotaExhaustedError):
                     log_provider_error(logger, classified)
                     raise classified from exc
+                await CopilotModel._reset_on_transient(classified)
                 raise
             return self._extract_final_response()
         finally:
@@ -783,6 +855,7 @@ class CopilotModel(Model):
             if isinstance(classified, CopilotQuotaExhaustedError):
                 log_provider_error(logger, classified)
                 raise classified
+            await CopilotModel._reset_on_transient(classified)
             # Unknown SESSION_ERROR — surface as a transient provider
             # failure so the retry handler retries while the operator
             # still sees the underlying message in the structured log.

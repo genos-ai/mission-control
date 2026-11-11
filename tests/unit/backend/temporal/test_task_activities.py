@@ -131,7 +131,9 @@ def _patched(*, claim: TaskClaim, run_result=None, recorded=None, runtime_error=
     redis = MagicMock(aclose=AsyncMock())
     build = AsyncMock(side_effect=runtime_error, return_value=SimpleNamespace(context_curator=None))
     run = run_result if callable(run_result) else AsyncMock(return_value=run_result)
+    ensure_healthy = AsyncMock()
     with (
+        patch(f"{_MOD}.CopilotModel.ensure_healthy", ensure_healthy),
         patch(f"{_MOD}.get_async_session", _session),
         patch(f"{_MOD}.RunTaskExecutionService", return_value=svc),
         patch(f"{_MOD}.AsyncRedis.from_url", return_value=redis),
@@ -142,7 +144,9 @@ def _patched(*, claim: TaskClaim, run_result=None, recorded=None, runtime_error=
         patch(f"{_MOD}.run_single_task", run),
         patch(f"{_MOD}.get_failure_classifier", return_value=_classifier()),
     ):
-        yield SimpleNamespace(svc=svc, bus=bus, redis=redis, build=build, run=run)
+        yield SimpleNamespace(
+            svc=svc, bus=bus, redis=redis, build=build, run=run, ensure_healthy=ensure_healthy
+        )
 
 
 @pytest.mark.asyncio
@@ -155,6 +159,19 @@ async def test_replay_skips_agent():
     m.run.assert_not_awaited()
     m.svc.record.assert_not_awaited()
     m.bus.publish.assert_not_awaited()
+    m.ensure_healthy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_copilot_health_checked_before_agent():
+    """88.2.5: an executing attempt health-checks the shared Copilot client first."""
+    with _patched(
+        claim=_claim(), run_result=_ok_task_result(), recorded=_recorded("completed")
+    ) as m:
+        await ActivityEnvironment().run(execute_plan_task, _input())
+
+    m.ensure_healthy.assert_awaited_once_with()
+    m.run.assert_awaited_once()
 
 
 @pytest.mark.asyncio
