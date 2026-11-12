@@ -44,6 +44,9 @@ def admin(ctx):
 def admin_seed_catalog(ctx, force, reset_prompts):
     """Seed the agent catalog from config/agents/ YAML files.
 
+    Without --force, inserts only agents missing from the DB; existing
+    rows are left untouched.
+
     --force updates config fields (model, tools, scope) but preserves
     system prompts edited via the admin API.
 

@@ -2,8 +2,9 @@
 Agent Catalog Seeder.
 
 Seeds the agent_catalog table from YAML config files and system prompt
-markdown files on disk. Runs once on first startup (when the table is
-empty). Explicit re-seeding via CLI uses force mode to clear and reload.
+markdown files on disk. Without force, only agents missing from the DB are
+inserted; existing rows are never touched. Force mode updates every row
+from YAML.
 
 Source files:
     config/agents/**/agent.yaml   -> agent configuration
@@ -84,6 +85,8 @@ async def seed_catalog(
         service: An AgentCatalogService with an active DB session.
         force: If True, update all agents from YAML (config fields).
             Preserves DB system_prompt unless reset_prompts is also set.
+            If False, insert only agents missing from the DB and leave
+            existing rows untouched (counted as skipped).
         reset_prompts: If True (requires force), also overwrite
             system_prompt from disk-assembled layers. Without this,
             prompts edited via the admin API are preserved.
@@ -98,33 +101,10 @@ async def seed_catalog(
         logger.warning("Agents config directory not found", extra={"path": str(agent_directory)})
         return {"seeded": 0, "skipped": 0, "errors": 0}
 
-    # TODO(catalog-db-authoritative): Promote the DB to the sole source of
-    # truth for agent catalog entries and retire the YAML-seeding flow.
-    #
-    # Current design: `config/agents/**/agent.yaml` is authoritative, seeded
-    # into the DB on first boot (or via `admin seed-catalog --force`).
-    # Problem: declarative YAML edits (e.g. `chat_enabled: true`) don't
-    # reach the DB without a manual force re-seed, because this guard
-    # short-circuits when the catalog is non-empty to avoid clobbering
-    # admin-edited fields (system prompts, tools, model config).
-    #
-    # Target design:
-    #   1. DB is authoritative. Agents are created/edited via the admin UI
-    #      or the `/admin/catalog` API endpoints — no YAML round-trip.
-    #   2. YAML files become optional bootstrap fixtures, used only for
-    #      greenfield dev environments or to restore a known-good baseline.
-    #   3. A CLI command `admin catalog export` round-trips DB → YAML for
-    #      version-control snapshots, and `admin catalog import` applies a
-    #      YAML snapshot back to the DB (with an explicit diff preview).
-    #   4. Migrations handle schema changes; data changes go through the
-    #      admin API with audit trails.
-    #
-    # Until then: either re-seed with `--force` after YAML edits, or use
-    # the admin API to edit catalog rows directly.
-    if not force and not await service.is_catalog_empty():
-        logger.info("Catalog already seeded, skipping")
-        return {"seeded": 0, "skipped": 0, "errors": 0}
-
+    # The DB is authoritative (AGENTS.md "Agent Catalog"). A non-force seed
+    # therefore only inserts agents that exist in YAML but not in the DB, so
+    # a new agent reaches a running environment without clobbering admin-API
+    # edits to existing rows. Force updates existing rows from YAML.
     counts = {"seeded": 0, "skipped": 0, "errors": 0}
 
     for yaml_path in find_agent_files(project_root):
@@ -142,6 +122,11 @@ async def seed_catalog(
                 continue
 
             config = AgentConfigSchema(**raw)
+            existing = await service.get_by_name_or_none(config.agent_name)
+            if existing and not force:
+                counts["skipped"] += 1
+                continue
+
             system_prompt = _resolve_system_prompt(config.agent_name, project_root)
 
             fields = dict(
@@ -186,7 +171,6 @@ async def seed_catalog(
 
             # Upsert: update existing entry or create new one.
             # Never delete — that would cascade to mission team members.
-            existing = await service.get_by_name_or_none(config.agent_name)
             if existing:
                 # Preserve the DB system_prompt unless reset_prompts
                 # is explicitly set. This protects admin API edits
