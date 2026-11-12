@@ -73,6 +73,9 @@ class TestApplyTaskUpdates:
         version, errors = await curator.apply_task_updates(
             "any-project",
             [],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
         )
         assert version == 0
         assert errors == []
@@ -93,8 +96,8 @@ class TestApplyTaskUpdates:
                 }
             ],
             agent_id="code.analyzer",
-            mission_id_ref=_MID("proj-curator"),
             task_id=_TASK_ID,
+            mission_run_id=None,
         )
         assert version == 2
         assert errors == []
@@ -119,6 +122,8 @@ class TestApplyTaskUpdates:
                 }
             ],
             agent_id="some.agent",
+            task_id=None,
+            mission_run_id=None,
         )
         assert len(errors) == 1
         assert "Path not found" in errors[0]
@@ -132,6 +137,8 @@ class TestApplyTaskUpdates:
             _MID("proj-restricted"),
             [{"op": "replace", "path": "version", "value": 999, "reason": "hack"}],
             agent_id="bad.agent",
+            task_id=None,
+            mission_run_id=None,
         )
         assert len(errors) == 1
         assert "Restricted path" in errors[0]
@@ -151,12 +158,18 @@ class TestApplyTaskUpdates:
                     "reason": "safety",
                 }
             ],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         version, errors = await curator.apply_task_updates(
             _MID("proj-guard"),
             [{"op": "remove", "path": "guardrails.rule", "reason": "removing rule"}],
             agent_id="some.agent",
+            task_id=None,
+            mission_run_id=None,
         )
         assert len(errors) == 1
         assert "cannot remove guardrails" in errors[0]
@@ -167,6 +180,9 @@ class TestApplyTaskUpdates:
         version, errors = await curator.apply_task_updates(
             _NIL_UUID,
             [{"op": "add", "path": "x", "value": 1, "reason": "test"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
         )
         assert version == 0
         assert "not found" in errors[0]
@@ -187,8 +203,8 @@ class TestApplyTaskUpdates:
                 }
             ],
             agent_id="code.analyzer",
-            mission_id_ref=_MID("proj-audit"),
             task_id=_TASK_ID,
+            mission_run_id=None,
         )
 
         changes = await manager.get_history(_MID("proj-audit"))

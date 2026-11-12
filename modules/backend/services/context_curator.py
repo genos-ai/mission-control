@@ -35,9 +35,9 @@ class ContextCurator:
         mission_id: str,
         task_result_context_updates: list[dict],
         *,
-        agent_id: str | None = None,
-        mission_id_ref: str | None = None,
-        task_id: str | None = None,
+        agent_id: str | None,
+        task_id: str | None,
+        mission_run_id: str | None,
     ) -> tuple[int, list[str]]:
         """Apply context_updates from a task result to the PCD.
 
@@ -58,8 +58,9 @@ class ContextCurator:
             mission_id,
             task_result_context_updates,
             agent_id=agent_id,
-            mission_id_ref=mission_id_ref,
             task_id=task_id,
+            mission_run_id=mission_run_id,
+            reason=f"task {task_id} context update",
         )
 
         if errors:

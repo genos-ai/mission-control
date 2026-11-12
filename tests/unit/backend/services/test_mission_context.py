@@ -7,9 +7,17 @@ with transaction rollback for isolation.
 from uuid import UUID, uuid5
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.models.mission_context import ChangeType
+from modules.backend.core.exceptions import ConflictError
+from modules.backend.models.mission_context import ChangeType, ContextChange
+from modules.backend.repositories.mission_context import (
+    ContextChangeRepository,
+    MissionContextRepository,
+)
+from modules.backend.services import mission_context as mission_context_module
+from modules.backend.services.mcd_pruning import mcd_size_bytes
 from modules.backend.services.mission_context import (
     _SENTINEL,
     MissionContextManager,
@@ -47,6 +55,13 @@ _MISSION_TAGS = [
     "unk",
     "inv",
     "hist",
+    "attr",
+    "runid",
+    "utf8",
+    "conflict",
+    "reason",
+    "between",
+    "legacy",
 ]
 
 
@@ -218,6 +233,10 @@ class TestApplyUpdates:
                     "reason": "Set tech stack",
                 }
             ],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert new_ver == 2
         assert errors == []
@@ -230,6 +249,10 @@ class TestApplyUpdates:
         await manager.apply_updates(
             _MID("rep"),
             [{"op": "add", "path": "architecture.data_flow", "value": "initial", "reason": "init"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         new_ver, errors = await manager.apply_updates(
             _MID("rep"),
@@ -241,6 +264,10 @@ class TestApplyUpdates:
                     "reason": "update flow",
                 }
             ],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert new_ver == 3
         assert errors == []
@@ -258,10 +285,18 @@ class TestApplyUpdates:
                     "reason": "add auth",
                 }
             ],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         new_ver, errors = await manager.apply_updates(
             _MID("rm"),
             [{"op": "remove", "path": "architecture.components.auth", "reason": "remove auth"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert new_ver == 3
         assert errors == []
@@ -274,6 +309,10 @@ class TestApplyUpdates:
         new_ver, errors = await manager.apply_updates(
             _MID("restricted"),
             [{"op": "replace", "path": "version", "value": 999, "reason": "hack version"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert len(errors) == 1
         assert "Restricted path" in errors[0]
@@ -291,11 +330,18 @@ class TestApplyUpdates:
                     "reason": "safety",
                 }
             ],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         new_ver, errors = await manager.apply_updates(
             _MID("guard"),
             [{"op": "remove", "path": "guardrails.no_delete", "reason": "trying to remove"}],
             agent_id="some.agent",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert len(errors) == 1
         assert "cannot remove guardrails" in errors[0]
@@ -306,6 +352,10 @@ class TestApplyUpdates:
         new_ver, errors = await manager.apply_updates(
             _MID("nopath"),
             [{"op": "replace", "path": "nonexistent.deep.path", "value": "val", "reason": "test"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert len(errors) == 1
         assert "Path not found" in errors[0]
@@ -316,6 +366,10 @@ class TestApplyUpdates:
         new_ver, errors = await manager.apply_updates(
             _MID("noop"),
             [{"op": "replace", "path": "identity.name", "value": "test", "reason": "no change"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert len(errors) == 1
         assert "No-op" in errors[0]
@@ -326,6 +380,10 @@ class TestApplyUpdates:
         new_ver, errors = await manager.apply_updates(
             _MID("unk"),
             [{"op": "patch", "path": "identity.name", "value": "x", "reason": "bad op"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert len(errors) == 1
         assert "Unknown operation" in errors[0]
@@ -335,6 +393,10 @@ class TestApplyUpdates:
         new_ver, errors = await manager.apply_updates(
             _MID("nonexistent-mission"),
             [{"op": "add", "path": "x", "value": 1, "reason": "test"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert new_ver == 0
         assert "not found" in errors[0]
@@ -347,6 +409,10 @@ class TestApplyUpdates:
         await manager.apply_updates(
             _MID("inv"),
             [{"op": "add", "path": "identity.tech_stack", "value": ["go"], "reason": "test"}],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         assert _MID("inv") not in _cache
 
@@ -366,6 +432,9 @@ class TestGetHistory:
                 }
             ],
             agent_id="test.agent",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
         changes = await manager.get_history(_MID("hist"))
         assert len(changes) == 1
@@ -399,3 +468,190 @@ class TestMCDCreationViaMissionService:
         assert data != {}
         assert data["identity"]["name"] == "mcd-seeded"
         assert data["identity"]["purpose"] == "Test MCD seeding"
+
+
+def _add(path: str, value: object, reason: str | None = "test") -> dict:
+    update = {"op": "add", "path": path, "value": value}
+    if reason is not None:
+        update["reason"] = reason
+    return update
+
+
+async def _changes(db_session: AsyncSession, mission_id: str) -> list[ContextChange]:
+    ctx = await MissionContextRepository(db_session).get_by_mission_id(mission_id)
+    result = await db_session.execute(
+        select(ContextChange).where(ContextChange.context_id == ctx.id)
+    )
+    return list(result.scalars().all())
+
+
+async def _make_run(db_session: AsyncSession, mission_id: str) -> str:
+    from modules.backend.models.mission_plan import MissionPlan
+    from modules.backend.models.mission_run import MissionRun, MissionRunStatus, MissionRunTrigger
+    from modules.backend.repositories.mission import MissionRepository
+
+    plan_id = (
+        await db_session.execute(select(MissionPlan.id).where(MissionPlan.mission_id == mission_id))
+    ).scalar_one()
+    run = MissionRun(
+        mission_id=mission_id,
+        plan_id=plan_id,
+        sequence=await MissionRepository(db_session).increment_run_sequence(mission_id),
+        trigger=MissionRunTrigger.MANUAL,
+        status=MissionRunStatus.RUNNING,
+    )
+    db_session.add(run)
+    await db_session.flush()
+    return run.id
+
+
+class TestAttributionAndWatermarks:
+    @pytest.mark.asyncio
+    async def test_apply_updates_sets_mission_id_on_every_change(self, manager, db_session):
+        mid = _MID("attr")
+        await manager.create_context(mid, "attr", "desc")
+        await manager.apply_updates(
+            mid,
+            [_add("identity.tech_stack", ["go"]), _add("architecture.data_flow", "x")],
+            agent_id="workflow",
+            task_id=None,
+            mission_run_id=None,
+            reason="batch",
+        )
+        changes = await _changes(db_session, mid)
+        assert len(changes) == 2
+        assert all(c.mission_id == mid for c in changes)
+        roots = await ContextChangeRepository(db_session).latest_change_at_by_root(
+            changes[0].context_id
+        )
+        assert set(roots) == {"identity", "architecture"}
+
+    @pytest.mark.asyncio
+    async def test_apply_updates_records_mission_run_id(self, manager, db_session):
+        mid = _MID("runid")
+        await manager.create_context(mid, "runid", "desc")
+        run_id = await _make_run(db_session, mid)
+        await manager.apply_updates(
+            mid,
+            [_add("identity.tech_stack", ["go"])],
+            agent_id="a.agent",
+            task_id=None,
+            mission_run_id=run_id,
+            reason="batch",
+        )
+        changes = await _changes(db_session, mid)
+        assert [c.mission_run_id for c in changes] == [run_id]
+
+    @pytest.mark.asyncio
+    async def test_apply_updates_size_measured_in_utf8_bytes(
+        self, manager, db_session, monkeypatch
+    ):
+        assert mcd_size_bytes("\u20ac") - mcd_size_bytes("") == 3
+
+        mid = _MID("utf8")
+        await manager.create_context(mid, "utf8", "desc")
+        data, _ = await manager.get_context_with_version(mid)
+        # 1000 three-byte characters: under the cap in characters, over it in bytes.
+        cap = mcd_size_bytes(data) + 2000
+        monkeypatch.setattr(mission_context_module, "_get_max_size", lambda: cap)
+        version, errors = await manager.apply_updates(
+            mid,
+            [_add("architecture.data_flow", "\u20ac" * 1000)],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
+        )
+        assert version == 1
+        assert "exceed size cap" in errors[0]
+        assert await _changes(db_session, mid) == []
+
+    @pytest.mark.asyncio
+    async def test_apply_updates_no_orphan_changes_on_conflict(
+        self, manager, db_session, monkeypatch
+    ):
+        mid = _MID("conflict")
+        await manager.create_context(mid, "conflict", "desc")
+
+        async def _no_rows(*args, **kwargs) -> int:
+            return 0
+
+        monkeypatch.setattr(MissionContextRepository, "update_context", _no_rows)
+        with pytest.raises(ConflictError):
+            await manager.apply_updates(
+                mid,
+                [_add("identity.tech_stack", ["go"])],
+                agent_id=None,
+                task_id=None,
+                mission_run_id=None,
+                reason="test",
+            )
+        count = (
+            await db_session.execute(
+                select(func.count())
+                .select_from(ContextChange)
+                .where(ContextChange.mission_id == mid)
+            )
+        ).scalar_one()
+        assert count == 0
+        assert not [o for o in db_session.new if isinstance(o, ContextChange)]
+
+    @pytest.mark.asyncio
+    async def test_apply_updates_batch_reason_used_when_update_has_none(self, manager, db_session):
+        mid = _MID("reason")
+        await manager.create_context(mid, "reason", "desc")
+        await manager.apply_updates(
+            mid,
+            [_add("identity.tech_stack", ["go"], reason=None), _add("architecture.data_flow", "x")],
+            agent_id=None,
+            task_id=None,
+            mission_run_id=None,
+            reason="batch reason",
+        )
+        reasons = {c.path: c.reason for c in await _changes(db_session, mid)}
+        assert reasons == {"identity.tech_stack": "batch reason", "architecture.data_flow": "test"}
+
+    @pytest.mark.asyncio
+    async def test_get_changes_between_bounds_exclusive_inclusive(self, manager):
+        mid = _MID("between")
+        await manager.create_context(mid, "between", "desc")
+        for i in range(4):
+            await manager.apply_updates(
+                mid,
+                [_add(f"architecture.components.c{i}", i)],
+                agent_id=None,
+                task_id=None,
+                mission_run_id=None,
+                reason="test",
+            )
+        changes = await manager.get_changes_between(mid, 2, 4, limit=10)
+        assert [c.version for c in changes] == [4, 3]
+        assert await manager.count_changes_between(mid, 2, 4) == 2
+        assert [c.version for c in await manager.get_changes_between(mid, 1, 5, limit=1)] == [5]
+
+    @pytest.mark.asyncio
+    async def test_get_changes_between_includes_legacy_null_mission_id_rows(
+        self, manager, db_session
+    ):
+        mid = _MID("legacy")
+        ctx = await manager.create_context(mid, "legacy", "desc")
+        db_session.add(
+            ContextChange(
+                context_id=ctx.id,
+                version=2,
+                change_type=ChangeType.ADD,
+                path="identity.tech_stack",
+                new_value=["go"],
+                mission_id=None,
+                reason="legacy",
+            )
+        )
+        await db_session.flush()
+        changes = await manager.get_changes_between(mid, 1, 2, limit=10)
+        assert [c.mission_id for c in changes] == [None]
+        assert await manager.count_changes_between(mid, 1, 2) == 1
+
+    @pytest.mark.asyncio
+    async def test_changes_between_without_mcd(self, manager):
+        assert await manager.get_changes_between(_MID("nonexistent"), 0, 5, limit=10) == []
+        assert await manager.count_changes_between(_MID("nonexistent"), 0, 5) == 0

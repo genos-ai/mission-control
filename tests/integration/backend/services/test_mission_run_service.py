@@ -39,6 +39,7 @@ from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.schemas.task_plan import TaskDefinition, TaskPlan
 from modules.backend.services import mission_plan_taskio
+from modules.backend.services.mission_context import MissionContextManager
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.mission_run import MissionRunService
 from modules.backend.services.mission_run_lifecycle import RUN_SUCCEEDED
@@ -248,6 +249,32 @@ async def test_begin_adopts_backlog_and_is_idempotent(db_session_factory, gatewa
     adopted, left = await _tasks(db_session_factory, approved, proposed)
     assert adopted.mission_run_id == run.id
     assert left.mission_run_id is None
+
+
+async def test_begin_sets_context_version_start_to_current_mcd_version(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, _ = await owner()
+    async with db_session_factory() as session:
+        manager = MissionContextManager(session)
+        await manager.create_context(mission.id, mission.name, "watermark")
+        for path in ("architecture.data_flow", "architecture.components.api"):
+            await manager.apply_updates(
+                mission.id,
+                [{"op": "add", "path": path, "value": "x"}],
+                agent_id=None,
+                task_id=None,
+                mission_run_id=None,
+                reason="watermark test",
+            )
+        await session.commit()
+    run = await _start(db_session_factory, mission, user)
+
+    begun = await _begin(db_session_factory, run.id)
+
+    assert begun.context_version_start == 3
+    stored = await _run(db_session_factory, run.id)
+    assert stored.context_version_start == 3
 
 
 async def test_begin_skips_backlog_when_workflow_run_active(

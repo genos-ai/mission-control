@@ -4,7 +4,9 @@ Mission Context Repository.
 Data access for MCD and context change audit trail.
 """
 
-from sqlalchemy import select, update
+from datetime import datetime
+
+from sqlalchemy import func, select, update
 
 from modules.backend.models.mission_context import ContextChange, ContextMilestone, MissionContext
 from modules.backend.repositories.base import BaseRepository
@@ -21,6 +23,28 @@ class MissionContextRepository(BaseRepository[MissionContext]):
             select(MissionContext).where(MissionContext.mission_id == mission_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_by_mission_id_for_update(self, mission_id: str) -> MissionContext | None:
+        """Get MCD by mission ID with a row lock held until the caller commits.
+
+        populate_existing refreshes an instance already in the identity map, so
+        the locked row's current version is what the caller sees.
+        """
+        result = await self.session.execute(
+            select(MissionContext)
+            .where(MissionContext.mission_id == mission_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_version(self, mission_id: str) -> int:
+        """Current MCD version for the mission; 0 when no MCD exists."""
+        result = await self.session.execute(
+            select(MissionContext.version).where(MissionContext.mission_id == mission_id)
+        )
+        version = result.scalar_one_or_none()
+        return version if version is not None else 0
 
     async def update_context(
         self,
@@ -66,6 +90,49 @@ class ContextChangeRepository(BaseRepository[ContextChange]):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_between(
+        self,
+        context_id: str,
+        after_version: int,
+        up_to_version: int,
+        limit: int,
+    ) -> list[ContextChange]:
+        """Changes with after_version < version <= up_to_version, newest first.
+
+        Filters on context_id, never mission_id: legacy rows have mission_id NULL.
+        When truncated by limit, the newest changes are kept.
+        """
+        result = await self.session.execute(
+            select(ContextChange)
+            .where(ContextChange.context_id == context_id)
+            .where(ContextChange.version > after_version)
+            .where(ContextChange.version <= up_to_version)
+            .order_by(ContextChange.version.desc(), ContextChange.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def count_between(self, context_id: str, after_version: int, up_to_version: int) -> int:
+        """Count of changes with the same predicate as list_between."""
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(ContextChange)
+            .where(ContextChange.context_id == context_id)
+            .where(ContextChange.version > after_version)
+            .where(ContextChange.version <= up_to_version)
+        )
+        return int(result.scalar_one())
+
+    async def latest_change_at_by_root(self, context_id: str) -> dict[str, datetime]:
+        """Most recent change time per MCD root key (first segment of path)."""
+        root = func.split_part(ContextChange.path, ".", 1).label("root")
+        result = await self.session.execute(
+            select(root, func.max(ContextChange.created_at))
+            .where(ContextChange.context_id == context_id)
+            .group_by(root)
+        )
+        return {row[0]: row[1] for row in result.all()}
 
     async def list_by_agent(
         self,

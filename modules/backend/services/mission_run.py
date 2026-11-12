@@ -137,11 +137,6 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
             return False
         return await self._users.get_by_id_or_none(str(user_id)) is not None
 
-    async def _context_version(self, mission_id: str) -> int:
-        """The mission's MCD version; 0 when no MCD exists."""
-        context = await self._contexts.get_by_mission_id(mission_id)
-        return context.version if context is not None else 0
-
     # ── Reads ────────────────────────────────────────────────────────────
 
     async def get_active_run(self, mission_id: str) -> MissionRun | None:

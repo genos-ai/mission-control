@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.exceptions import ConflictError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import estimate_tokens, utc_now
 from modules.backend.models.mission_context import (
@@ -27,6 +28,7 @@ from modules.backend.repositories.mission_context import (
     MissionContextRepository,
 )
 from modules.backend.services.base import BaseService
+from modules.backend.services.mcd_pruning import mcd_size_bytes
 
 logger = get_logger(__name__)
 
@@ -240,20 +242,22 @@ class MissionContextManager(BaseService):
         mission_id: str,
         updates: list[dict],
         *,
-        agent_id: str | None = None,
-        mission_id_ref: str | None = None,
-        task_id: str | None = None,
-        mission_run_id: str | None = None,
+        agent_id: str | None,
+        task_id: str | None,
+        mission_run_id: str | None,
+        reason: str,
     ) -> tuple[int, list[str]]:
         """Apply context updates to the MCD.
 
-        ``mission_run_id`` attributes every inserted ContextChange to its run.
+        The MCD row is locked until the caller commits, so writers serialise.
+        Every inserted ContextChange carries the MCD's own mission_id plus
+        mission_run_id, task_id and agent_id. ``reason`` is the batch reason;
+        an update's own ``reason`` key wins.
 
-        Returns (new_version, list_of_errors).
-        Errors are logged and skipped — they do not fail the operation.
-        Uses optimistic concurrency on the version field.
+        Returns (new_version, list_of_errors). Per-update errors are skipped
+        and returned; a version conflict raises ConflictError.
         """
-        ctx = await self._context_repo.get_by_mission_id(mission_id)
+        ctx = await self._context_repo.get_by_mission_id_for_update(mission_id)
         if ctx is None:
             return 0, ["MissionContext not found for mission"]
 
@@ -267,7 +271,7 @@ class MissionContextManager(BaseService):
             op = update.get("op")
             path = update.get("path", "")
             value = update.get("value")
-            reason = update.get("reason", "no reason provided")
+            change_reason = update.get("reason") or reason
 
             root_key = path.split(".")[0] if path else ""
             if root_key in _RESTRICTED_PATHS:
@@ -316,23 +320,35 @@ class MissionContextManager(BaseService):
                     "path": path,
                     "old_value": old_value if not isinstance(old_value, type(_SENTINEL)) else None,
                     "new_value": value,
-                    "reason": reason,
+                    "reason": change_reason,
                 }
             )
 
         data["version"] = current_version + 1
         data["last_updated"] = utc_now().isoformat()
-        data["last_updated_by"] = agent_id or mission_id_ref or "system"
+        data["last_updated_by"] = agent_id or "system"
 
-        serialized = _json.dumps(data, ensure_ascii=False)
-        new_size = len(serialized)
-        if new_size > _get_max_size():
+        size_bytes = mcd_size_bytes(data)
+        max_bytes = _get_max_size()
+        if size_bytes > max_bytes:
             return current_version, [
-                f"MCD would exceed size cap: {new_size} > {_get_max_size()} bytes. "
+                f"MCD would exceed size cap: {size_bytes} > {max_bytes} bytes. "
                 "Prune before applying more updates."
             ]
 
+        serialized = _json.dumps(data, ensure_ascii=False)
+        new_size = len(serialized)
         new_version = current_version + 1
+        rows_updated = await self._context_repo.update_context(
+            mission_id=mission_id,
+            context_data=data,
+            new_version=new_version,
+            size_characters=new_size,
+            size_tokens=estimate_tokens(serialized),
+        )
+        if rows_updated == 0:
+            raise ConflictError("MCD version conflict")
+
         for change in applied_changes:
             await self._change_repo.create(
                 context_id=ctx.id,
@@ -342,22 +358,11 @@ class MissionContextManager(BaseService):
                 old_value=change["old_value"],
                 new_value=change["new_value"],
                 agent_id=agent_id,
-                mission_id=mission_id_ref,
+                mission_id=mission_id,
                 task_id=task_id,
                 mission_run_id=mission_run_id,
                 reason=change["reason"],
             )
-
-        rows_updated = await self._context_repo.update_context(
-            mission_id=mission_id,
-            context_data=data,
-            new_version=new_version,
-            size_characters=new_size,
-            size_tokens=estimate_tokens(serialized),
-        )
-
-        if rows_updated == 0:
-            return current_version, ["Version conflict — MCD was updated concurrently"]
 
         _cache.pop(mission_id, None)
 
@@ -365,12 +370,40 @@ class MissionContextManager(BaseService):
             "MCD updated",
             mission_id=mission_id,
             new_version=new_version,
-            size_characters=new_size,
+            size_bytes=size_bytes,
             updates_applied=len(applied_changes),
             errors=len(errors),
         )
 
         return new_version, errors
+
+    async def get_changes_between(
+        self,
+        mission_id: str,
+        after_version: int,
+        up_to_version: int,
+        limit: int,
+    ) -> list[ContextChange]:
+        """MCD changes with after_version < version <= up_to_version, newest first.
+
+        [] when no MCD exists.
+        """
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
+        if ctx is None:
+            return []
+        return await self._change_repo.list_between(ctx.id, after_version, up_to_version, limit)
+
+    async def count_changes_between(
+        self,
+        mission_id: str,
+        after_version: int,
+        up_to_version: int,
+    ) -> int:
+        """Count of MCD changes in (after_version, up_to_version]; 0 when no MCD exists."""
+        ctx = await self._context_repo.get_by_mission_id(mission_id)
+        if ctx is None:
+            return 0
+        return await self._change_repo.count_between(ctx.id, after_version, up_to_version)
 
     async def get_history(
         self,

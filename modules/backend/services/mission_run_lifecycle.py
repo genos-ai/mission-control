@@ -6,7 +6,7 @@ through redact_secrets.
 
 Mixed into MissionRunService; do not instantiate directly. Methods use the
 repositories, _plan_svc, _event_bus, transition, start_run, _is_platform_user
-and _context_version that MissionRunService defines.
+and _contexts that MissionRunService defines.
 """
 
 from modules.backend.core.exceptions import (
@@ -157,7 +157,7 @@ class MissionRunLifecycleMixin:
 
         previous = await self._runs.get_latest_with_digest(mission_id)
         previous_run_id = previous.id if previous is not None else None
-        context_version_start = await self._context_version(mission_id)
+        context_version_start = await self._contexts.get_version(mission_id)
 
         run.gate_mode = gate_mode
         run.previous_run_id = previous_run_id
@@ -341,7 +341,7 @@ class MissionRunLifecycleMixin:
         run.completed_task_count = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
         run.failed_task_count = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
         if run.context_version_end is None:
-            run.context_version_end = await self._context_version(mission_id)
+            run.context_version_end = await self._contexts.get_version(mission_id)
         cost = await LlmLedgerRepository(self._session).sum_cost(
             mission_id, since=None, until=None, mission_run_id=run_id
         )

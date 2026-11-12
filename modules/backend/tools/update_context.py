@@ -33,6 +33,7 @@ async def update_context(
     """
     from modules.backend.services.mission_context import MissionContextManager
 
+    batch_reason = reason or f"workflow update: {path}"
     async with MissionContextManager.factory() as mgr:
         new_version, errors = await mgr.apply_updates(
             mission_id,
@@ -41,10 +42,13 @@ async def update_context(
                     "op": "add",
                     "path": path,
                     "value": value,
-                    "reason": reason or f"workflow update: {path}",
+                    "reason": batch_reason,
                 }
             ],
             agent_id="workflow",
+            task_id=None,
+            mission_run_id=None,
+            reason=batch_reason,
         )
 
     if errors:

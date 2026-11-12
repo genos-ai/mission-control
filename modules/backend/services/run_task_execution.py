@@ -263,9 +263,9 @@ class RunTaskExecutionService(BaseService):
                 mission_id,
                 task_result.context_updates,
                 agent_id=task_result.agent_name,
-                mission_id_ref=mission_id,
                 task_id=task.id,
                 mission_run_id=mission_run_id,
+                reason=f"task {task.id} context update",
             )
             if errors:
                 self._log_operation(

@@ -159,6 +159,9 @@ class TestPrunePcdDecisions:
             _MID("proj-prune"),
             [{"op": "add", "path": "decisions", "value": decisions, "reason": "seed decisions"}],
             agent_id="test",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         result = await summarization_service.prune_mcd_decisions(
@@ -201,6 +204,9 @@ class TestPrunePcdDecisions:
             _MID("proj-recent"),
             [{"op": "add", "path": "decisions", "value": decisions, "reason": "seed"}],
             agent_id="test",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         result = await summarization_service.prune_mcd_decisions(_MID("proj-recent"))
@@ -234,6 +240,9 @@ class TestPruneCompletedWorkstreams:
                 }
             ],
             agent_id="test",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         result = await summarization_service.prune_completed_workstreams(
@@ -262,6 +271,9 @@ class TestPruneCompletedWorkstreams:
                 }
             ],
             agent_id="test",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         result = await summarization_service.prune_completed_workstreams(
@@ -319,6 +331,9 @@ class TestRunFullPipeline:
                 },
             ],
             agent_id="test",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
         )
 
         results = await summarization_service.run_full_pipeline(_MID("proj-full"))

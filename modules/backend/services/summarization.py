@@ -98,19 +98,14 @@ class SummarizationService(BaseService):
             )
 
         # Update MCD with pruned decisions list
+        reason = f"Archived {len(to_archive)} decisions older than {max_age_days} days"
         await self._context_manager.apply_updates(
             mission_id,
-            [
-                {
-                    "op": "replace",
-                    "path": "decisions",
-                    "value": to_keep,
-                    "reason": (
-                        f"Archived {len(to_archive)} decisions " f"older than {max_age_days} days"
-                    ),
-                }
-            ],
+            [{"op": "replace", "path": "decisions", "value": to_keep, "reason": reason}],
             agent_id="system:summarization",
+            task_id=None,
+            mission_run_id=None,
+            reason=reason,
         )
 
         self._log_operation(
@@ -159,6 +154,7 @@ class SummarizationService(BaseService):
         )
 
         # Update MCD with pruned milestones list
+        reason = f"Archived {len(to_archive)} old milestones"
         await self._context_manager.apply_updates(
             mission_id,
             [
@@ -166,10 +162,13 @@ class SummarizationService(BaseService):
                     "op": "replace",
                     "path": "current_state.recent_milestones",
                     "value": to_keep,
-                    "reason": f"Archived {len(to_archive)} old milestones",
+                    "reason": reason,
                 }
             ],
             agent_id="system:summarization",
+            task_id=None,
+            mission_run_id=None,
+            reason=reason,
         )
 
         self._log_operation(

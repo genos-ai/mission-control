@@ -102,9 +102,9 @@ class ContextCuratorProtocol(Protocol):
         mission_id: str,
         task_result_context_updates: list[dict],
         *,
-        agent_id: str | None = ...,
-        mission_id_ref: str | None = ...,
-        task_id: str | None = ...,
+        agent_id: str | None,
+        task_id: str | None,
+        mission_run_id: str | None,
     ) -> tuple[int, list[str]]: ...
 
 
