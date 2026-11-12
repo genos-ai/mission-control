@@ -421,8 +421,9 @@ class MissionContextManager(BaseService):
         Returns None when the write may proceed (compaction changes are
         prepended to applied_changes, so they share the one version bump), or
         the (version, errors) tuple apply_updates returns without writing.
-        Snapshot and archive rows written by the compactor stay in the
-        caller's transaction; the caller decides commit or rollback.
+        Roots this batch wrote are never archived whole. The compactor runs
+        inside a SAVEPOINT that is rolled back on rejection, so a rejected
+        batch leaves no snapshot or archive rows behind.
         """
         max_bytes, target_bytes = _get_max_size(), _get_target_size()
         if mcd_size_bytes(data) <= max_bytes:
@@ -432,17 +433,29 @@ class MissionContextManager(BaseService):
             return current_version, [
                 f"Update at {u.get('path', '')} exceeds pcd_target_size_bytes" for u in oversize
             ]
-        compaction = await MissionContextCompactor(self.session).plan(
-            mission_id, ctx.id, current_version, data, target_bytes
-        )
-        if mcd_size_bytes(data) > max_bytes:
-            self._logger.error(
-                "MCD protected sections exceed max after compaction",
-                extra={"mission_id": mission_id, "size_bytes": mcd_size_bytes(data)},
+        written_roots = frozenset(c["path"].split(".")[0] for c in applied_changes)
+        async with self.session.begin_nested() as savepoint:
+            compaction = await MissionContextCompactor(self.session).plan(
+                mission_id,
+                ctx.id,
+                current_version,
+                data,
+                target_bytes,
+                written_roots=written_roots,
             )
-            return current_version, [
-                "MCD protected sections exceed pcd_max_size_bytes after compaction"
-            ]
+            if mcd_size_bytes(data) > max_bytes:
+                await savepoint.rollback()
+                self._logger.error(
+                    "MCD protected or just-written sections exceed max after compaction",
+                    extra={
+                        "mission_id": mission_id,
+                        "size_bytes": mcd_size_bytes(data),
+                        "written_roots": sorted(written_roots),
+                    },
+                )
+                return current_version, [
+                    "MCD protected sections exceed pcd_max_size_bytes after compaction"
+                ]
         applied_changes[:0] = compaction.changes  # one version bump; compaction rows first
         self._logger.info(
             "MCD compacted on write",
@@ -469,7 +482,9 @@ class MissionContextManager(BaseService):
         exists. Otherwise plans a compaction to pcd_target_size_bytes on a
         deep copy and, when it changed anything, writes the document and one
         ContextChange per change (agent_id "system:compaction") under one
-        version bump, document first.
+        version bump, document first. Returns None, with nothing written, when
+        nothing was archivable: the protected sections alone sit above the
+        threshold, which is logged as an error for an operator to act on.
         """
         cfg = get_app_config().missions
         ctx = await self._context_repo.get_by_mission_id_for_update(mission_id)
@@ -482,14 +497,23 @@ class MissionContextManager(BaseService):
         current_version = ctx.version
         data = copy.deepcopy(ctx.context_data)
         result = await MissionContextCompactor(self.session).plan(
-            mission_id, ctx.id, current_version, data, cfg.pcd_target_size_bytes
+            mission_id,
+            ctx.id,
+            current_version,
+            data,
+            cfg.pcd_target_size_bytes,
+            written_roots=frozenset(),
         )
         if not result.changes:
-            self._logger.warning(
-                "MCD compaction found nothing archivable",
-                extra={"mission_id": mission_id, "size_bytes": result.from_bytes},
+            self._logger.error(
+                "MCD protected sections exceed prune threshold; nothing archivable",
+                extra={
+                    "mission_id": mission_id,
+                    "size_bytes": result.from_bytes,
+                    "threshold_bytes": threshold,
+                },
             )
-            return result
+            return None
 
         for change in result.changes:
             change["reason"] = f"{reason}: {change['reason']}"

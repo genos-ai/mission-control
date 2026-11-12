@@ -72,7 +72,7 @@ async def _make_run(db_session: AsyncSession, mission_id: str) -> str:
     return run.id
 
 
-async def _run(db_session: AsyncSession, mission_id: str):
+async def _run(db_session: AsyncSession, mission_id: str, on_publish=None):
     @asynccontextmanager
     async def _session():
         yield db_session
@@ -84,7 +84,7 @@ async def _run(db_session: AsyncSession, mission_id: str):
         patch(f"{_MOD}.AsyncRedis.from_url", return_value=redis),
         patch(f"{_MOD}.SessionEventBus") as bus_cls,
     ):
-        bus_cls.return_value.publish = AsyncMock()
+        bus_cls.return_value.publish = AsyncMock(side_effect=on_publish)
         result = await ActivityEnvironment().run(
             compact_mission_context,
             CompactContextInput(mission_id=mission_id, mission_run_id=run_id),
@@ -121,13 +121,22 @@ async def test_compact_mission_context_publishes_after_commit(db_session):
         reason="seed",
     )
 
-    commit = AsyncMock(wraps=db_session.commit)
+    calls: list[str] = []
+    real_commit = db_session.commit
+
+    async def _commit():
+        calls.append("commit")
+        await real_commit()
+
+    commit = AsyncMock(side_effect=_commit)
     with patch.object(db_session, "commit", commit):
-        result, bus_cls, redis, run_id = await _run(db_session, mid)
+        result, bus_cls, redis, run_id = await _run(
+            db_session, mid, on_publish=lambda *_: calls.append("publish")
+        )
 
     assert result.compacted is True
     assert result.to_bytes < result.from_bytes
-    commit.assert_awaited_once()
+    assert calls == ["commit", "publish"]
     bus_cls.assert_called_once_with(redis, mission_id=mid)
     bus_cls.return_value.publish.assert_awaited_once()
     event = bus_cls.return_value.publish.await_args.args[0]

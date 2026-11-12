@@ -36,6 +36,9 @@ _TAGS = [
     "noop",
     "det",
     "explicit",
+    "kept",
+    "nothing",
+    "skip",
 ]
 _OLD_DATE = "2000-01-01"
 
@@ -210,9 +213,70 @@ class TestWritePath:
         assert ctx.version == 2
         assert ctx.context_data["guardrails"] == []
         assert await _changes_at(db_session, ctx.id, 3) == []
+        assert await ContextMilestoneRepository(db_session).list_by_mission(mid) == []
+
+    @pytest.mark.asyncio
+    async def test_compaction_on_write_keeps_the_written_root(self, manager, db_session):
+        mid = _MID("kept")
+        max_bytes, _ = _limits()
+        await _seed(
+            manager,
+            mid,
+            [
+                {"op": "replace", "path": "identity.purpose", "value": "p" * 13_000},
+                {"op": "add", "path": "notes", "value": "n" * 2500},
+            ],
+        )
+
+        version, errors = await manager.apply_updates(
+            mid,
+            [{"op": "add", "path": "architecture.data_flow", "value": "x" * 5000}],
+            agent_id="a.agent",
+            task_id=None,
+            mission_run_id=None,
+            reason="test",
+        )
+
+        assert errors == []
+        ctx = await _ctx(db_session, mid)
+        assert ctx.version == version == 3
+        assert ctx.context_data["architecture"]["data_flow"] == "x" * 5000
+        assert "notes" not in ctx.context_data
+        assert mcd_size_bytes(ctx.context_data) <= max_bytes
+        changes = await _changes_at(db_session, ctx.id, 3)
+        assert (ChangeType.ARCHIVE, "architecture") not in {
+            (c.change_type, c.path) for c in changes
+        }
+        assert (ChangeType.ARCHIVE, "notes") in {(c.change_type, c.path) for c in changes}
 
 
 class TestPlan:
+    @pytest.mark.asyncio
+    async def test_plan_skips_written_roots_and_snapshots_nothing_when_idle(
+        self, manager, db_session
+    ):
+        mid = _MID("skip")
+        await manager.create_context(mid, mid, "desc")
+        ctx = await _ctx(db_session, mid)
+        data = copy.deepcopy(ctx.context_data)
+        data["identity"]["purpose"] = "p" * 5000
+        before = copy.deepcopy(data)
+        unprotected = {
+            k
+            for k in data
+            if k not in get_app_config().missions.compaction.protected_roots
+            and k not in {"version", "last_updated", "last_updated_by"}
+        }
+
+        result = await MissionContextCompactor(db_session).plan(
+            mid, ctx.id, ctx.version, data, 100, written_roots=frozenset(unprotected)
+        )
+
+        assert result.changes == []
+        assert result.archived_paths == []
+        assert data == before
+        assert await ContextMilestoneRepository(db_session).list_by_mission(mid) == []
+
     @pytest.mark.asyncio
     async def test_compaction_snapshots_to_context_milestone(self, manager, db_session):
         mid = _MID("snap")
@@ -223,7 +287,7 @@ class TestPlan:
         passed_in = copy.deepcopy(data)
 
         await MissionContextCompactor(db_session).plan(
-            mid, ctx.id, ctx.version, data, mcd_size_bytes(data) - 100
+            mid, ctx.id, ctx.version, data, mcd_size_bytes(data) - 100, written_roots=frozenset()
         )
 
         milestones = await ContextMilestoneRepository(db_session).list_by_mission(mid)
@@ -255,7 +319,7 @@ class TestPlan:
         data = copy.deepcopy(ctx.context_data)
 
         result = await MissionContextCompactor(db_session).plan(
-            mid, ctx.id, ctx.version, data, mcd_size_bytes(data) - 1000
+            mid, ctx.id, ctx.version, data, mcd_size_bytes(data) - 1000, written_roots=frozenset()
         )
 
         assert result.archived_paths == ["zeta"]
@@ -284,7 +348,9 @@ class TestPlan:
         protected = get_app_config().missions.compaction.protected_roots
         before = {root: copy.deepcopy(data[root]) for root in protected}
 
-        result = await MissionContextCompactor(db_session).plan(mid, ctx.id, ctx.version, data, 100)
+        result = await MissionContextCompactor(db_session).plan(
+            mid, ctx.id, ctx.version, data, 100, written_roots=frozenset()
+        )
 
         assert result.reached_target is False
         assert set(result.archived_paths) == {"architecture", "decisions", "custom"}
@@ -303,8 +369,12 @@ class TestPlan:
         doc["scratch"] = "s" * 3000
         compactor = MissionContextCompactor(db_session)
 
-        first = await compactor.plan(mid, ctx.id, ctx.version, copy.deepcopy(doc), 100)
-        second = await compactor.plan(mid, ctx.id, ctx.version, copy.deepcopy(doc), 100)
+        first = await compactor.plan(
+            mid, ctx.id, ctx.version, copy.deepcopy(doc), 100, written_roots=frozenset()
+        )
+        second = await compactor.plan(
+            mid, ctx.id, ctx.version, copy.deepcopy(doc), 100, written_roots=frozenset()
+        )
 
         assert first.changes == second.changes
         assert first.archived_paths == second.archived_paths
@@ -357,3 +427,25 @@ class TestExplicitCompact:
         assert sorted(c.path for c in changes) == ["architecture", "decisions", "notes"]
         assert {c.agent_id for c in changes} == {"system:compaction"}
         assert all(c.reason.startswith("run-end compaction: ") for c in changes)
+
+    @pytest.mark.asyncio
+    async def test_compact_with_nothing_archivable_writes_nothing(self, manager, db_session):
+        mid = _MID("nothing")
+        max_bytes, _ = _limits()
+        threshold = max_bytes * get_app_config().missions.pcd_prune_threshold_pct / 100
+        await _seed(
+            manager,
+            mid,
+            [
+                {"op": "replace", "path": "identity.purpose", "value": "p" * (int(threshold) + 1)},
+                {"op": "remove", "path": "architecture"},
+                {"op": "remove", "path": "decisions"},
+            ],
+        )
+
+        assert await manager.compact(mid, mission_run_id=None, reason="run-end compaction") is None
+
+        ctx = await _ctx(db_session, mid)
+        assert ctx.version == 2
+        assert await ContextMilestoneRepository(db_session).list_by_mission(mid) == []
+        assert await _changes_at(db_session, ctx.id, 3) == []

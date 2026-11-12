@@ -49,24 +49,24 @@ class MissionContextCompactor(BaseService):
         current_version: int,
         data: dict,
         target_bytes: int,
+        *,
+        written_roots: frozenset[str],
     ) -> CompactionResult:
         """Mutate `data` in place until it fits target_bytes or nothing archivable remains.
 
-        Stops as soon as mcd_size_bytes(data) <= target_bytes. Writes ContextMilestone,
-        MissionDecision and MilestoneSummary rows in the caller's transaction.
+        Stops as soon as mcd_size_bytes(data) <= target_bytes. ``written_roots``
+        are the roots the caller's own batch has just written; they are never
+        archived whole, so a write is never silently undone by its own
+        compaction. When anything is removed, writes a ContextMilestone snapshot
+        of the document as passed in, plus MissionDecision and MilestoneSummary
+        archive rows, in the caller's transaction. When nothing is removed, no
+        row is written and ``changes`` is empty.
         """
         cfg = get_app_config().missions.compaction
         from_bytes = mcd_size_bytes(data)
+        snapshot = copy.deepcopy(data)
         changes: list[dict] = []
         archived_paths: list[str] = []
-
-        await ContextMilestoneRepository(self.session).create(
-            mission_id=mission_id,
-            title=f"MCD compaction before v{current_version + 1}",
-            version_snapshot=current_version,
-            context_snapshot=copy.deepcopy(data),
-            created_by=COMPACTION_ACTOR,
-        )
 
         if mcd_size_bytes(data) > target_bytes:
             await self._prune_decisions(mission_id, data, cfg.decisions_max_age_days, changes)
@@ -76,10 +76,19 @@ class MissionContextCompactor(BaseService):
             await self._archive_roots(
                 context_id,
                 data,
-                set(cfg.protected_roots),
+                set(cfg.protected_roots) | written_roots,
                 target_bytes,
                 changes,
                 archived_paths,
+            )
+
+        if changes:
+            await ContextMilestoneRepository(self.session).create(
+                mission_id=mission_id,
+                title=f"MCD compaction before v{current_version + 1}",
+                version_snapshot=current_version,
+                context_snapshot=snapshot,
+                created_by=COMPACTION_ACTOR,
             )
 
         to_bytes = mcd_size_bytes(data)
@@ -141,13 +150,16 @@ class MissionContextCompactor(BaseService):
         self,
         context_id: str,
         data: dict,
-        protected_roots: set[str],
+        excluded_roots: set[str],
         target_bytes: int,
         changes: list[dict],
         archived_paths: list[str],
     ) -> None:
-        """Remove whole unprotected roots, least recently changed first, until under target."""
-        candidates = [k for k in data if k not in protected_roots and k not in _BOOKKEEPING_ROOTS]
+        """Remove whole roots not in excluded_roots, least recently changed first.
+
+        Stops as soon as the document fits target_bytes.
+        """
+        candidates = [k for k in data if k not in excluded_roots and k not in _BOOKKEEPING_ROOTS]
         if not candidates:
             return
         ctx = await MissionContextRepository(self.session).get_by_id(context_id)
