@@ -228,6 +228,30 @@ open on purpose.
   - `refine_plan` is 109 lines; split it.
   - Tool-fork path (`tool_fork_activities.py`) has no test of its own
     for Director routing (d703d026 review).
+- [ ] **Plan 88 Phase 3 review minors (2026-11-12).**
+  - `RunMemoryService._insert_digest` (`services/run_memory.py`): on the
+    ON CONFLICT path a losing concurrent writer still publishes
+    `MissionRunDigestWrittenEvent`, so one `digest_id` is announced
+    twice and the loser's narrator cost has no digest row. Return
+    `(digest, inserted)` and publish only when inserted.
+  - `_require_digestible` reports "run is running" when the real cause
+    is a NULL `started_at` or `context_version_start`. Name the failing
+    condition.
+  - No test asserts that the `mission_run_digests` row count equals the
+    number of runs that reached RUNNING (88.3.7 Done when). Needs a
+    real-DB workflow test in the time-skipping environment with real
+    activities.
+  - `tests/fixtures/temporal_histories/mission_run/p88-run-memory.json`
+    was recorded from a stubbed scenario, not a live run. Record a
+    live history with `scripts/record_workflow_history.py` under a new
+    slug.
+  - Risk: if `write_run_digest` exhausts its retries, `finalise` does
+    not run and the run stays non-terminal until the orphan reconciler
+    picks it up (contract 3.1.7: every run that reached RUNNING has a
+    digest). Narrator failures fall back to a deterministic digest, so
+    only DB or infrastructure errors reach this path.
+  - Step "lint-imports passes" criteria (88.3.5, 88.3.7) cannot be met
+    until the two Plan 71 contracts are fixed (see above).
 - [ ] **`missions.recurrence.enabled` ships as `true` (2026-11-11).**
   There is no per-environment config overlay, so production gets the
   committed value. Plan 88 requires schedules off in production until
