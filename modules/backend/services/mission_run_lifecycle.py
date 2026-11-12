@@ -331,8 +331,7 @@ class MissionRunLifecycleMixin:
         gate_mode = GateMode(plan.gate_mode)
         sequence = run.sequence
 
-        if status == MissionRunStatus.CANCELLED and run.cancel_reason is not None:
-            reason = MissionRunStatusReason(run.cancel_reason)
+        reason = run.end_reason(status, reason)
 
         failure_reason = reason.value if reason is not None else status.value
         classifier = get_failure_classifier()

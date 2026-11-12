@@ -705,6 +705,33 @@ async def test_finalise_payload_states_generator(db_session_factory, gateway, ow
     assert result.notification.payload["digest_summary"] == summary
 
 
+async def test_cancel_digest_and_run_row_agree_on_cancel_reason(
+    db_session_factory, gateway, owner
+) -> None:
+    # The workflow ends a user-cancelled run with reason None; the digest and
+    # finalise must both resolve it from run.cancel_reason (88.3.8 review).
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+    async with db_session_factory() as session:
+        await _svc(session).cancel_run(
+            mission.id, run.id, user.id, MissionRunStatusReason.CANCELLED_BY_USER
+        )
+    gateway.cancel.assert_awaited_once()
+
+    async with db_session_factory() as session:
+        digest = await RunMemoryService(session).write_digest(
+            run.id, status=MissionRunStatus.CANCELLED, reason=None, narrator=None
+        )
+        summary = digest.summary
+    async with db_session_factory() as session:
+        await _svc(session).finalise(run.id, MissionRunStatus.CANCELLED, None, None)
+
+    ended = await _run(db_session_factory, run.id)
+    assert ended.status_reason == MissionRunStatusReason.CANCELLED_BY_USER
+    assert "ended cancelled (cancelled_by_user)" in summary
+
+
 async def test_finalise_payload_without_digest_states_none(
     db_session_factory, gateway, owner
 ) -> None:

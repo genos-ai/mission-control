@@ -298,6 +298,21 @@ class MissionRun(UUIDMixin, TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    def end_reason(
+        self,
+        status: MissionRunStatus,
+        reason: MissionRunStatusReason | None,
+    ) -> MissionRunStatusReason | None:
+        """The reason a run ending in ``status`` records.
+
+        A CANCELLED end takes the stored ``cancel_reason`` (who asked for the
+        cancel) over the caller's reason; every other end keeps ``reason``.
+        Finalise and the run digest both resolve the reason through this rule.
+        """
+        if status == MissionRunStatus.CANCELLED and self.cancel_reason is not None:
+            return MissionRunStatusReason(self.cancel_reason)
+        return reason
+
     def transition_status(
         self,
         target: MissionRunStatus,

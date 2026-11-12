@@ -205,7 +205,8 @@ class RunMemoryService(BaseService):
         calls ``narrator`` (when given) with no row lock held, then locks the
         run, re-checks its status and inserts the digest with
         ``context_version_end``. A narrator ExternalServiceError degrades to
-        the deterministic digest (contract 3.1.7).
+        the deterministic digest (contract 3.1.7). The end reason resolves through
+        ``MissionRun.end_reason``, the rule finalise applies.
 
         Raises:
             MissionRunStateError: the run is not RUNNING, AWAITING_GATE or PAUSED.
@@ -216,6 +217,7 @@ class RunMemoryService(BaseService):
 
         run = await self._runs.get_by_id(run_id)
         _require_digestible(run)
+        reason = run.end_reason(status, reason)
         mission_id, session_id, objective = run.mission_id, run.session_id, run.objective
         end = await self._context_repo.get_version(mission_id)
         tasks = await self._tasks.list_by_run(run_id)
