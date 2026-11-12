@@ -1,9 +1,11 @@
 """Tests for run_single_task, the per-task unit shared by both dispatch paths (Plan 88, 88.2.3)."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from modules.backend.agents.mission_control.dispatch import task_runner
 from modules.backend.agents.mission_control.dispatch.task_runner import run_single_task
@@ -65,6 +67,7 @@ def _runtime(execute_agent_fn=None, curator=None) -> DispatchRuntime:
         context_curator=curator,
         context_assembler=None,
         environment_handle=None,
+        mission_run_id=None,
     )
 
 
@@ -184,3 +187,73 @@ async def test_no_mcd_write():
 
     assert result.status == TaskStatus.SUCCESS
     curator.apply_task_updates.assert_not_called()
+
+
+def _assembler(packet: dict) -> MagicMock:
+    assembler = MagicMock()
+    assembler.build = AsyncMock(return_value=packet)
+    return assembler
+
+
+@pytest.mark.asyncio
+async def test_inject_context_maps_learnings_digest_and_delta():
+    packet = {
+        "project_context": {"identity": {}},
+        "task": {},
+        "inputs": {},
+        "history": {"recent_failures": []},
+        "learnings": [{"title": "l"}],
+        "previous_run_digest": {"summary": "s"},
+        "context_delta": {"entries": []},
+    }
+    resolved: dict = {}
+
+    await task_runner._inject_context(
+        resolved,
+        _task(),
+        "mission-1",
+        _assembler(packet),
+        None,
+        asyncio.Lock(),
+        mission_run_id="run-1",
+    )
+
+    assert resolved == {
+        "project_context": {"identity": {}},
+        "project_history": {"recent_failures": []},
+        "learnings": [{"title": "l"}],
+        "previous_run_digest": {"summary": "s"},
+        "context_delta": {"entries": []},
+    }
+
+
+@pytest.mark.asyncio
+async def test_inject_context_passes_runtime_run_id():
+    assembler = _assembler({"project_context": {}})
+    runtime = _runtime()
+    runtime.context_assembler = assembler
+    runtime.mission_run_id = "run-7"
+
+    await _run(_task(), runtime)
+
+    assert assembler.build.await_args.kwargs["mission_run_id"] == "run-7"
+    assert assembler.build.await_args.kwargs["domain_tags"] is None
+
+
+@pytest.mark.asyncio
+async def test_inject_context_falls_back_to_pcd_on_db_error():
+    assembler = MagicMock()
+    assembler.build = AsyncMock(side_effect=SQLAlchemyError("db down"))
+    resolved: dict = {}
+
+    await task_runner._inject_context(
+        resolved,
+        _task(),
+        "mission-1",
+        assembler,
+        {"raw": "pcd"},
+        asyncio.Lock(),
+        mission_run_id=None,
+    )
+
+    assert resolved == {"project_context": {"raw": "pcd"}}

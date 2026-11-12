@@ -15,7 +15,7 @@ from typing import NamedTuple
 from uuid import uuid7
 
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from modules.backend.core.logging import get_logger
 from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
@@ -369,6 +369,29 @@ class TaskRepository(BaseRepository[Task]):
             query = query.where(Task.status == status)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def list_unfinished_foreign_dependencies(
+        self, mission_run_id: str
+    ) -> list[tuple[str, str]]:
+        """(task_id, depends_on_id) edges from the run's tasks to unfinished tasks outside it.
+
+        Unfinished means not COMPLETED or SKIPPED. Edges to finished tasks of
+        earlier runs are not returned: their outputs stay readable.
+        """
+        upstream = aliased(Task)
+        query = (
+            select(TaskDependency.task_id, TaskDependency.depends_on_id)
+            .join(Task, Task.id == TaskDependency.task_id)
+            .join(upstream, upstream.id == TaskDependency.depends_on_id)
+            .where(
+                Task.mission_run_id == mission_run_id,
+                upstream.mission_run_id.is_distinct_from(mission_run_id),
+                upstream.status.not_in([TaskStatus.COMPLETED, TaskStatus.SKIPPED]),
+            )
+            .order_by(TaskDependency.task_id, TaskDependency.depends_on_id)
+        )
+        result = await self.session.execute(query)
+        return [(row.task_id, row.depends_on_id) for row in result.all()]
 
     async def get_dependent_ids(self, task_id: str) -> list[str]:
         """Return IDs of tasks that depend on the given task."""

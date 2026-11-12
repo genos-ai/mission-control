@@ -239,8 +239,9 @@ class TestHandleMissionRunAttribution:
         monkeypatch.setattr(runtime, "derive_roster_from_team", _empty_roster)
         monkeypatch.setattr(runtime, "MissionContextManager", lambda db: None)
         monkeypatch.setattr(runtime, "ContextCurator", _StubCurator)
-        monkeypatch.setattr(runtime, "HistoryQueryService", _StubHistory)
-        monkeypatch.setattr(runtime, "ContextAssembler", lambda **kwargs: None)
+        monkeypatch.setattr(
+            runtime, "ContextAssembler", SimpleNamespace(for_session=lambda *a, **k: None)
+        )
         monkeypatch.setattr(runtime, "CodeMapLoader", lambda root: None)
         monkeypatch.setattr(mission_dispatch, "HistoryQueryService", _StubHistory)
         monkeypatch.setattr(

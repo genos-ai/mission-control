@@ -36,6 +36,8 @@ from modules.backend.schemas.session import SessionCreate
 from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskPlan
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
+from modules.backend.services.mission_plan_taskio import assert_run_local_dependencies
+from modules.backend.services.run_memory import RunMemoryService
 from modules.backend.services.session import SessionService
 from modules.backend.services.workflow_run import WorkflowRunService
 from modules.backend.services.workflow_task_mapping import steps_to_task_definitions
@@ -194,7 +196,8 @@ class MissionRunLifecycleMixin:
                 ready = any(t.status in (TaskStatus.APPROVED, TaskStatus.PROPOSED) for t in waiting)
                 status = "planned" if ready else "empty"
             elif objective is not None:
-                await orchestrator.refine(plan_id, objective, owner_id, mission_run_id=run_id)
+                prompt = await self._planning_prompt(run_id, objective)
+                await orchestrator.refine(plan_id, prompt, owner_id, mission_run_id=run_id)
                 status = "planned"
             else:
                 definition = await WorkflowDefinitionRepository(self._session).get_by_id(
@@ -214,6 +217,7 @@ class MissionRunLifecycleMixin:
                 )
                 status = "planned"
 
+            await assert_run_local_dependencies(self._tasks, run_id)
             if gate_mode == GateMode.AUTONOMOUS:
                 for task in await self._tasks.list_by_run(run_id, status=TaskStatus.PROPOSED):
                     await self._plan_svc.approve_task(plan_id, task.id, owner_id)
@@ -228,6 +232,12 @@ class MissionRunLifecycleMixin:
             )
             return PlanRunResult(task_ids=[], status="failed", detail=detail)
         return PlanRunResult(task_ids=task_ids, status=status, detail=None)
+
+    async def _planning_prompt(self, run_id: str, objective: str) -> str:
+        """The objective, preceded by the run memory brief when an earlier run exists (88.3.5)."""
+        run_memory = RunMemoryService(self._session)
+        brief = run_memory.render_planning_brief(await run_memory.build_context_packet(run_id))
+        return brief + "\n\n## Objective\n" + objective if brief else objective
 
     async def approve_proposed(self, run_id: str) -> int:
         """Approve the run's PROPOSED tasks as the mission owner when the run is AUTONOMOUS.

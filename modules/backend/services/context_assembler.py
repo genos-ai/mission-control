@@ -1,63 +1,39 @@
 """
 Context Assembler.
 
-Builds the complete context packet for an agent before task execution.
-Combines Layer 0 (PCD), Layer 1 (task + upstream), Layer 3 (Code Map),
-and Layer 2 (history) within a configurable token budget.
+Builds the context packet an agent receives before task execution
+(Plan 88, 88.3.5).
 
-Priority order (last trimmed first):
-  1. PCD (never trimmed)
-  2. Task definition (never trimmed)
-  3. Upstream outputs (summarized if over budget)
-  4. Code Map (for coding tasks, never trimmed by default)
-  5. History (reduced/removed if over budget)
+Fixed head, never trimmed:
+  project_context (MCD), task, inputs (summarised if over budget)
+
+Optional layers, in missions.context_packet.assembly_order, each included
+whole only when it fits both its own cap and the remaining budget:
+  previous_run_digest, context_delta (run-scoped, from RunMemoryService),
+  code_map (coding tasks), learnings, history (tasks with domain_tags)
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+from modules.backend.core.config import get_app_config, get_mission_control_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import estimate_tokens
+from modules.backend.repositories.mission_learning import MissionLearningRepository
 from modules.backend.services.history_query import HistoryQueryService
 from modules.backend.services.mission_context import MissionContextManager
+from modules.backend.services.run_memory import RunMemoryService
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from modules.backend.schemas.run_memory import RunContextPacket
     from modules.backend.services.code_map.loader import CodeMapLoader
 
 logger = get_logger(__name__)
-
-
-def _get_dispatch_config() -> tuple[int, int]:
-    """Load context budget settings from mission_control config."""
-    try:
-        from modules.backend.core.config import get_mission_control_config
-
-        cfg = get_mission_control_config()
-        return cfg.dispatch.context_token_budget, cfg.dispatch.history_reserve_tokens
-    except Exception as e:
-        logger.debug(
-            "Config unavailable for context budget, using defaults", extra={"error": str(e)}
-        )
-        return 50_000, 1_500
-
-
-# Fallback used only when config is unavailable (e.g. unit tests).
-DEFAULT_TOKEN_BUDGET = 50_000
-
-
-def _get_learnings_config() -> dict:
-    """Load knowledge.learnings config for assembler budget."""
-    try:
-        from modules.backend.core.config import get_app_config
-
-        cfg = get_app_config().missions.knowledge.learnings
-        return {
-            "reserve_tokens": cfg.context_assembler_reserve_tokens,
-            "max_entries": cfg.context_assembler_max_entries,
-        }
-    except Exception:
-        return {"reserve_tokens": 1500, "max_entries": 5}
 
 
 # Domain tags that indicate a task needs codebase structural context
@@ -75,25 +51,57 @@ _CODING_TAGS = frozenset(
 
 
 class ContextAssembler:
-    """Builds context packets for agents within token budgets.
-
-    Four-layer assembly:
-      Layer 0: PCD (always present, never trimmed)
-      Layer 1: Task definition + resolved inputs
-      Layer 3: Code Map Markdown (for coding tasks)
-      Layer 2: Project history (failures, recent executions)
-    """
+    """Builds context packets for agents within the dispatch token budget."""
 
     def __init__(
         self,
         context_manager: MissionContextManager,
         history_service: HistoryQueryService,
         *,
+        learning_repo: MissionLearningRepository,
+        run_memory: RunMemoryService,
         code_map_loader: CodeMapLoader | None = None,
     ) -> None:
         self._context_manager = context_manager
         self._history_service = history_service
+        self._learning_repo = learning_repo
+        self._run_memory = run_memory
         self._code_map_loader = code_map_loader
+        self._packets: dict[str, RunContextPacket] = {}
+
+    @staticmethod
+    def for_session(
+        session: AsyncSession,
+        *,
+        context_manager: MissionContextManager,
+        code_map_loader: CodeMapLoader | None,
+    ) -> ContextAssembler:
+        """A ContextAssembler whose dependencies all use ``session``.
+
+        ``context_manager`` is passed in so a caller can share it with the
+        ContextCurator. Callers outside the service layer use this instead
+        of constructing repositories themselves.
+        """
+        return ContextAssembler(
+            context_manager,
+            HistoryQueryService(session),
+            learning_repo=MissionLearningRepository(session),
+            run_memory=RunMemoryService(session),
+            code_map_loader=code_map_loader,
+        )
+
+    @staticmethod
+    @asynccontextmanager
+    async def factory(
+        code_map_loader: CodeMapLoader | None,
+    ) -> AsyncGenerator[ContextAssembler, None]:
+        """A ContextAssembler with a DB session of its own (read-only)."""
+        from modules.backend.core.database import get_async_session
+
+        async with get_async_session() as db:
+            yield ContextAssembler.for_session(
+                db, context_manager=MissionContextManager(db), code_map_loader=code_map_loader
+            )
 
     async def build(
         self,
@@ -101,39 +109,28 @@ class ContextAssembler:
         task_definition: dict,
         resolved_inputs: dict,
         *,
-        domain_tags: list[str] | None = None,
-        token_budget: int = DEFAULT_TOKEN_BUDGET,
-        code_map_max_tokens: int | None = None,
+        domain_tags: list[str] | None,
+        mission_run_id: str | None,
     ) -> dict:
-        """Build the context packet for a task.
-
-        Returns a dict with keys:
-          - project_context: the PCD (Layer 0)
-          - task: task definition (Layer 1)
-          - inputs: resolved inputs (Layer 1)
-          - code_map: Code Map Markdown (Layer 3, for coding tasks)
-          - history: relevant past work (Layer 2, if budget allows)
-        """
-        config_budget, history_reserve = _get_dispatch_config()
+        """Fixed head plus the optional layers below, in assembly_order."""
+        dispatch_cfg = get_mission_control_config().dispatch
+        missions_cfg = get_app_config().missions
+        packet_cfg = missions_cfg.context_packet
+        learnings_cfg = missions_cfg.knowledge.learnings
+        budget = dispatch_cfg.context_token_budget
+        remaining = budget
         packet: dict[str, Any] = {}
-        remaining_budget = token_budget if token_budget != DEFAULT_TOKEN_BUDGET else config_budget
 
-        # Layer 0: PCD (always, never trimmed)
+        # Fixed head (never trimmed)
         pcd = await self._context_manager.get_context(mission_id)
-        pcd_tokens = estimate_tokens(pcd)
         packet["project_context"] = pcd
-        remaining_budget -= pcd_tokens
-
-        # Layer 1: Task definition (always, never trimmed)
-        task_tokens = estimate_tokens(task_definition)
+        remaining -= estimate_tokens(pcd)
         packet["task"] = task_definition
-        remaining_budget -= task_tokens
-
-        # Layer 1: Resolved inputs (high priority, summarized if needed)
+        remaining -= estimate_tokens(task_definition)
         input_tokens = estimate_tokens(resolved_inputs)
-        if input_tokens <= remaining_budget:
+        if input_tokens <= remaining:
             packet["inputs"] = resolved_inputs
-            remaining_budget -= input_tokens
+            remaining -= input_tokens
         else:
             summarized = {
                 k: (
@@ -144,52 +141,83 @@ class ContextAssembler:
                 for k, v in resolved_inputs.items()
             }
             packet["inputs"] = summarized
-            remaining_budget -= estimate_tokens(summarized)
+            remaining -= estimate_tokens(summarized)
 
-        # Layer 3: Code Map (for coding tasks, loaded before history)
-        if self._is_coding_task(domain_tags):
-            # Reserve budget for history before loading Code Map
-            history_reserve = history_reserve if domain_tags else 0
-            effective_cm_budget = max(remaining_budget - history_reserve, 0)
-            cm_max = code_map_max_tokens or effective_cm_budget or None
-            code_map_content = self._load_code_map_markdown(cm_max)
-            if code_map_content:
-                packet["code_map"] = code_map_content
-                remaining_budget -= estimate_tokens(code_map_content)
-
-        # Layer 2.5: Learnings (Plan 57 — reusable strategy from past failures)
-        if remaining_budget > 300 and domain_tags:
-            learnings = await self._assemble_learnings(
-                mission_id,
-                domain_tags,
-                remaining_budget,
+        caps: dict[str, int] = {
+            "previous_run_digest": packet_cfg.previous_digest_max_chars // 4,
+            "context_delta": packet_cfg.context_delta_max_tokens,
+            "learnings": learnings_cfg.context_assembler_reserve_tokens,
+            "history": dispatch_cfg.history_reserve_tokens,
+        }
+        order = packet_cfg.assembly_order
+        for idx, layer in enumerate(order):
+            if layer == "code_map":
+                cap = remaining - sum(caps[later] for later in order[idx + 1 :])
+            else:
+                cap = caps[layer]
+            limit = min(cap, remaining)
+            if limit <= 0:
+                continue
+            value = await self._layer_value(
+                layer,
+                mission_id=mission_id,
+                domain_tags=domain_tags,
+                mission_run_id=mission_run_id,
+                cap=cap,
+                max_entries=learnings_cfg.context_assembler_max_entries,
             )
-            if learnings:
-                learnings_tokens = estimate_tokens(learnings)
-                if learnings_tokens <= remaining_budget:
-                    packet["learnings"] = learnings
-                    remaining_budget -= learnings_tokens
-
-        # Layer 2: History (optional, trimmed first)
-        if remaining_budget > 500 and domain_tags:
-            history = await self._assemble_history(
-                mission_id,
-                domain_tags,
-                remaining_budget,
-            )
-            if history:
-                packet["history"] = history
+            if not value:
+                continue
+            tokens = estimate_tokens(value)
+            if tokens <= limit:
+                packet[layer] = value
+                remaining -= tokens
 
         logger.debug(
             "Context assembled",
             extra={
                 "mission_id": mission_id,
-                "budget": token_budget,
-                "used": token_budget - remaining_budget,
+                "mission_run_id": mission_run_id,
+                "budget": budget,
+                "used": budget - remaining,
                 "layers": list(packet.keys()),
             },
         )
+        return packet
 
+    async def _layer_value(
+        self,
+        layer: str,
+        *,
+        mission_id: str,
+        domain_tags: list[str] | None,
+        mission_run_id: str | None,
+        cap: int,
+        max_entries: int,
+    ) -> Any:
+        """The rendered value of one optional layer, or None when it does not apply."""
+        if layer in ("previous_run_digest", "context_delta"):
+            if mission_run_id is None:
+                return None
+            run_packet = await self._run_packet(mission_run_id)
+            run_layer = getattr(run_packet, layer)
+            return run_layer.model_dump(mode="json") if run_layer is not None else None
+        if layer == "code_map":
+            if not self._is_coding_task(domain_tags):
+                return None
+            return self._load_code_map_markdown(cap)
+        if layer == "learnings":
+            return await self._assemble_learnings(mission_id, domain_tags, cap, max_entries)
+        if not domain_tags:
+            return None
+        return await self._assemble_history(mission_id, domain_tags, cap)
+
+    async def _run_packet(self, mission_run_id: str) -> RunContextPacket:
+        """The run's context packet, built once per run id for this assembler."""
+        packet = self._packets.get(mission_run_id)
+        if packet is None:
+            packet = await self._run_memory.build_context_packet(mission_run_id)
+            self._packets[mission_run_id] = packet
         return packet
 
     @staticmethod
@@ -223,57 +251,43 @@ class ContextAssembler:
     async def _assemble_learnings(
         self,
         mission_id: str,
-        domain_tags: list[str],
-        remaining_budget: int,
+        domain_tags: list[str] | None,
+        cap: int,
+        max_entries: int,
     ) -> list[dict] | None:
-        """Assemble Layer 2.5 learnings within budget (Plan 57)."""
-        try:
-            from modules.backend.repositories.mission_learning import MissionLearningRepository
+        """Learnings by confidence, appended while their cumulative tokens stay within cap.
 
-            repo = MissionLearningRepository(self._context_manager._context_repo.session)
-            learnings_cfg = _get_learnings_config()
-            max_entries = learnings_cfg.get("max_entries", 5)
-
-            # Mission-scoped learnings with matching domain tags
-            learnings = await repo.list_by_mission(
-                mission_id,
-                domain_tags=domain_tags,
-                limit=max_entries,
+        Mission learnings always; platform-promoted learnings only when the
+        task has domain_tags. Merged and deduplicated by id.
+        """
+        learnings = await self._learning_repo.list_by_mission(
+            mission_id, domain_tags=domain_tags, limit=max_entries
+        )
+        if domain_tags:
+            learnings = learnings + await self._learning_repo.list_platform_promoted(
+                domain_tags=domain_tags, limit=max_entries
             )
 
-            # Also include platform-promoted learnings with overlapping tags
-            platform = await repo.list_platform_promoted(
-                domain_tags=domain_tags,
-                limit=max_entries,
-            )
+        seen: set[str] = set()
+        merged: list[dict] = []
+        for learning in sorted(learnings, key=lambda x: x.confidence, reverse=True):
+            if learning.id in seen:
+                continue
+            seen.add(learning.id)
+            entry = {
+                "kind": learning.kind,
+                "title": learning.title,
+                "recommendation": learning.recommendation,
+                "confidence": learning.confidence,
+                "domain_tags": learning.domain_tags,
+            }
+            if estimate_tokens([*merged, entry]) > cap:
+                break
+            merged.append(entry)
+            if len(merged) >= max_entries:
+                break
 
-            # Merge, dedup by id, sort by confidence desc
-            seen: set[str] = set()
-            merged: list[dict] = []
-            for learning in sorted(
-                learnings + platform,
-                key=lambda x: x.confidence,
-                reverse=True,
-            ):
-                if learning.id in seen:
-                    continue
-                seen.add(learning.id)
-                merged.append(
-                    {
-                        "kind": learning.kind,
-                        "title": learning.title,
-                        "recommendation": learning.recommendation,
-                        "confidence": learning.confidence,
-                        "domain_tags": learning.domain_tags,
-                    }
-                )
-                if len(merged) >= max_entries:
-                    break
-
-            return merged if merged else None
-        except Exception:
-            logger.debug("Learnings assembly skipped (not available)")
-            return None
+        return merged or None
 
     async def _assemble_history(
         self,

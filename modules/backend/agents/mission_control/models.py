@@ -111,7 +111,8 @@ class ContextCuratorProtocol(Protocol):
 class ContextAssemblerProtocol(Protocol):
     """Interface for context assembler used by dispatch.
 
-    Builds full context packets (PCD + history + Code Map) for agent tasks.
+    Builds full context packets (MCD, task, inputs and the optional layers
+    previous_run_digest, context_delta, code_map, learnings, history).
     """
 
     async def build(
@@ -120,9 +121,8 @@ class ContextAssemblerProtocol(Protocol):
         task_definition: dict,
         resolved_inputs: dict,
         *,
-        domain_tags: list[str] | None = ...,
-        token_budget: int = ...,
-        code_map_max_tokens: int | None = ...,
+        domain_tags: list[str] | None,
+        mission_run_id: str | None,
     ) -> dict: ...
 
 

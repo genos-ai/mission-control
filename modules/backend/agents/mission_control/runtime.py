@@ -38,7 +38,6 @@ from modules.backend.core.logging import get_logger
 from modules.backend.services.code_map.loader import CodeMapLoader
 from modules.backend.services.context_assembler import ContextAssembler
 from modules.backend.services.context_curator import ContextCurator
-from modules.backend.services.history_query import HistoryQueryService
 from modules.backend.services.mission_context import MissionContextManager
 
 if TYPE_CHECKING:
@@ -56,6 +55,7 @@ class DispatchRuntime:
     The context services share one AsyncSession, which rejects concurrent
     operations. ``context_lock`` serialises context assembly across the
     tasks of a layer, which ``run_single_task`` runs concurrently.
+    ``mission_run_id`` scopes the run context layers; None outside a run.
     """
 
     roster: Roster
@@ -63,6 +63,7 @@ class DispatchRuntime:
     context_curator: ContextCuratorProtocol | None
     context_assembler: ContextAssemblerProtocol | None
     environment_handle: object | None
+    mission_run_id: str | None
     context_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -82,9 +83,9 @@ async def build_context_services(*, db_session: AsyncSession, mission_id: str) -
     return ContextServices(
         roster=roster,
         context_curator=ContextCurator(pcd_manager),
-        context_assembler=ContextAssembler(
+        context_assembler=ContextAssembler.for_session(
+            db_session,
             context_manager=pcd_manager,
-            history_service=HistoryQueryService(db_session),
             code_map_loader=CodeMapLoader(find_project_root()),
         ),
     )
@@ -134,6 +135,7 @@ async def provision_dispatch_runtime(
         context_curator=services.context_curator,
         context_assembler=services.context_assembler,
         environment_handle=env_handle,
+        mission_run_id=mission_run_id,
     )
 
 

@@ -33,6 +33,7 @@ from modules.backend.models.mission_run import (
     MissionRunStatusReason,
     MissionRunTrigger,
 )
+from modules.backend.models.mission_run_digest import DigestGenerator, MissionRunDigest
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.user import User
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
@@ -432,6 +433,78 @@ async def test_refine_committing_after_its_run_ended_goes_to_backlog(
     (created,) = await _tasks(db_session_factory, new_task_id)
     assert created.status == TaskStatus.PROPOSED
     assert created.mission_run_id is None
+
+
+async def test_objective_plan_prompt_carries_previous_run_brief(
+    db_session_factory, gateway, owner, monkeypatch
+) -> None:
+    """88.3.5: the planner's instructions are the run memory brief, then the objective."""
+    user, mission, _ = await owner()
+    first = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, first.id)
+    await _end(db_session_factory, first.id)
+    async with db_session_factory() as session:
+        session.add(
+            MissionRunDigest(
+                mission_run_id=first.id,
+                mission_id=mission.id,
+                schema_version=1,
+                generator=DigestGenerator.DETERMINISTIC,
+                summary="First run summary",
+                outcomes=[],
+                open_items=[{"text": "Chase the vendor", "source_task_id": None}],
+                metrics={},
+            )
+        )
+        await session.commit()
+    second = await _start(db_session_factory, mission, user, objective="Write the report")
+    begun = await _begin(db_session_factory, second.id)
+
+    captured: list[dict] = []
+
+    async def fake_planner(**kwargs) -> dict:
+        captured.append(kwargs)
+        return {"task_plan": {"not": "a plan"}}
+
+    monkeypatch.setattr(
+        "modules.backend.agents.mission_control.helpers.agent_executor._call_planning_agent",
+        fake_planner,
+    )
+    monkeypatch.setattr(
+        "modules.backend.agents.mission_control.roster.derive_roster_from_team",
+        AsyncMock(return_value=MagicMock()),
+    )
+    async with db_session_factory() as session:
+        await _svc(session).plan(second.id, begun.session_id)
+
+    instructions = captured[0]["refinement_instructions"]
+    assert instructions.startswith(f"## Previous run (#{first.sequence}, failed, digest:")
+    assert "First run summary" in instructions
+    assert "- Chase the vendor" in instructions
+    assert instructions.endswith("\n\n## Objective\nWrite the report")
+
+
+async def test_plan_rejects_dependency_on_unfinished_task_of_other_run(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, plan = await owner()
+    first = await _start(db_session_factory, mission, user)
+    foreign = await _task(db_session_factory, plan, TaskStatus.FAILED, first.id)
+    await _end(db_session_factory, first.id)
+    second = await _start(db_session_factory, mission, user)
+    begun = await _begin(db_session_factory, second.id)
+    local = await _task(db_session_factory, plan, TaskStatus.APPROVED, second.id)
+    async with db_session_factory() as session:
+        await TaskRepository(session).set_dependencies(local, [foreign])
+        await session.commit()
+
+    async with db_session_factory() as session:
+        result = await _svc(session).plan(second.id, begun.session_id)
+
+    assert result.status == "failed"
+    assert result.detail == (
+        f"Task {local} depends on unfinished task {foreign} outside run {second.id}"
+    )
 
 
 # ── cancel ────────────────────────────────────────────────────────────────

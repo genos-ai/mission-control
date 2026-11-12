@@ -116,6 +116,7 @@ async def dispatch(
         context_curator=context_curator if mission_id else None,
         context_assembler=context_assembler if mission_id else None,
         environment_handle=None,
+        mission_run_id=None,  # in-process dispatch holds no MissionRun id
     )
 
     # Seed with outputs from prior waves (completed in earlier dispatches).
@@ -316,7 +317,7 @@ async def _execute_layer(
                         task_result.context_updates,
                         agent_id=task_result.agent_name,
                         task_id=task_result.task_id,
-                        mission_run_id=None,
+                        mission_run_id=runtime.mission_run_id,
                     )
                 except (OSError, ValueError, RuntimeError):
                     logger.warning(

@@ -103,6 +103,7 @@ async def _run(task: TaskDefinition, execute_agent_fn=None) -> TaskResult:
         context_curator=None,
         context_assembler=None,
         environment_handle=None,
+        mission_run_id=None,
     )
     return await run_single_task(
         task=task,

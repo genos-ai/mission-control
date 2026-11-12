@@ -12,6 +12,8 @@ import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from modules.backend.agents.mission_control.dispatch.dag import (
     UpstreamOutputMissingError,
     resolve_upstream_inputs,
@@ -37,6 +39,16 @@ if TYPE_CHECKING:
     from modules.backend.agents.mission_control.runtime import DispatchRuntime
 
 logger = get_logger(__name__)
+
+# Assembled context packet key -> resolved input key (Plan 88, 88.3.5).
+_PACKET_TO_INPUT = {
+    "project_context": "project_context",
+    "code_map": "code_map",
+    "history": "project_history",
+    "learnings": "learnings",
+    "previous_run_digest": "previous_run_digest",
+    "context_delta": "context_delta",
+}
 
 
 async def emit_task_failure(
@@ -181,6 +193,7 @@ async def run_single_task(
         context_assembler=runtime.context_assembler,
         project_context=project_context,
         context_lock=runtime.context_lock,
+        mission_run_id=runtime.mission_run_id,
     )
     return await execute_with_step_events(
         task=task,
@@ -478,11 +491,14 @@ async def _inject_context(
     context_assembler: ContextAssemblerProtocol | None,
     project_context: dict | None,
     context_lock: asyncio.Lock,
+    *,
+    mission_run_id: str | None,
 ) -> None:
     """Inject context (assembled packet or raw PCD) into resolved inputs.
 
     Assembly runs under ``context_lock``: the assembler's services share
     the runtime's AsyncSession, and the tasks of a layer run concurrently.
+    ``mission_run_id`` selects the run context layers; None omits them.
     """
     if context_assembler and mission_id:
         try:
@@ -492,15 +508,12 @@ async def _inject_context(
                     task_definition=task.model_dump(),
                     resolved_inputs=dict(resolved_inputs),
                     domain_tags=task.domain_tags or None,
+                    mission_run_id=mission_run_id,
                 )
-            resolved_inputs["project_context"] = assembled.get("project_context", {})
-            code_map_content = assembled.get("code_map")
-            if code_map_content:
-                resolved_inputs["code_map"] = code_map_content
-            history_content = assembled.get("history")
-            if history_content:
-                resolved_inputs["project_history"] = history_content
-        except (OSError, ValueError, RuntimeError):
+            for key, input_key in _PACKET_TO_INPUT.items():
+                if key in assembled:
+                    resolved_inputs[input_key] = assembled[key]
+        except (OSError, ValueError, RuntimeError, SQLAlchemyError):
             logger.warning(
                 "Context assembly failed, falling back to PCD",
                 extra={"task_id": task.task_id, "mission_id": mission_id},

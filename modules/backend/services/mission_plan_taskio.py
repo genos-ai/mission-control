@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from modules.backend.core.exceptions import ValidationError
 from modules.backend.models.mission_run import ACTIVE_RUN_STATUSES, MissionRunStatus
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.mission_run import MissionRunRepository
@@ -195,23 +196,35 @@ async def reconcile_tasks(
 
 
 async def load_prior_outputs(
-    orchestrator: MissionPlanOrchestrator,
-    mission_plan_id: str,
+    orchestrator: MissionPlanOrchestrator, mission_run_id: str
 ) -> dict[str, dict]:
-    """Load output_reference dicts from tasks completed in prior waves.
+    """Load output_reference dicts from the run's tasks completed in prior waves.
 
-    Reads plan_task_states where status is completed/skipped and
-    result_summary is not null. result_summary contains the JSON-
+    Bounded to the run (Plan 88, 88.3.5): tasks completed in other runs are
+    not read; a task that needs one declares an explicit dependency, which
+    ``load_dependency_outputs`` resolves. result_summary contains the JSON-
     serialized output_reference stored by RunTaskExecutionService.record.
 
     Returns a {task_id: output_dict} mapping that seeds the dispatch
     loop's completed_outputs so from_upstream references resolve.
     """
-    completed_states = await orchestrator._task_repo.get_by_plan_id(
-        mission_plan_id,
-        status=TaskStatus.COMPLETED,
-    )
-    return _decode_result_summaries(completed_states)
+    tasks = await orchestrator._task_repo.list_by_run(mission_run_id, status=TaskStatus.COMPLETED)
+    return _decode_result_summaries(tasks)
+
+
+async def assert_run_local_dependencies(task_repo: TaskRepository, mission_run_id: str) -> None:
+    """Raise ValidationError when a run task depends on an unfinished task of another run.
+
+    Such a task could never start inside the run. Dependencies on finished
+    tasks of earlier runs stay legal (Plan 88, 88.3.5).
+    """
+    edges = await task_repo.list_unfinished_foreign_dependencies(mission_run_id)
+    if edges:
+        task_id, depends_on_id = edges[0]
+        raise ValidationError(
+            f"Task {task_id} depends on unfinished task {depends_on_id} "
+            f"outside run {mission_run_id}"
+        )
 
 
 async def load_dependency_outputs(session: AsyncSession, task_id: str) -> dict[str, dict]:

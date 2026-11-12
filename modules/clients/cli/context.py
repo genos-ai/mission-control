@@ -167,47 +167,38 @@ async def _assembled_async(console, mission_id, domain_tags, output_format):
     """Async implementation — builds the real context packet."""
     from modules.backend.services.code_map.loader import CodeMapLoader
     from modules.backend.services.context_assembler import ContextAssembler
-    from modules.backend.services.history_query import HistoryQueryService
-    from modules.backend.services.mission_context import MissionContextManager
 
     project_root = find_project_root()
 
-    async with MissionContextManager.factory() as pcd_manager:
-        async with HistoryQueryService.factory() as history_service:
-            code_map_loader = CodeMapLoader(project_root)
+    async with ContextAssembler.factory(CodeMapLoader(project_root)) as assembler:
+        # Use a synthetic task definition to show what the assembler produces
+        task_stub = {
+            "task_id": "(preview)",
+            "agent_name": "(preview)",
+            "instructions": "Context preview — no real task",
+        }
 
-            assembler = ContextAssembler(
-                context_manager=pcd_manager,
-                history_service=history_service,
-                code_map_loader=code_map_loader,
+        tags = domain_tags or ["code", "implementation"]
+
+        try:
+            packet = await assembler.build(
+                mission_id=mission_id,
+                task_definition=task_stub,
+                resolved_inputs={},
+                domain_tags=tags,
+                mission_run_id=None,
             )
-
-            # Use a synthetic task definition to show what the assembler produces
-            task_stub = {
-                "task_id": "(preview)",
-                "agent_name": "(preview)",
-                "instructions": "Context preview — no real task",
-            }
-
-            tags = domain_tags or ["code", "implementation"]
-
-            try:
-                packet = await assembler.build(
-                    mission_id=mission_id,
-                    task_definition=task_stub,
-                    resolved_inputs={},
-                    domain_tags=tags,
-                )
-            except (OSError, RuntimeError, ValueError, KeyError) as exc:
-                console.print(
-                    f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n"  # noqa: E501
-                )
-                packet = await assembler.build(
-                    mission_id=mission_id,
-                    task_definition=task_stub,
-                    resolved_inputs={},
-                    domain_tags=[],  # empty tags skip history
-                )
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+            console.print(
+                f"[yellow]Warning: history query failed ({type(exc).__name__}), showing without history[/yellow]\n"  # noqa: E501
+            )
+            packet = await assembler.build(
+                mission_id=mission_id,
+                task_definition=task_stub,
+                resolved_inputs={},
+                domain_tags=[],  # empty tags skip history
+                mission_run_id=None,
+            )
 
     if output_format == "json":
         console.print_json(_json.dumps(packet, indent=2, default=str))
