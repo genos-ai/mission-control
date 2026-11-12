@@ -551,9 +551,11 @@ class TestAttributionAndWatermarks:
         mid = _MID("utf8")
         await manager.create_context(mid, "utf8", "desc")
         data, _ = await manager.get_context_with_version(mid)
-        # 1000 three-byte characters: under the cap in characters, over it in bytes.
+        # 1000 three-byte characters: under the caps in characters, over them in bytes.
+        # The update alone exceeds the target, so the write is rejected (88.3.3).
         cap = mcd_size_bytes(data) + 2000
         monkeypatch.setattr(mission_context_module, "_get_max_size", lambda: cap)
+        monkeypatch.setattr(mission_context_module, "_get_target_size", lambda: 1500)
         version, errors = await manager.apply_updates(
             mid,
             [_add("architecture.data_flow", "\u20ac" * 1000)],
@@ -563,7 +565,7 @@ class TestAttributionAndWatermarks:
             reason="test",
         )
         assert version == 1
-        assert "exceed size cap" in errors[0]
+        assert errors == ["Update at architecture.data_flow exceeds pcd_target_size_bytes"]
         assert await _changes(db_session, mid) == []
 
     @pytest.mark.asyncio

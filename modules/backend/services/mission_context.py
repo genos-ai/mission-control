@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import ConflictError
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import estimate_tokens, utc_now
@@ -27,16 +28,19 @@ from modules.backend.repositories.mission_context import (
     ContextMilestoneRepository,
     MissionContextRepository,
 )
+from modules.backend.schemas.mission_context_compaction import CompactionResult
 from modules.backend.services.base import BaseService
 from modules.backend.services.mcd_pruning import mcd_size_bytes
+from modules.backend.services.mission_context_compaction import (
+    COMPACTION_ACTOR,
+    MissionContextCompactor,
+)
 
 logger = get_logger(__name__)
 
 
 def _load_mcd_limits() -> tuple[int, int]:
-    """Load MCD size limits from missions config."""
-    from modules.backend.core.config import get_app_config
-
+    """Load MCD size limits (max, target) in bytes from missions config."""
     cfg = get_app_config().missions
     return cfg.pcd_max_size_bytes, cfg.pcd_target_size_bytes
 
@@ -328,28 +332,64 @@ class MissionContextManager(BaseService):
         data["last_updated"] = utc_now().isoformat()
         data["last_updated_by"] = agent_id or "system"
 
-        size_bytes = mcd_size_bytes(data)
-        max_bytes = _get_max_size()
-        if size_bytes > max_bytes:
-            return current_version, [
-                f"MCD would exceed size cap: {size_bytes} > {max_bytes} bytes. "
-                "Prune before applying more updates."
-            ]
+        rejected = await self._compact_on_write(
+            mission_id, ctx, current_version, data, updates, applied_changes
+        )
+        if rejected is not None:
+            return rejected
 
+        new_version = await self._write_version(
+            ctx,
+            mission_id,
+            data,
+            current_version,
+            applied_changes,
+            agent_id=agent_id,
+            task_id=task_id,
+            mission_run_id=mission_run_id,
+        )
+
+        self._log_operation(
+            "MCD updated",
+            mission_id=mission_id,
+            new_version=new_version,
+            size_bytes=mcd_size_bytes(data),
+            updates_applied=len(applied_changes),
+            errors=len(errors),
+        )
+
+        return new_version, errors
+
+    async def _write_version(
+        self,
+        ctx: MissionContext,
+        mission_id: str,
+        data: dict,
+        current_version: int,
+        changes: list[dict],
+        *,
+        agent_id: str | None,
+        task_id: str | None,
+        mission_run_id: str | None,
+    ) -> int:
+        """Write `data` as current_version + 1, then one ContextChange per change.
+
+        The document is updated first so a version conflict leaves no orphan
+        change rows; a conflict raises ConflictError and is never swallowed.
+        """
         serialized = _json.dumps(data, ensure_ascii=False)
-        new_size = len(serialized)
         new_version = current_version + 1
         rows_updated = await self._context_repo.update_context(
             mission_id=mission_id,
             context_data=data,
             new_version=new_version,
-            size_characters=new_size,
+            size_characters=len(serialized),
             size_tokens=estimate_tokens(serialized),
         )
         if rows_updated == 0:
             raise ConflictError("MCD version conflict")
 
-        for change in applied_changes:
+        for change in changes:
             await self._change_repo.create(
                 context_id=ctx.id,
                 version=new_version,
@@ -365,17 +405,117 @@ class MissionContextManager(BaseService):
             )
 
         _cache.pop(mission_id, None)
+        return new_version
 
+    async def _compact_on_write(
+        self,
+        mission_id: str,
+        ctx: MissionContext,
+        current_version: int,
+        data: dict,
+        updates: list[dict],
+        applied_changes: list[dict],
+    ) -> tuple[int, list[str]] | None:
+        """Compact `data` in place when it exceeds the cap.
+
+        Returns None when the write may proceed (compaction changes are
+        prepended to applied_changes, so they share the one version bump), or
+        the (version, errors) tuple apply_updates returns without writing.
+        Snapshot and archive rows written by the compactor stay in the
+        caller's transaction; the caller decides commit or rollback.
+        """
+        max_bytes, target_bytes = _get_max_size(), _get_target_size()
+        if mcd_size_bytes(data) <= max_bytes:
+            return None
+        oversize = [u for u in updates if mcd_size_bytes(u.get("value")) > target_bytes]
+        if oversize:  # a single update alone exceeds target: reject the whole batch, write nothing
+            return current_version, [
+                f"Update at {u.get('path', '')} exceeds pcd_target_size_bytes" for u in oversize
+            ]
+        compaction = await MissionContextCompactor(self.session).plan(
+            mission_id, ctx.id, current_version, data, target_bytes
+        )
+        if mcd_size_bytes(data) > max_bytes:
+            self._logger.error(
+                "MCD protected sections exceed max after compaction",
+                extra={"mission_id": mission_id, "size_bytes": mcd_size_bytes(data)},
+            )
+            return current_version, [
+                "MCD protected sections exceed pcd_max_size_bytes after compaction"
+            ]
+        applied_changes[:0] = compaction.changes  # one version bump; compaction rows first
+        self._logger.info(
+            "MCD compacted on write",
+            extra={
+                "mission_id": mission_id,
+                "from_bytes": compaction.from_bytes,
+                "to_bytes": compaction.to_bytes,
+                "archived_paths": compaction.archived_paths,
+            },
+        )
+        return None
+
+    async def compact(
+        self,
+        mission_id: str,
+        *,
+        mission_run_id: str | None,
+        reason: str,
+    ) -> CompactionResult | None:
+        """Compact the MCD when it has reached the prune threshold.
+
+        Locks the MCD row. Returns None when mcd_size_bytes is below
+        pcd_max_size_bytes * pcd_prune_threshold_pct / 100, or when no MCD
+        exists. Otherwise plans a compaction to pcd_target_size_bytes on a
+        deep copy and, when it changed anything, writes the document and one
+        ContextChange per change (agent_id "system:compaction") under one
+        version bump, document first.
+        """
+        cfg = get_app_config().missions
+        ctx = await self._context_repo.get_by_mission_id_for_update(mission_id)
+        if ctx is None:
+            return None
+        threshold = cfg.pcd_max_size_bytes * cfg.pcd_prune_threshold_pct / 100
+        if mcd_size_bytes(ctx.context_data) < threshold:
+            return None
+
+        current_version = ctx.version
+        data = copy.deepcopy(ctx.context_data)
+        result = await MissionContextCompactor(self.session).plan(
+            mission_id, ctx.id, current_version, data, cfg.pcd_target_size_bytes
+        )
+        if not result.changes:
+            self._logger.warning(
+                "MCD compaction found nothing archivable",
+                extra={"mission_id": mission_id, "size_bytes": result.from_bytes},
+            )
+            return result
+
+        for change in result.changes:
+            change["reason"] = f"{reason}: {change['reason']}"
+        data["version"] = current_version + 1
+        data["last_updated"] = utc_now().isoformat()
+        data["last_updated_by"] = COMPACTION_ACTOR
+        new_version = await self._write_version(
+            ctx,
+            mission_id,
+            data,
+            current_version,
+            result.changes,
+            agent_id=COMPACTION_ACTOR,
+            task_id=None,
+            mission_run_id=mission_run_id,
+        )
         self._log_operation(
-            "MCD updated",
+            "MCD compacted",
             mission_id=mission_id,
             new_version=new_version,
-            size_bytes=size_bytes,
-            updates_applied=len(applied_changes),
-            errors=len(errors),
+            from_bytes=result.from_bytes,
+            to_bytes=result.to_bytes,
+            archived_paths=result.archived_paths,
+            reached_target=result.reached_target,
         )
-
-        return new_version, errors
+        return result
 
     async def get_changes_between(
         self,

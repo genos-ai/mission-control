@@ -16,18 +16,24 @@ from sqlalchemy import and_, desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
 from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import (
     ExecutionRecord,
     ExecutionRecordStatus,
 )
-from modules.backend.models.mission_history import DecisionStatus
 from modules.backend.repositories.mission_history import (
     MilestoneSummaryRepository,
     MissionDecisionRepository,
 )
 from modules.backend.services.base import BaseService
+from modules.backend.services.mcd_pruning import (
+    archive_decision_rows,
+    archive_milestone_rows,
+    split_decisions_by_age,
+    split_milestones,
+)
 from modules.backend.services.mission_context import MissionContextManager
 
 logger = get_logger(__name__)
@@ -52,15 +58,12 @@ class SummarizationService(BaseService):
             yield SummarizationService(db)
             await db.commit()
 
-    async def prune_mcd_decisions(
-        self,
-        mission_id: str,
-        max_age_days: int = 90,
-    ) -> int:
-        """Archive decisions older than max_age_days from MCD to project_decisions table.
+    async def prune_mcd_decisions(self, mission_id: str) -> int:
+        """Archive MCD decisions older than compaction.decisions_max_age_days to mission_decisions.
 
         Returns count of decisions archived.
         """
+        max_age_days = get_app_config().missions.compaction.decisions_max_age_days
         data, version = await self._context_manager.get_context_with_version(
             mission_id,
         )
@@ -72,30 +75,11 @@ class SummarizationService(BaseService):
             return 0
 
         cutoff = (utc_now() - timedelta(days=max_age_days)).isoformat()[:10]
-        to_archive = []
-        to_keep = []
-
-        for d in decisions:
-            if d.get("date", "") < cutoff:
-                to_archive.append(d)
-            else:
-                to_keep.append(d)
-
+        to_keep, to_archive = split_decisions_by_age(decisions, cutoff)
         if not to_archive:
             return 0
 
-        # Archive to project_decisions table
-        for d in to_archive:
-            await self._decision_repo.create(
-                mission_id=mission_id,
-                decision_id=d.get("id", ""),
-                domain=d.get("domain", "general"),
-                decision=d.get("decision", ""),
-                rationale=d.get("rationale", ""),
-                made_by=d.get("made_by", "unknown"),
-                execution_id=d.get("execution_id"),
-                status=DecisionStatus.ACTIVE,
-            )
+        await archive_decision_rows(self._decision_repo, mission_id, to_archive)
 
         # Update MCD with pruned decisions list
         reason = f"Archived {len(to_archive)} decisions older than {max_age_days} days"
@@ -117,16 +101,13 @@ class SummarizationService(BaseService):
 
         return len(to_archive)
 
-    async def prune_completed_workstreams(
-        self,
-        mission_id: str,
-        keep_recent: int = 5,
-    ) -> int:
+    async def prune_completed_workstreams(self, mission_id: str) -> int:
         """Move old milestones from current_state to milestone_summaries table.
 
-        Keeps the most recent `keep_recent` milestones in the MCD.
+        Keeps the most recent compaction.keep_recent_milestones milestones in the MCD.
         Returns count of milestones archived.
         """
+        keep_recent = get_app_config().missions.compaction.keep_recent_milestones
         data, version = await self._context_manager.get_context_with_version(
             mission_id,
         )
@@ -136,22 +117,11 @@ class SummarizationService(BaseService):
         current_state = data.get("current_state", {})
         milestones = current_state.get("recent_milestones", [])
 
-        if len(milestones) <= keep_recent:
+        to_keep, to_archive = split_milestones(milestones, keep_recent)
+        if not to_archive:
             return 0
 
-        to_keep = milestones[:keep_recent]
-        to_archive = milestones[keep_recent:]
-
-        # Create milestone summary for archived items
-        await self._milestone_repo.create(
-            mission_id=mission_id,
-            title=f"Milestones batch ({len(to_archive)} items)",
-            summary="; ".join(m if isinstance(m, str) else str(m) for m in to_archive),
-            execution_ids=[],
-            key_outcomes={"milestones": to_archive},
-            domain_tags=[],
-            period_end=utc_now().replace(microsecond=0).isoformat(),
-        )
+        await archive_milestone_rows(self._milestone_repo, mission_id, to_archive)
 
         # Update MCD with pruned milestones list
         reason = f"Archived {len(to_archive)} old milestones"

@@ -86,6 +86,17 @@ class TaskFailedEvent(SessionEvent):
     retryable: bool
 
 
+class ContextCompactedEvent(SessionEvent):
+    """The MCD was compacted at run end; published after the compaction commits."""
+
+    event_type: str = "context.compacted"
+    mission_id: str
+    mission_run_id: str | None
+    from_bytes: int
+    to_bytes: int
+    archived_paths: list[str]
+
+
 def task_failed_event(
     result: TaskResult, *, mission_id: str, mission_run_id: str, session_id: str
 ) -> TaskFailedEvent:

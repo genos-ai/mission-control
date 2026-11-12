@@ -166,7 +166,6 @@ class TestPrunePcdDecisions:
 
         result = await summarization_service.prune_mcd_decisions(
             _MID("proj-prune"),
-            max_age_days=90,
         )
         assert result == 2  # d1 and d2 archived
 

@@ -432,3 +432,16 @@ class ResolveTaskInput:
     mission_run_id: str
     task_id: str
     action: str  # "retry" | "skip"
+
+
+@dataclass
+class CompactContextInput:
+    mission_id: str
+    mission_run_id: str
+
+
+@dataclass
+class CompactContextResult:
+    compacted: bool
+    from_bytes: int
+    to_bytes: int

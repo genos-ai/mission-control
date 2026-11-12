@@ -19,6 +19,7 @@ from pydantic import Field
 from modules.backend.core.logging import get_logger
 from modules.backend.events.base import SessionEvent
 from modules.backend.events.mission_run_types import (
+    ContextCompactedEvent,
     MissionRunCreatedEvent,
     MissionRunOccurrenceRecordedEvent,
     MissionRunStatusChangedEvent,
@@ -835,6 +836,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "mission_schedule.changed": MissionScheduleChangedEvent,
     "mission_schedule.sync_failed": MissionScheduleSyncFailedEvent,
     "task.failed": TaskFailedEvent,
+    "context.compacted": ContextCompactedEvent,
 }
 
 
