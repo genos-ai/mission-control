@@ -25,6 +25,9 @@ with workflow.unsafe.imports_passed_through():
         ActivityPolicySnapshot,
         BeginRunInput,
         BeginRunResult,
+        CompactContextInput,
+        CompactContextResult,
+        DigestResult,
         DirectorTurnInput,
         ExecuteTaskInput,
         ExecuteTaskResult,
@@ -40,6 +43,7 @@ with workflow.unsafe.imports_passed_through():
         RunTaskGraph,
         SupervisorFollowupInput,
         TasksApprovedSignal,
+        WriteDigestInput,
     )
     from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
     from modules.backend.temporal.supervisor_activities import PostRunEvalInput, PostRunEvalResult
@@ -161,6 +165,16 @@ async def director_fake(inp: DirectorTurnInput) -> str:
     return "director-turn"
 
 
+@activity.defn(name="compact_mission_context")
+async def compact_fake(inp: CompactContextInput) -> CompactContextResult:
+    return CompactContextResult(compacted=False, from_bytes=0, to_bytes=0)
+
+
+@activity.defn(name="write_run_digest")
+async def digest_fake(inp: WriteDigestInput) -> DigestResult:
+    return DigestResult(digest_id=str(uuid.uuid4()), generator="deterministic")
+
+
 @activity.defn(name="finalise_mission_run")
 async def finalise_fake(inp: FinaliseRunInput) -> FinaliseRunResult:
     _fake.finalised.append(inp)
@@ -177,6 +191,8 @@ _ACTIVITIES = [
     plan_active_fake,
     approve_fake,
     director_fake,
+    compact_fake,
+    digest_fake,
     finalise_fake,
 ]
 

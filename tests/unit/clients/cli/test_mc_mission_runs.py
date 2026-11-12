@@ -115,6 +115,86 @@ def test_runs_digest_none_prints_no_digest_yet():
     assert "No digest yet" in result.output
 
 
+def _digest(**overrides):
+    digest = {
+        "id": "77777777-7777-7777-7777-777777777777",
+        "mission_run_id": RUN_ID,
+        "mission_id": MISSION_ID,
+        "schema_version": 1,
+        "generator": "agent",
+        "summary": "Run #37 ended succeeded. Two findings filed.",
+        "outcomes": [
+            {
+                "task_id": "t1",
+                "agent": "research.agent",
+                "status": "completed",
+                "headline": "Found the regression",
+                "artifact_ids": ["a1", "a2"],
+            }
+        ],
+        "decisions": [],
+        "open_items": [{"text": "Confirm the fix in staging", "source_task_id": "t1"}],
+        "context_changes": [{"version": 4, "change_type": "update", "path": "current_state.focus"}],
+        "metrics": {
+            "cost_usd": 0.0123,
+            "duration_seconds": 61.0,
+            "task_count": 1,
+            "completed_task_count": 1,
+            "failed_task_count": 0,
+            "iteration_count": 1,
+        },
+        "generation_cost_usd": 0.002,
+        "created_at": "2027-07-05T05:01:03Z",
+    }
+    digest.update(overrides)
+    return digest
+
+
+def test_runs_digest_renders_sections():
+    api = FakeApi(
+        routes={
+            f"/missions/{MISSION_ID}/runs/37": {"run": _run(), "digest": _digest(), "tasks": []}
+        }
+    )
+    result = _invoke(api, ["digest", "37"])
+
+    assert result.exit_code == 0, result.output
+    out = result.output
+    for text in (
+        "Two findings filed",
+        "Outcomes",
+        "Found the regression",
+        "Open items",
+        "Confirm the fix in staging",
+        "Context changes",
+        "current_state.focus",
+        "generator=agent",
+        "iterations=1",
+    ):
+        assert text in out, text
+    assert "Decisions" not in out
+    assert out.index("Outcomes") < out.index("Open items") < out.index("Context changes")
+    assert out.index("Context changes") < out.index("generator=agent")
+
+
+def test_runs_digest_shows_decisions_when_present():
+    decision = {"gate_point": "post_layer", "action": "approve", "channel": "telegram"}
+    api = FakeApi(
+        routes={
+            f"/missions/{MISSION_ID}/runs/37": {
+                "run": _run(),
+                "digest": _digest(decisions=[decision]),
+                "tasks": [],
+            }
+        }
+    )
+    result = _invoke(api, ["digest", "37"])
+
+    assert result.exit_code == 0, result.output
+    assert "Decisions" in result.output
+    assert "post_layer" in result.output
+
+
 def test_runs_cancel_resolves_sequence_to_id():
     api = FakeApi(
         routes={

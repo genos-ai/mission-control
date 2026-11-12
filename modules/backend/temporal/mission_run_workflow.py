@@ -1,10 +1,11 @@
-"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6 and 88.2.7, contract 3.3.3).
+"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6, 88.2.7 and 88.3.8, contract 3.3.3).
 
 One durable workflow per MissionRun. It begins the run, plans it, then loops:
 fetch the run's task graph, run each approved task as its own
 execute_plan_task activity (layer by layer, at most max_parallel_tasks at a
 time), ask the post-run supervisor, and route its decision. The loop ends
-through _end_run, which finalises the run.
+through _end_run, which compacts the MCD, writes the run digest (88.3.8,
+patch p88-run-memory) and finalises the run.
 
 The workflow reads no config: every timeout and retry policy comes from the
 RunConfigSnapshot pinned in MissionRunWorkflowInput. The run is bounded by
@@ -38,6 +39,7 @@ with workflow.unsafe.imports_passed_through():
     from modules.backend.temporal.mission_run_models import (
         ActivityPolicySnapshot,
         BeginRunInput,
+        CompactContextInput,
         DirectorTurnInput,
         ExecuteTaskInput,
         ExecuteTaskResult,
@@ -53,7 +55,12 @@ with workflow.unsafe.imports_passed_through():
         SupervisorFollowupInput,
         TaskFailureDigest,
         TasksApprovedSignal,
+        WriteDigestInput,
         digest_failures,
+    )
+    from modules.backend.temporal.run_memory_activities import (
+        compact_mission_context,
+        write_run_digest,
     )
     from modules.backend.temporal.supervisor_activities import (
         PostRunEvalInput,
@@ -85,6 +92,11 @@ COMPLETE_PROMPT = (
 ESCALATE_PROMPT = (
     "The supervisor escalated. Reason: {reason}. " "Please inform the user and ask for guidance."
 )
+
+
+# No digest-agent spend after a budget breach or a cancellation (contract 3.1.7).
+# budget_stopped has no Phase 3 caller; Phase 4 (88.4.6) produces it.
+_DETERMINISTIC_DIGEST_STATUSES = ("budget_stopped", "cancelled")
 
 
 def _cause_type(e: ActivityError) -> str:
@@ -554,11 +566,41 @@ class MissionRunWorkflow:
         director_objective_met: str | None = None,
     ) -> str:
         self._phase = "finalising"
+        inp = self._input
+        c = inp.config
+        # _state is set only once begin_mission_run returned (or from a
+        # continue-as-new input), so a non-None state means the run reached
+        # RUNNING and owes a digest (contract 3.1.7 invariant).
+        if self._state is not None and workflow.patched("p88-run-memory"):
+            try:
+                await _exec(
+                    compact_mission_context,
+                    CompactContextInput(
+                        mission_id=inp.mission_id, mission_run_id=inp.mission_run_id
+                    ),
+                    c.persistence,
+                )
+            except ActivityError:
+                # non-fatal: the digest must still be written; the next MCD write
+                # over the cap compacts again. Workflows cannot publish events;
+                # the failure stays in this run's Temporal history.
+                workflow.logger.warning(
+                    "run-end compaction failed; digest continues",
+                    extra={"mission_id": inp.mission_id, "mission_run_id": inp.mission_run_id},
+                )
+            await _exec(
+                write_run_digest,
+                WriteDigestInput(
+                    mission_run_id=inp.mission_run_id,
+                    status=status,
+                    reason=reason,
+                    force_deterministic=status in _DETERMINISTIC_DIGEST_STATUSES,
+                ),
+                c.write_digest,
+            )
         await _exec(
             finalise_mission_run,
-            FinaliseRunInput(
-                self._input.mission_run_id, status, reason, detail, director_objective_met
-            ),
-            self._input.config.persistence,
+            FinaliseRunInput(inp.mission_run_id, status, reason, detail, director_objective_met),
+            c.persistence,
         )
         return status

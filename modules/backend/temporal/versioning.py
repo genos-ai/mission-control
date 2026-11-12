@@ -17,4 +17,8 @@ import re
 
 PATCH_ID_PATTERN = re.compile(r"^p\d{2,3}-[a-z0-9]+(-[a-z0-9]+)*$")
 
-PATCH_IDS: frozenset[str] = frozenset()
+PATCH_IDS: frozenset[str] = frozenset(
+    {
+        "p88-run-memory",  # 88.3.8: run-end compaction and digest before finalise
+    }
+)

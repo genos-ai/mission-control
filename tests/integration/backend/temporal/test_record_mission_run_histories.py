@@ -187,3 +187,19 @@ async def test_max_duration_stop(env: WorkflowEnvironment):
     assert [(f.status, f.reason) for f in stubs.calls("finalise_mission_run")] == [
         ("failed", "max_duration_exceeded")
     ]
+
+
+async def test_p88_run_memory(env: WorkflowEnvironment):
+    """The p88-run-memory branch (88.3.8): compaction and digest before finalise."""
+    stubs.SCRIPT.graphs = [graph(["a"])]
+    stubs.SCRIPT.actions = ["propose_complete"]
+
+    async with _started(env) as handle:
+        assert await handle.result() == "succeeded"
+        await _write(env, "p88-run-memory", handle.id, handle.result_run_id)
+
+    assert [name for name, _ in stubs.CALLS][-3:] == [
+        "compact_mission_context",
+        "write_run_digest",
+        "finalise_mission_run",
+    ]

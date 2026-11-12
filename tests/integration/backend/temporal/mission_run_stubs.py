@@ -1,4 +1,4 @@
-"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 step 88.2.6).
+"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 steps 88.2.6, 88.3.8).
 
 Each stub is registered under the real activity name. Stubs read their script
 from the module-level ``SCRIPT`` and append ``(activity name, input)`` to the
@@ -17,6 +17,9 @@ from temporalio.exceptions import ApplicationError
 from modules.backend.temporal.mission_run_models import (
     BeginRunInput,
     BeginRunResult,
+    CompactContextInput,
+    CompactContextResult,
+    DigestResult,
     DirectorTurnInput,
     ExecuteTaskInput,
     ExecuteTaskResult,
@@ -27,6 +30,7 @@ from modules.backend.temporal.mission_run_models import (
     ResolveTaskInput,
     RunTaskGraph,
     SupervisorFollowupInput,
+    WriteDigestInput,
 )
 from modules.backend.temporal.supervisor_activities import PostRunEvalInput, PostRunEvalResult
 
@@ -84,6 +88,7 @@ class Script:
     task_errors: dict[str, Exception] = field(default_factory=dict)
     task_delay_seconds: float = 0.0
     task_hook: Callable[[ExecuteTaskInput], Awaitable[None]] | None = None
+    compaction_error: Exception | None = None
     running: int = 0
     max_running: int = 0
     activity_timeouts: list[tuple[timedelta | None, timedelta | None]] = field(default_factory=list)
@@ -187,6 +192,21 @@ async def director_stub(inp: DirectorTurnInput) -> str:
     return "director-turn"
 
 
+@activity.defn(name="compact_mission_context")
+async def compact_stub(inp: CompactContextInput) -> CompactContextResult:
+    CALLS.append(("compact_mission_context", inp))
+    if SCRIPT.compaction_error is not None:
+        raise SCRIPT.compaction_error
+    return CompactContextResult(compacted=False, from_bytes=0, to_bytes=0)
+
+
+@activity.defn(name="write_run_digest")
+async def digest_stub(inp: WriteDigestInput) -> DigestResult:
+    CALLS.append(("write_run_digest", inp))
+    generator = "deterministic" if inp.force_deterministic else "agent"
+    return DigestResult(digest_id="33333333-3333-3333-3333-333333333333", generator=generator)
+
+
 @activity.defn(name="finalise_mission_run")
 async def finalise_stub(inp: FinaliseRunInput) -> FinaliseRunResult:
     CALLS.append(("finalise_mission_run", inp))
@@ -208,5 +228,7 @@ ACTIVITIES = [
     plan_active_stub,
     approve_stub,
     director_stub,
+    compact_stub,
+    digest_stub,
     finalise_stub,
 ]

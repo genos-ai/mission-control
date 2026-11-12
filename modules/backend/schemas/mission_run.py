@@ -17,6 +17,12 @@ from modules.backend.models.mission_run import (
 )
 from modules.backend.models.mission_run_digest import DigestGenerator
 from modules.backend.models.task import TaskStatus
+from modules.backend.schemas.run_memory import (
+    DigestContextChange,
+    DigestMetrics,
+    DigestOpenItemOut,
+    DigestOutcome,
+)
 
 
 class MissionRunCreate(BaseModel):
@@ -77,7 +83,11 @@ class MissionRunResponse(BaseModel):
 
 
 class MissionRunDigestResponse(BaseModel):
-    """A run's digest (written from Phase 3)."""
+    """A run's digest: every contract 3.1.7 column plus id and created_at (88.3.8).
+
+    generator and each outcome status are lowercase values; each outcome
+    carries its artifact_ids. decisions stays untyped until 88.4.8 writes it.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,11 +97,11 @@ class MissionRunDigestResponse(BaseModel):
     schema_version: int
     generator: DigestGenerator
     summary: str
-    outcomes: list[Any]
-    decisions: list[Any]
-    open_items: list[Any]
-    context_changes: list[Any]
-    metrics: dict[str, Any]
+    outcomes: list[DigestOutcome]
+    decisions: list[dict[str, Any]]
+    open_items: list[DigestOpenItemOut]
+    context_changes: list[DigestContextChange]
+    metrics: DigestMetrics
     generation_cost_usd: float
     created_at: datetime
 

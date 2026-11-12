@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from modules.clients.cli.api_client import CliApiClient
-from modules.clients.cli.report import build_table, get_console
+from modules.clients.cli.report import build_table, get_console, primary_panel
 
 
 async def list_runs(
@@ -108,21 +108,80 @@ async def show_run(api: CliApiClient, *, mission_id: str, sequence: str) -> None
 
 
 async def show_digest(api: CliApiClient, *, mission_id: str, sequence: str) -> None:
-    """Print the run's digest, or `No digest yet` when it has none."""
+    """Print the run's digest, or `No digest yet` when it has none.
+
+    A summary panel, then outcomes, open items, decisions (omitted when empty)
+    and context changes, then a metrics line with the generator.
+    """
     detail = await api.get(f"/missions/{mission_id}/runs/{sequence}")
     digest = detail.get("digest")
     console = get_console()
     if digest is None:
         console.print("No digest yet")
         return
-    console.print(f"[bold]Digest for run #{detail.get('run', {}).get('sequence')}[/bold]")
-    console.print(digest.get("summary", ""))
-    for label in ("outcomes", "decisions", "open_items", "context_changes"):
-        items = digest.get(label) or []
-        if items:
-            console.print(f"\n[bold]{label.replace('_', ' ').capitalize()}:[/bold]")
-            for item in items:
-                console.print(f"  - {item}")
+    run_sequence = detail.get("run", {}).get("sequence")
+    console.print(primary_panel(content=digest.get("summary", ""), title=f"Run #{run_sequence}"))
+    for title, columns, key, cells in _DIGEST_SECTIONS:
+        items = digest.get(key) or []
+        if not items and key == "decisions":
+            continue
+        table = build_table(title, columns=columns)
+        for item in items:
+            table.add_row(*cells(item))
+        console.print(table)
+    metrics = digest.get("metrics") or {}
+    console.print(
+        f"generator={digest.get('generator')}  "
+        f"tasks={metrics.get('completed_task_count', 0)}/{metrics.get('task_count', 0)} completed, "
+        f"{metrics.get('failed_task_count', 0)} failed  "
+        f"iterations={metrics.get('iteration_count', 0)}  "
+        f"duration={float(metrics.get('duration_seconds') or 0):.0f}s  "
+        f"cost=${float(metrics.get('cost_usd') or 0):.4f}  "
+        f"digest cost=${float(digest.get('generation_cost_usd') or 0):.4f}"
+    )
+
+
+_FLEX = {"ratio": 1, "no_wrap": False}
+_DIGEST_SECTIONS: list[tuple[str, list[tuple[str, dict[str, Any]]], str, Any]] = [
+    (
+        "Outcomes",
+        [
+            ("Agent", {"style": "cyan", "width": 30}),
+            ("Status", {"width": 10}),
+            ("Headline", _FLEX),
+            ("Artifacts", {"justify": "right", "width": 9}),
+        ],
+        "outcomes",
+        lambda o: (
+            o.get("agent", ""),
+            o.get("status", ""),
+            o.get("headline", ""),
+            str(len(o.get("artifact_ids") or [])),
+        ),
+    ),
+    (
+        "Open items",
+        [("Item", _FLEX), ("Task", {"style": "dim", "width": 36})],
+        "open_items",
+        lambda i: (i.get("text", ""), i.get("source_task_id") or ""),
+    ),
+    (
+        "Decisions",
+        [("Gate point", {"width": 14}), ("Action", {"width": 12}), ("Channel", _FLEX)],
+        "decisions",
+        lambda d: (d.get("gate_point") or "", d.get("action") or "", d.get("channel") or ""),
+    ),
+    (
+        "Context changes",
+        [
+            ("Version", {"justify": "right", "width": 8}),
+            ("Change", {"width": 10}),
+            ("Path", _FLEX),
+        ],
+        "context_changes",
+        lambda c: (str(c.get("version", "")), c.get("change_type", ""), c.get("path", "")),
+    ),
+]
 
 
 async def cancel_run(api: CliApiClient, *, mission_id: str, sequence: str) -> None:

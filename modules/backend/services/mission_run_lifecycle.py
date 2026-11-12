@@ -1,4 +1,4 @@
-"""MissionRunService workflow-activity methods (Plan 88, 88.1.7).
+"""MissionRunService workflow-activity methods (Plan 88, 88.1.7; digest payload 88.3.8).
 
 begin, plan, approve_proposed, task_graph and finalise, extracted from
 mission_run.py to keep it under 500 lines. Every stored exception text goes
@@ -27,6 +27,7 @@ from modules.backend.models.mission_run import (
     MissionRunStatusReason,
     MissionRunTrigger,
 )
+from modules.backend.models.mission_run_digest import DigestGenerator
 from modules.backend.models.task import TaskStatus
 from modules.backend.repositories.llm_ledger import LlmLedgerRepository
 from modules.backend.repositories.workflow_definition import (
@@ -372,21 +373,38 @@ class MissionRunLifecycleMixin:
         kind = _notification_kind(status, reason)
         notification = None
         if kind is not None:
+            payload = {
+                "sequence": sequence,
+                "status": status.value,
+                "reason": reason.value if reason is not None else None,
+                "detail": detail,
+                "cost_usd": cost,
+            }
+            if kind in (RUN_SUCCEEDED, RUN_FAILED):
+                payload |= await self._digest_payload(mission_id, run_id)
             notification = NotificationRequest(
                 kind=kind,
                 mission_id=mission_id,
                 mission_run_id=run_id,
                 gate_request_id=None,
                 subject_id=run_id,
-                payload={
-                    "sequence": sequence,
-                    "status": status.value,
-                    "reason": reason.value if reason is not None else None,
-                    "detail": detail,
-                    "cost_usd": cost,
-                },
+                payload=payload,
             )
         return FinaliseRunResult(cost_usd=cost, notification=notification)
+
+    async def _digest_payload(self, mission_id: str, run_id: str) -> dict:
+        """The digest's generator and summary for the run-finished notification (3.1.7).
+
+        Both are None when the run has no digest (it never reached RUNNING).
+        The summary is already at most missions.digest.summary_max_chars.
+        """
+        digest = await RunMemoryService(self._session).get_digest(mission_id, run_id)
+        if digest is None:
+            return {"digest_generator": None, "digest_summary": None}
+        return {
+            "digest_generator": DigestGenerator(digest.generator).value,
+            "digest_summary": digest.summary,
+        }
 
     async def _start_for_raced_approvals(
         self, mission_id: str, plan_id: str, gate_mode: GateMode, owner_id: str

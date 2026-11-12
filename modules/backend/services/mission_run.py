@@ -46,7 +46,6 @@ from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_context import MissionContextRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.mission_run import MissionRunRepository
-from modules.backend.repositories.mission_run_digest import MissionRunDigestRepository
 from modules.backend.repositories.task import TaskRepository, WaveTaskRow
 from modules.backend.repositories.user import UserRepository
 from modules.backend.repositories.workflow_run import WorkflowRunRepository
@@ -60,6 +59,7 @@ from modules.backend.services.base import BaseService
 from modules.backend.services.execution_persistence import ExecutionPersistenceService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run_lifecycle import MissionRunLifecycleMixin
+from modules.backend.services.run_memory import RunMemoryService
 from modules.backend.temporal.config_snapshots import build_run_config_snapshot
 from modules.backend.temporal.mission_run_models import (
     MissionRunWorkflowInput,
@@ -108,7 +108,6 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
         super().__init__(session)
         self._event_bus = event_bus
         self._runs = MissionRunRepository(session)
-        self._digests = MissionRunDigestRepository(session)
         self._missions = MissionRepository(session)
         self._plans = MissionPlanRepository(session)
         self._tasks = TaskRepository(session)
@@ -160,7 +159,7 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
         """The run with its ExecutionRecord id, digest and owned tasks (88.4.8 adds gates)."""
         run = await self.get_run(mission_id, run_id_or_sequence)
         record = await self._records.get_by_mission_run(run.id)
-        digest = await self._digests.get_by_run(run.id)
+        digest = await RunMemoryService(self._session).get_digest(mission_id, run.id)
         tasks = await self._tasks.list_by_run(run.id)
         return MissionRunDetailResponse(
             run=MissionRunResponse.model_validate(run),

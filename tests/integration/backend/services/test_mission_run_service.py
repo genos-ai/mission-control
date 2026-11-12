@@ -43,7 +43,7 @@ from modules.backend.services import mission_plan_taskio
 from modules.backend.services.mission_context import MissionContextManager
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.mission_run import MissionRunService
-from modules.backend.services.mission_run_lifecycle import RUN_SUCCEEDED
+from modules.backend.services.mission_run_lifecycle import RUN_FAILED, RUN_SUCCEEDED
 from modules.backend.services.run_memory import RunMemoryService
 from modules.backend.services.token_economics import TokenEconomicsService
 from modules.backend.temporal.mission_run_models import TasksApprovedSignal
@@ -679,6 +679,47 @@ async def test_finalise_keeps_digest_context_version_end(
         )
 
     assert (await _run(db_session_factory, run.id)).context_version_end == 2
+
+
+async def test_finalise_payload_states_generator(db_session_factory, gateway, owner) -> None:
+    # Contract 3.1.7: the run-finished notification states the digest generator (88.3.8).
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+    async with db_session_factory() as session:
+        digest = await RunMemoryService(session).write_digest(
+            run.id,
+            status=MissionRunStatus.SUCCEEDED,
+            reason=MissionRunStatusReason.NO_FURTHER_WORK,
+            narrator=None,
+        )
+        summary = digest.summary
+
+    async with db_session_factory() as session:
+        result = await _svc(session).finalise(
+            run.id, MissionRunStatus.SUCCEEDED, MissionRunStatusReason.NO_FURTHER_WORK, None
+        )
+
+    assert result.notification.kind == RUN_SUCCEEDED
+    assert result.notification.payload["digest_generator"] == DigestGenerator.DETERMINISTIC.value
+    assert result.notification.payload["digest_summary"] == summary
+
+
+async def test_finalise_payload_without_digest_states_none(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+
+    async with db_session_factory() as session:
+        result = await _svc(session).finalise(
+            run.id, MissionRunStatus.FAILED, MissionRunStatusReason.PLANNING_FAILED, "boom"
+        )
+
+    assert result.notification.kind == RUN_FAILED
+    assert result.notification.payload["digest_generator"] is None
+    assert result.notification.payload["digest_summary"] is None
 
 
 async def test_finalise_records_director_objective_met_with_the_run_end(

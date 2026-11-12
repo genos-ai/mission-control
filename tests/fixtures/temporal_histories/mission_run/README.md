@@ -8,13 +8,16 @@ Temporal server is needed to replay.
 
 ## Recording
 
-Stubbed scenarios (the seven required fixtures). Each test in the module drives
+Stubbed scenarios (the seven Phase 2 fixtures and `p88-run-memory`). Each test in the module drives
 one scenario through the real workflow with the stub activities in
 `tests/integration/backend/temporal/mission_run_stubs.py`:
 
 ```bash
 pytest tests/integration/backend/temporal/test_record_mission_run_histories.py --record-histories -q
 ```
+
+Pass `-k <test name>` to record one new fixture; a bare run rewrites every
+stubbed fixture from current code, which defeats the old-branch replays.
 
 Histories from a real server (later patch fixtures, incident captures). The
 workflow must be closed; the script refuses a running one:

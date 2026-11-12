@@ -27,6 +27,7 @@ REQUIRED = frozenset(
         "verification_failed_continue",
         "cancelled_mid_layer",
         "max_duration_stop",
+        "p88-run-memory",  # 88.3.8: the patched branch; the seven above replay the old one
     }
 )
 
