@@ -7,6 +7,7 @@ Data access for MissionArtifact. Thin repository — all business logic
 
 from sqlalchemy import select
 
+from modules.backend.models.execution_record import TaskExecution
 from modules.backend.models.mission_artifact import MissionArtifact
 from modules.backend.repositories.base import BaseRepository
 
@@ -73,6 +74,19 @@ class MissionArtifactRepository(BaseRepository[MissionArtifact]):
             .order_by(MissionArtifact.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def ids_by_task_for_run(self, mission_run_id: str) -> dict[str, list[str]]:
+        """Artifact ids per task id, linked through the run's task executions, oldest first."""
+        result = await self.session.execute(
+            select(TaskExecution.task_id, MissionArtifact.id)
+            .join(TaskExecution, MissionArtifact.task_execution_id == TaskExecution.id)
+            .where(TaskExecution.mission_run_id == mission_run_id)
+            .order_by(MissionArtifact.created_at, MissionArtifact.id)
+        )
+        ids: dict[str, list[str]] = {}
+        for task_id, artifact_id in result.all():
+            ids.setdefault(task_id, []).append(artifact_id)
+        return ids
 
     async def create(
         self,

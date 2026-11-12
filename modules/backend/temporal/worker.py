@@ -67,7 +67,10 @@ from modules.backend.temporal.reconciler_activities import (
     sync_mission_schedules,
 )
 from modules.backend.temporal.reconciler_workflow import ReconcilerWorkflow
-from modules.backend.temporal.run_memory_activities import compact_mission_context
+from modules.backend.temporal.run_memory_activities import (
+    compact_mission_context,
+    write_run_digest,
+)
 from modules.backend.temporal.schedule_gateway import TemporalScheduleGateway
 from modules.backend.temporal.supervisor_activities import (
     approve_run_proposed_tasks,
@@ -140,8 +143,9 @@ async def start_worker() -> None:
             fetch_run_task_graph,
             set_mission_run_status,
             finalise_mission_run,
-            # Run memory (Plan 88 step 88.3.3)
+            # Run memory (Plan 88 steps 88.3.3, 88.3.7)
             compact_mission_context,
+            write_run_digest,
             # Per-task execution (Plan 88 step 88.2.4)
             execute_plan_task,
             resolve_failed_task,

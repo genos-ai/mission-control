@@ -87,7 +87,7 @@ async def _record_usage(
     agent_name: str,
     mission_id: str,
     mission_run_id: str,
-    session_id: str,
+    session_id: str | None,
 ) -> float:
     """Price ``usage``, write one llm_calls row attributed to the run, return the cost."""
     fields = extract_usage(usage)
@@ -121,7 +121,7 @@ async def generate_digest_narrative(
     task_excerpts: list[dict],
     mission_id: str,
     mission_run_id: str,
-    session_id: str,
+    session_id: str | None,
 ) -> tuple[DigestNarrative, float]:
     """Run the digest agent once; return its output and the recorded cost in USD.
 

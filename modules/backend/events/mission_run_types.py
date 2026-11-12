@@ -97,6 +97,16 @@ class ContextCompactedEvent(SessionEvent):
     archived_paths: list[str]
 
 
+class MissionRunDigestWrittenEvent(SessionEvent):
+    """A run's digest was inserted; published after the insert commits."""
+
+    event_type: str = "mission_run.digest_written"
+    mission_id: str
+    mission_run_id: str
+    digest_id: str
+    generator: str
+
+
 def task_failed_event(
     result: TaskResult, *, mission_id: str, mission_run_id: str, session_id: str
 ) -> TaskFailedEvent:

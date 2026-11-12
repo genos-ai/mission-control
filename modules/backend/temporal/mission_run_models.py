@@ -445,3 +445,17 @@ class CompactContextResult:
     compacted: bool
     from_bytes: int
     to_bytes: int
+
+
+@dataclass
+class WriteDigestInput:
+    mission_run_id: str
+    status: str  # intended terminal status, lowercase MissionRunStatus value (3.0.2)
+    reason: str | None  # lowercase MissionRunStatusReason value, as FinaliseRunInput.reason
+    force_deterministic: bool
+
+
+@dataclass
+class DigestResult:
+    digest_id: str
+    generator: str  # DigestGenerator value
