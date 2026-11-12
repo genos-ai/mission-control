@@ -7,8 +7,8 @@ Builds the context packet an agent receives before task execution
 Fixed head, never trimmed:
   project_context (MCD), task, inputs (summarised if over budget)
 
-Optional layers, in missions.context_packet.assembly_order, each included
-whole only when it fits both its own cap and the remaining budget:
+Optional layers, in missions.context_packet.assembly_order, each sized to
+min(its own cap, remaining budget) and included whole only when it fits:
   previous_run_digest, context_delta (run-scoped, from RunMemoryService),
   code_map (coding tasks), learnings, history (tasks with domain_tags)
 """
@@ -30,7 +30,7 @@ from modules.backend.services.run_memory import RunMemoryService
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from modules.backend.schemas.run_memory import RunContextPacket
+    from modules.backend.schemas.run_memory import PreviousRunDigest, RunContextPacket
     from modules.backend.services.code_map.loader import CodeMapLoader
 
 logger = get_logger(__name__)
@@ -163,7 +163,7 @@ class ContextAssembler:
                 mission_id=mission_id,
                 domain_tags=domain_tags,
                 mission_run_id=mission_run_id,
-                cap=cap,
+                limit=limit,
                 max_entries=learnings_cfg.context_assembler_max_entries,
             )
             if not value:
@@ -172,6 +172,17 @@ class ContextAssembler:
             if tokens <= limit:
                 packet[layer] = value
                 remaining -= tokens
+            else:
+                logger.debug(
+                    "Context layer omitted for size",
+                    extra={
+                        "mission_id": mission_id,
+                        "mission_run_id": mission_run_id,
+                        "layer": layer,
+                        "tokens": tokens,
+                        "limit": limit,
+                    },
+                )
 
         logger.debug(
             "Context assembled",
@@ -192,25 +203,52 @@ class ContextAssembler:
         mission_id: str,
         domain_tags: list[str] | None,
         mission_run_id: str | None,
-        cap: int,
+        limit: int,
         max_entries: int,
     ) -> Any:
-        """The rendered value of one optional layer, or None when it does not apply."""
+        """The rendered value of one optional layer, sized to ``limit`` where it can be.
+
+        None when the layer does not apply.
+        """
         if layer in ("previous_run_digest", "context_delta"):
             if mission_run_id is None:
                 return None
             run_packet = await self._run_packet(mission_run_id)
             run_layer = getattr(run_packet, layer)
-            return run_layer.model_dump(mode="json") if run_layer is not None else None
+            if run_layer is None:
+                return None
+            if layer == "previous_run_digest":
+                return self._fit_digest(run_layer, limit)
+            return run_layer.model_dump(mode="json")
         if layer == "code_map":
             if not self._is_coding_task(domain_tags):
                 return None
-            return self._load_code_map_markdown(cap)
+            return self._load_code_map_markdown(limit)
         if layer == "learnings":
-            return await self._assemble_learnings(mission_id, domain_tags, cap, max_entries)
+            return await self._assemble_learnings(mission_id, domain_tags, limit, max_entries)
         if not domain_tags:
             return None
-        return await self._assemble_history(mission_id, domain_tags, cap)
+        return await self._assemble_history(mission_id, domain_tags, limit)
+
+    @staticmethod
+    def _fit_digest(digest: PreviousRunDigest, limit: int) -> dict | None:
+        """The digest dump with its summary shortened until the whole dump fits ``limit``.
+
+        RunMemoryService bounds only the summary (previous_digest_max_chars);
+        open_items, metrics and JSON framing are measured here too. Returns
+        None when the dump does not fit even with an empty summary.
+        """
+        dump = digest.model_dump(mode="json")
+        summary: str = dump["summary"]
+        keep = len(summary)
+        while True:
+            dump["summary"] = summary[:keep]
+            overshoot = estimate_tokens(dump) - limit
+            if overshoot <= 0:
+                return dump
+            if keep == 0:
+                return None
+            keep = max(0, keep - overshoot * 4)
 
     async def _run_packet(self, mission_run_id: str) -> RunContextPacket:
         """The run's context packet, built once per run id for this assembler."""

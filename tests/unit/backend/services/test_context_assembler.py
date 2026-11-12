@@ -342,10 +342,31 @@ class TestRunLayers:
         mock_run_memory.build_context_packet.assert_awaited_once_with("run-2")
 
     @pytest.mark.asyncio
-    async def test_digest_over_cap_omitted_whole(self, assembler):
+    async def test_full_length_digest_fits_cap(self, assembler):
+        """A summary at previous_digest_max_chars plus open items is shortened, not dropped."""
+        packet_obj = _run_packet()
+        digest = packet_obj.previous_run_digest
+        digest.summary = "s" * 4000
+        digest.open_items = [{"text": f"open item {i}", "source_task_id": None} for i in range(5)]
+        digest.metrics = {"tasks_total": 12, "tasks_failed": 2}
+        assembler._run_memory.build_context_packet = AsyncMock(return_value=packet_obj)
+        p1, p2 = _patch_config(digest_chars=4000)
+        with p1, p2:
+            packet = await _build(assembler, mission_run_id="run-2")
+        included = packet["previous_run_digest"]
+        assert estimate_tokens(included) <= 4000 // 4
+        assert 0 < len(included["summary"]) < 4000
+        assert included["open_items"] == digest.open_items
+        assert digest.summary == "s" * 4000  # the cached run packet is not mutated
+
+    @pytest.mark.asyncio
+    async def test_digest_omitted_whole_when_fixed_fields_exceed_cap(self, assembler):
+        """Only the summary is shortened; the layer is dropped when the rest exceeds the cap."""
         p1, p2 = _patch_config(digest_chars=200)
         packet_obj = _run_packet()
-        packet_obj.previous_run_digest.summary = "s" * 1000
+        packet_obj.previous_run_digest.open_items = [
+            {"text": "o" * 100, "source_task_id": None} for _ in range(5)
+        ]
         assembler._run_memory.build_context_packet = AsyncMock(return_value=packet_obj)
         with p1, p2:
             packet = await _build(assembler, mission_run_id="run-2")
@@ -413,6 +434,22 @@ class TestAssemblyOrder:
         head = sum(estimate_tokens(packet[k]) for k in ("project_context", "task", "inputs"))
         assert sized == [10_000 - head - 900 - 700]
         assert packet["code_map"] == "rendered"
+
+    @pytest.mark.asyncio
+    async def test_history_trimmed_to_remaining_below_reserve(
+        self, assembler, mock_history_service
+    ):
+        """With less budget left than the history reserve, a trimmed history is still included."""
+        failures = [{"task_id": f"f{i}", "failure_reason": "x" * 400} for i in range(3)]
+        executions = [{"task_id": f"e{i}", "output": "y" * 400} for i in range(5)]
+        mock_history_service.get_recent_failures = AsyncMock(return_value=failures)
+        mock_history_service.get_recent_task_executions = AsyncMock(return_value=executions)
+        p1, p2 = _patch_config(budget=700, history_reserve=1500, order=["history"])
+        with p1, p2:
+            packet = await _build(assembler, domain_tags=["api"])
+        head = sum(estimate_tokens(packet[k]) for k in ("project_context", "task", "inputs"))
+        assert packet["history"] == {"recent_failures": failures}
+        assert estimate_tokens(packet["history"]) <= 700 - head
 
 
 def _learning_dict(learning: SimpleNamespace) -> dict:
