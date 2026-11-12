@@ -10,6 +10,7 @@ import asyncio
 from temporalio.worker import Worker
 
 from modules.backend.core.config import get_app_config
+from modules.backend.core.exceptions import NotFoundError
 from modules.backend.core.logging import get_logger
 from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.temporal.chat_activities import execute_chat_turn, persist_user_message
@@ -94,9 +95,14 @@ async def start_worker() -> None:
     client = await get_temporal_client()
 
     # Fail closed (P8, contract 3.4.6): the digest agent must be in the catalog
-    # before any run can end. NotFoundError propagates and the worker does not start.
+    # and enabled before any run can end. The runtime registry skips disabled
+    # rows, so a disabled row counts as missing. NotFoundError propagates and
+    # the worker does not start.
+    digest_agent = get_app_config().missions.digest.agent_name
     async with AgentCatalogService.factory() as catalog:
-        await catalog.get_by_name(get_app_config().missions.digest.agent_name)
+        entry = await catalog.get_by_name(digest_agent)
+    if not entry.enabled:
+        raise NotFoundError(f"Agent '{digest_agent}' is disabled in the catalog")
 
     worker = Worker(
         client,

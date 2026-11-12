@@ -143,7 +143,12 @@ async def test_persistent_invalid_output_raises_external_service_error(monkeypat
         await _generate()
 
     assert len(calls) == get_app_config().missions.digest.agent_output_retries + 1
-    recorder.assert_not_awaited()
+    # The billed attempts are still attributed to the run.
+    recorder.assert_awaited_once()
+    kwargs = recorder.await_args.kwargs
+    assert kwargs["mission_run_id"] == "run-1"
+    assert kwargs["usage"].requests == len(calls)
+    assert kwargs["cost_usd"] > 0
 
 
 async def test_records_llm_call_with_run_id(monkeypatch, recorder):

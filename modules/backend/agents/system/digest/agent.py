@@ -15,6 +15,7 @@ import json
 
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
+from pydantic_ai.usage import RunUsage
 
 from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.agents.mission_control.helpers.cost_recorder import (
@@ -30,6 +31,7 @@ from modules.backend.core.model_builder import (
     _get_model_name,
     build_model_settings,
 )
+from modules.backend.schemas.agent_config import AgentConfigSchema
 from modules.backend.schemas.run_memory import DigestNarrative
 
 
@@ -78,6 +80,40 @@ def _prompt(
     )
 
 
+async def _record_usage(
+    usage: RunUsage,
+    *,
+    agent_config: AgentConfigSchema,
+    agent_name: str,
+    mission_id: str,
+    mission_run_id: str,
+    session_id: str,
+) -> float:
+    """Price ``usage``, write one llm_calls row attributed to the run, return the cost."""
+    fields = extract_usage(usage)
+    model_name = _get_model_name(agent_config.model)
+    cost = compute_cost_usd(
+        fields["input_tokens"],
+        fields["output_tokens"],
+        model_name,
+        cache_read_tokens=fields["cache_read_tokens"],
+        cache_write_1h_tokens=fields["cache_write_tokens"],
+        thinking_tokens=fields["thinking_tokens"],
+    )
+    await record_llm_call(
+        session_id=session_id,
+        mission_id=mission_id,
+        agent_name=agent_name,
+        agent_role=agent_config.agent_type,
+        model=model_name,
+        usage=usage,
+        cost_usd=cost,
+        mission_run_id=mission_run_id,
+        task_id=None,
+    )
+    return cost
+
+
 async def generate_digest_narrative(
     *,
     draft: dict,
@@ -123,33 +159,32 @@ async def generate_digest_narrative(
         summary_max_chars=cfg.summary_max_chars,
         headline_max_chars=cfg.headline_max_chars,
     )
+    # Usage accumulates here across retries so a failed run's billed tokens
+    # are still recorded against the run (budget caps read llm_calls).
+    usage = RunUsage()
     try:
-        result = await agent.run(prompt)
+        result = await agent.run(prompt, usage=usage)
     except (UnexpectedModelBehavior, ModelHTTPError, UsageLimitExceeded, ProviderError) as e:
+        fields = extract_usage(usage)
+        if fields["input_tokens"] or fields["output_tokens"]:
+            await _record_usage(
+                usage,
+                agent_config=agent_config,
+                agent_name=cfg.agent_name,
+                mission_id=mission_id,
+                mission_run_id=mission_run_id,
+                session_id=session_id,
+            )
         # Re-raised, not logged: the calling activity (88.3.7) owns the
         # deterministic fallback and its mission event.
         raise ExternalServiceError(f"digest agent failed: {type(e).__name__}") from e
 
-    usage = result.usage()
-    fields = extract_usage(usage)
-    model_name = _get_model_name(agent_config.model)
-    cost = compute_cost_usd(
-        fields["input_tokens"],
-        fields["output_tokens"],
-        model_name,
-        cache_read_tokens=fields["cache_read_tokens"],
-        cache_write_1h_tokens=fields["cache_write_tokens"],
-        thinking_tokens=fields["thinking_tokens"],
-    )
-    await record_llm_call(
-        session_id=session_id,
-        mission_id=mission_id,
+    cost = await _record_usage(
+        usage,
+        agent_config=agent_config,
         agent_name=cfg.agent_name,
-        agent_role=agent_config.agent_type,
-        model=model_name,
-        usage=usage,
-        cost_usd=cost,
+        mission_id=mission_id,
         mission_run_id=mission_run_id,
-        task_id=None,
+        session_id=session_id,
     )
     return result.output, cost

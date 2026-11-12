@@ -42,11 +42,28 @@ async def test_worker_refuses_start_without_digest_agent(monkeypatch, worker_cls
     worker_cls.assert_not_called()
 
 
+async def test_worker_refuses_start_when_digest_agent_disabled(monkeypatch, worker_cls):
+    from modules.backend.temporal.worker import start_worker
+
+    get_by_name = AsyncMock(return_value=SimpleNamespace(enabled=False))
+    monkeypatch.setattr(f"{WORKER}.AgentCatalogService.factory", _catalog(get_by_name))
+
+    with pytest.raises(NotFoundError, match="disabled"):
+        await start_worker()
+
+    worker_cls.assert_not_called()
+
+
 async def test_worker_checks_digest_agent_before_constructing_worker(monkeypatch, worker_cls):
     from modules.backend.temporal.worker import start_worker
 
     order: list[str] = []
-    get_by_name = AsyncMock(side_effect=lambda name: order.append("catalog"))
+
+    def _found(name):
+        order.append("catalog")
+        return SimpleNamespace(enabled=True)
+
+    get_by_name = AsyncMock(side_effect=_found)
     monkeypatch.setattr(f"{WORKER}.AgentCatalogService.factory", _catalog(get_by_name))
 
     def _construct(*_args, **_kwargs):
