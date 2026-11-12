@@ -9,7 +9,9 @@ import asyncio
 
 from temporalio.worker import Worker
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.logging import get_logger
+from modules.backend.services.agent_catalog import AgentCatalogService
 from modules.backend.temporal.chat_activities import execute_chat_turn, persist_user_message
 from modules.backend.temporal.chat_workflow import ChatTurnWorkflow
 from modules.backend.temporal.client import get_temporal_client, get_temporal_config
@@ -90,6 +92,11 @@ async def start_worker() -> None:
     """Start the Temporal Worker."""
     config = get_temporal_config()
     client = await get_temporal_client()
+
+    # Fail closed (P8, contract 3.4.6): the digest agent must be in the catalog
+    # before any run can end. NotFoundError propagates and the worker does not start.
+    async with AgentCatalogService.factory() as catalog:
+        await catalog.get_by_name(get_app_config().missions.digest.agent_name)
 
     worker = Worker(
         client,

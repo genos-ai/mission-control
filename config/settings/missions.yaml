@@ -74,7 +74,7 @@ recurrence:
 # Memory between runs (Plan 88 Phase 3)
 # =============================================================================
 digest:
-  agent_name: "mission.digest.agent"   # catalog agent, config/agents/mission/digest/agent.yaml
+  agent_name: "system.digest.agent"   # catalog agent, config/agents/system/digest/agent.yaml
   summary_max_chars: 2000
   max_outcomes: 50
   headline_max_chars: 200              # outcome headline and open-item text truncation

@@ -1,0 +1,40 @@
+# =============================================================================
+# Digest Agent Configuration (Plan 88, 88.3.6)
+# =============================================================================
+# Writes the narrative half of the end-of-run digest (summary, open items,
+# task headlines) from deterministic run facts. The digest's single store is
+# mission_run_digests, so produces_artifact is false. Called from the
+# write_run_digest activity, never routed from chat (keywords: []).
+# =============================================================================
+
+agent_name: system.digest.agent
+agent_type: horizontal
+description: "Writes the end-of-run narrative digest (summary, open items, task headlines) from deterministic run facts."
+enabled: true
+chat_enabled: false
+version: "1.0.0"
+model:
+  name: "quick"
+  temperature: 0.0
+  max_tokens: 2000
+keywords: []
+tools: []
+max_input_length: 32000
+max_budget_usd: 0.05
+produces_artifact: false
+execution:
+  mode: local
+invocation:
+  tier: system
+scope:
+  read: []
+  write: []
+interface:
+  input:
+    draft: object
+    objective: string
+    task_excerpts: list
+  output:
+    summary: string
+    open_items: list
+    headlines: list

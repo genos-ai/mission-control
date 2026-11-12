@@ -1187,7 +1187,7 @@ budgets:                                    # 88.4.1
   max_per_run_usd: 100.00
   max_per_month_usd: 2000.00
 digest:                                     # 88.3.1
-  agent_name: "mission.digest.agent"        # new catalog agent, config/agents/mission/digest/agent.yaml
+  agent_name: "system.digest.agent"        # new catalog agent, config/agents/system/digest/agent.yaml
   summary_max_chars: 2000
   max_outcomes: 50
   headline_max_chars: 200                   # outcome headline and open-item text truncation
@@ -1709,7 +1709,7 @@ class RunMemoryService(BaseService):
     def render_planning_brief(self, packet: RunContextPacket) -> str
     async def write_digest(self, run_id: str, *, status: MissionRunStatus, reason: MissionRunStatusReason | None,
                            narrator: DigestNarrator | None) -> MissionRunDigest
-        # narrator None -> DETERMINISTIC; the write_run_digest activity passes agents.mission.digest.generate_digest_narrative
+        # narrator None -> DETERMINISTIC; the write_run_digest activity passes agents.system.digest.generate_digest_narrative
     async def get_digest(self, mission_id: str, run_id: str) -> MissionRunDigest | None
 
 # services/context_assembler.py (changed): build(mission_id, task_definition, resolved_inputs, *, domain_tags: list[str] | None, mission_run_id: str | None) -> dict with keys project_context, task, inputs, and the optional layers code_map, history, learnings, previous_run_digest, context_delta in missions.context_packet.assembly_order. token_budget and code_map_max_tokens are deleted. _inject_context (dispatch/task_runner.py since 88.2.3) maps every key into resolved_inputs.
@@ -1932,7 +1932,7 @@ All endpoints return `ApiResponse`. `require_mission_operator(db, mission_id, us
 | `mc gate decide GATE_ID --action A [--reason R]` (unchanged surface) | decide endpoint; actions rendered from `allowed_actions` | 88.4.8 |
 | `admin reconcile run` / `admin schedules sync [--mission ID]` / `admin retention run [--policy P]` | the matching services, in-process (3.5 layering rule); no HTTP call to `/admin/schedules/sync` or `/admin/reconcile/run` | 88.1.10a, 88.1.13, 88.5.4 |
 | `admin schedule …` (deleted) | replaced by `admin schedules sync` | 88.1.3 |
-| `admin admin seed-catalog` | seeds `mission.digest.agent` (`python admin.py admin seed-catalog`) | 88.3.6 |
+| `admin admin seed-catalog` | seeds `system.digest.agent` (`python admin.py admin seed-catalog`) | 88.3.6 |
 
 All new groups expose themselves in `tree` automatically through the existing introspection. Rendering uses `report.py` primitives.
 
@@ -2002,7 +2002,7 @@ Before 88.4.5, `FinaliseRunResult.notification` and the tick's notifications are
 
 1. **Temporal server support for `ListScheduleMatchingTimes` and Workflow Update.** The dev machine reports `temporal version 1.6.2 (Server 1.30.2, UI 2.45.3)`, and CI pins `TEMPORAL_CLI_VERSION: "1.6.2"` (88.0.1) so the capability test runs against the same server. The SDK has the request type (`temporalio==1.20.0`). **Default:** 88.0.1 runs `temporal operator cluster describe` and `test_workflow_update_supported` (a probe workflow with an update handler and `execute_update`). If either RPC returns UNIMPLEMENTED, upgrade the local Temporal server. Never compute cron times locally, because croniter stays deleted. 88.0.1 also adds the Temporal test-server binary prefetch to CI.
 2. **Workflow definitions with steps that have no agent capability** (human input, decision, raw LLM call). How they map to Tasks is undefined. **Default:** `create_schedule` and `plan_mission_run` reject such definitions with `ValidationError` naming the steps. Manual WorkflowRun execution of them is unchanged.
-3. **Model for `mission.digest.agent`.** **Default:** the `quick` alias from `models.yaml`, declared in its `agent.yaml` and seeded with `python admin.py admin seed-catalog`. At runtime it changes only through `PATCH /admin/catalog/mission.digest.agent`.
+3. **Model for `system.digest.agent`.** **Default:** the `quick` alias from `models.yaml`, declared in its `agent.yaml` and seeded with `python admin.py admin seed-catalog`. At runtime it changes only through `PATCH /admin/catalog/system.digest.agent`.
 4. **Telegram bot username for link instructions.** **Default:** read through `getMe` at bot startup and shown by `mc notify link-telegram`. It is not configured.
 
 ### 3.8 Task failure evidence and the execution boundary (decision 15)

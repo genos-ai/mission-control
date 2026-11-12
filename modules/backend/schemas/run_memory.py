@@ -1,8 +1,9 @@
-"""Run memory schemas (Plan 88, 88.3.5).
+"""Run memory schemas (Plan 88, 88.3.5, 88.3.6).
 
 The run context packet: what run N carries forward from run N-1, namely
 the previous run's digest and the Mission Context Document (MCD) changes
-between the two runs' start watermarks.
+between the two runs' start watermarks. Also the digest agent's output type,
+kept here so services never import the agents layer.
 """
 
 from pydantic import BaseModel
@@ -46,3 +47,25 @@ class RunContextPacket(BaseModel):
     is_first_run: bool
     previous_run_digest: PreviousRunDigest | None
     context_delta: ContextDelta | None
+
+
+class DigestOpenItemOut(BaseModel):
+    """One open item the digest agent reports, citing the task it came from."""
+
+    text: str
+    source_task_id: str | None
+
+
+class DigestHeadlineOut(BaseModel):
+    """A one-line headline for one task of the run."""
+
+    task_id: str
+    headline: str
+
+
+class DigestNarrative(BaseModel):
+    """The digest agent's output: the narrative half of a run digest."""
+
+    summary: str
+    open_items: list[DigestOpenItemOut]
+    headlines: list[DigestHeadlineOut]

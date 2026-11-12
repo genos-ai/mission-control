@@ -46,7 +46,7 @@ Line references were verified at `a28ca771`. Backend and config are identical to
 
 ```yaml
 digest:
-  agent_name: "mission.digest.agent"   # catalog agent, config/agents/mission/digest/agent.yaml
+  agent_name: "system.digest.agent"   # catalog agent, config/agents/system/digest/agent.yaml
   summary_max_chars: 2000
   max_outcomes: 50
   headline_max_chars: 200              # outcome headline and open-item text truncation
@@ -631,11 +631,13 @@ In `tests/unit/backend/services/test_mission_plan_taskio.py`:
 ### 88.3.6 Digest agent in the catalog
 
 **Files**
-- create `config/agents/mission/digest/agent.yaml`
-- create `config/prompts/agents/mission/digest/system.md`
-- create `agents/mission/digest/__init__.py` (docstring only) and `agents/mission/digest/agent.py`
+- create `config/agents/system/digest/agent.yaml`
+- create `config/prompts/agents/system/digest/system.md`
+- create `agents/system/digest/__init__.py` (docstring only) and `agents/system/digest/agent.py`
 - modify `schemas/run_memory.py` (`DigestNarrative`)
 - modify `temporal/worker.py` (startup check)
+
+**Deviation (owner decision, recorded at implementation):** the agent is `system.digest.agent` with invocation tier `system`, mirroring `system.summarization.agent`, and declares `keywords: []` so the keyword chat router cannot route to it, like every other `system.*` agent. Non-force `seed-catalog` was changed in the prerequisite commit 88.3.6a to insert agents missing from the DB; before that it returned early on a non-empty catalog.
 
 **Current state:** no digest agent exists.
 - The nearest pattern is `agents/system/summarization/agent.py:51-59` (`create_agent` with `_build_model`, `assemble_instructions` and a pydantic `output_type`), and `config/agents/system/summarization/agent.yaml`.
@@ -647,7 +649,7 @@ In `tests/unit/backend/services/test_mission_plan_taskio.py`:
 1. **`agent.yaml`.** `produces_artifact` is false, because the digest's single store is `mission_run_digests`; an artifact copy would duplicate it and drift. The model is the `quick` alias (contract 3.7 item 3), which `core/model_builder.py:136-150` resolves.
 
 ```yaml
-agent_name: mission.digest.agent
+agent_name: system.digest.agent
 agent_type: horizontal
 description: "Writes the end-of-run narrative digest (summary, open items, task headlines) from deterministic run facts."
 enabled: true
@@ -657,7 +659,7 @@ model:
   name: "quick"
   temperature: 0.0
   max_tokens: 2000
-keywords: [digest, summary, run]
+keywords: []
 tools: []
 max_input_length: 32000
 max_budget_usd: 0.05
@@ -708,9 +710,9 @@ async def generate_digest_narrative(*, draft: dict, objective: str | None, task_
     """Run the digest agent once; return its output and the recorded cost in USD."""
 ```
 
-   - Build `Agent(_build_model(get_registry().get("mission.digest.agent").model), instructions=assemble_instructions("mission", "digest"), output_type=DigestNarrative, output_retries=cfg.digest.agent_output_retries)`, with `cfg = get_app_config().missions`.
+   - Build `Agent(_build_model(get_registry().get("system.digest.agent").model), instructions=assemble_instructions("system", "digest"), output_type=DigestNarrative, output_retries=cfg.digest.agent_output_retries)`, with `cfg = get_app_config().missions`.
    - Add an `@agent.output_validator` that raises `ModelRetry` when `len(summary) > cfg.digest.summary_max_chars`, when any `source_task_id` (not None) or `headline.task_id` is not in `{e["task_id"] for e in task_excerpts}`, or when any headline is longer than `cfg.digest.headline_max_chars`.
-   - After the run, compute the cost with `extract_usage` and `compute_cost_usd` as `agent_executor.py:320-330` does, then await `record_llm_call(session_id=session_id, mission_id=mission_id, agent_name="mission.digest.agent", agent_role="horizontal", model=<resolved model name>, usage=result.usage(), cost_usd=cost, mission_run_id=mission_run_id, task_id=None)`.
+   - After the run, compute the cost with `extract_usage` and `compute_cost_usd` as `agent_executor.py:320-330` does, then await `record_llm_call(session_id=session_id, mission_id=mission_id, agent_name="system.digest.agent", agent_role="horizontal", model=<resolved model name>, usage=result.usage(), cost_usd=cost, mission_run_id=mission_run_id, task_id=None)`.
    - Catch `UnexpectedModelBehavior`, `ModelHTTPError`, `UsageLimitExceeded` (all from `pydantic_ai.exceptions`) and `ProviderError` (`core/exceptions.py:110`), and raise `ExternalServiceError(f"digest agent failed: {type(e).__name__}") from e`. Nothing else is caught.
    - Return `(result.output, cost)`.
 
@@ -723,19 +725,19 @@ async def generate_digest_narrative(*, draft: dict, objective: str | None, task_
 
 5. **Worker startup check.** In `temporal/worker.py` `start_worker()`, before `Worker(...)` is constructed, load `get_app_config().missions.digest.agent_name` with `AgentCatalogService.get_by_name` inside `AgentCatalogService.factory()`. The `NotFoundError` it raises for a missing row propagates, and the worker does not start. Contract 3.4.6 assigns this check to worker startup.
 
-6. **Seeding.** Run `python admin.py admin seed-catalog` without `--force`; it inserts the missing row and leaves existing rows untouched.
+6. **Seeding.** Run `python admin.py admin seed-catalog` without `--force`; since 88.3.6a it inserts the missing row and leaves existing rows untouched. Order on a running stack: restart the API, seed, `python admin.py catalog sync-yaml --check`, then restart the worker (its startup check fails closed without the row).
 
 **Tests**: `tests/unit/backend/agents/test_digest_agent.py`, using pydantic-ai `TestModel` and `FunctionModel`
 - `test_output_validator_rejects_unknown_task_id`.
 - `test_output_validator_rejects_long_summary`.
 - `test_records_llm_call_with_run_id`: patch `record_llm_call` and assert `mission_run_id`, `task_id=None` and `agent_name`.
 - `test_model_failure_raises_external_service_error`: a `FunctionModel` that raises `ModelHTTPError` gives `ExternalServiceError`.
-- `test_catalog_yaml_valid`: load the yaml through `AgentConfigSchema` (`schemas/agent_config.py:134`); `agent_name == "mission.digest.agent"` and `produces_artifact is False`.
+- `test_catalog_yaml_valid`: load the yaml through `AgentConfigSchema` (`schemas/agent_config.py:134`); `agent_name == "system.digest.agent"` and `produces_artifact is False`.
 
 In `tests/unit/backend/temporal/test_worker_startup.py`:
 - `test_worker_refuses_start_without_digest_agent`: with `get_by_name` raising `NotFoundError`, `start_worker()` raises before `Worker` is constructed.
 
-**Done when:** these tests pass, and after seeding `curl -s localhost:$PORT/api/v1/catalog/agents/mission.digest.agent` returns `ApiResponse` with `data.agent_name == "mission.digest.agent"`.
+**Done when:** these tests pass, and after seeding `curl -s localhost:$PORT/api/v1/catalog/agents/system.digest.agent` returns `ApiResponse` with `data.agent_name == "system.digest.agent"`.
 
 ---
 
@@ -845,7 +847,7 @@ async def write_run_digest(input: WriteDigestInput) -> DigestResult:
     5. Return DigestResult(digest_id=digest.id, generator=digest.generator.value)."""
 ```
 
-   Its policy key is `write_digest` (`heartbeat_timeout_seconds: 60`). The import of `generate_digest_narrative` from `agents/mission/digest/agent.py` is in the activity module, so the services import contract holds.
+   Its policy key is `write_digest` (`heartbeat_timeout_seconds: 60`). The import of `generate_digest_narrative` from `agents/system/digest/agent.py` is in the activity module, so the services import contract holds.
 
 **Tests**
 
