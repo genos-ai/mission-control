@@ -7,18 +7,22 @@ learnings. No LLM — pure deterministic pattern matching (P2).
 """
 
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import AsyncGenerator
 
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.backend.core.config import get_app_config
 from modules.backend.core.domain_tags import validate_tags
 from modules.backend.core.logging import get_logger
+from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import (
     ExecutionRecord,
     TaskAttempt,
     TaskAttemptStatus,
     TaskExecution,
+    TaskExecutionStatus,
 )
 from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
 from modules.backend.repositories.mission_learning import MissionLearningRepository
@@ -99,24 +103,15 @@ async def _fire_embed_direct(source_table: str, source_id: str) -> None:
 
 
 def _load_learning_config() -> dict:
-    """Load knowledge.learnings config with safe defaults."""
-    try:
-        from modules.backend.core.config import get_app_config
-
-        cfg = get_app_config().missions.knowledge.learnings
-        return {
-            "min_occurrence": cfg.min_occurrence_for_extraction,
-            "promotion_threshold": cfg.promotion_confidence_threshold,
-            "promotion_min_missions": cfg.promotion_min_missions,
-            "dedup_threshold": cfg.dedup_similarity_threshold,
-        }
-    except Exception:
-        return {
-            "min_occurrence": 2,
-            "promotion_threshold": 0.7,
-            "promotion_min_missions": 2,
-            "dedup_threshold": 0.92,
-        }
+    """Load knowledge.learnings config. Missing config fails fast (no fallbacks)."""
+    cfg = get_app_config().missions.knowledge.learnings
+    return {
+        "min_occurrence": cfg.min_occurrence_for_extraction,
+        "promotion_threshold": cfg.promotion_confidence_threshold,
+        "promotion_min_missions": cfg.promotion_min_missions,
+        "dedup_threshold": cfg.dedup_similarity_threshold,
+        "extraction_window_days": cfg.extraction_window_days,
+    }
 
 
 class MissionLearningService(BaseService):
@@ -305,14 +300,17 @@ class MissionLearningExtractor:
         """
         config = _load_learning_config()
         min_occurrence = config["min_occurrence"]
+        window_start = utc_now() - timedelta(days=config["extraction_window_days"])
 
-        # Load all failed attempts with their task execution context
+        # Failed attempts inside the extraction window. Evidence older than the
+        # window stays on existing learnings through the evidence union.
         result = await self._session.execute(
             select(TaskAttempt, TaskExecution)
             .join(TaskExecution, TaskAttempt.task_execution_id == TaskExecution.id)
             .join(ExecutionRecord, TaskExecution.execution_record_id == ExecutionRecord.id)
             .where(ExecutionRecord.mission_id == mission_id)
             .where(TaskAttempt.status == TaskAttemptStatus.FAILED)
+            .where(TaskAttempt.created_at >= window_start)
             .order_by(desc(TaskAttempt.created_at))
         )
         rows = result.all()
@@ -323,7 +321,8 @@ class MissionLearningExtractor:
         # Group by (agent_name, kind_key)
         groups: dict[str, list[tuple]] = {}
         for attempt, execution in rows:
-            tier = attempt.failure_tier or "unknown"
+            # .value: str-mixin enums format as "FailureTier.X", not the tier string
+            tier = attempt.failure_tier.value if attempt.failure_tier else "unknown"
             agent = execution.agent_name or "unknown"
             key = f"{agent}::{tier}"
             groups.setdefault(key, []).append((attempt, execution))
@@ -331,16 +330,20 @@ class MissionLearningExtractor:
         created: list[MissionLearning] = []
 
         for key, items in groups.items():
-            if len(items) < min_occurrence:
-                continue
-
             agent_name, failure_tier = key.split("::", 1)
-            first_attempt, first_execution = items[0]
 
             # Collect evidence
             attempt_ids = [a.id for a, _ in items]
-            execution_ids = list({e.id for _, e in items})
+            execution_ids = list(dict.fromkeys(e.id for _, e in items))
             domain_tags = list({t for _, e in items for t in (e.domain_tags or [])})
+
+            existing = await self._learning_repo.find_failure_learning(
+                mission_id,
+                agent_name,
+                failure_tier,
+            )
+            if not existing and len(items) < min_occurrence:
+                continue
 
             # Check for retry strategy: same agent+domain succeeded after failures
             has_success = await self._check_success_after_failures(
@@ -354,34 +357,35 @@ class MissionLearningExtractor:
                 if has_success
                 else LearningKind.FAILURE_PATTERN.value
             )
-            title = f"{agent_name} — {failure_tier} failures ({len(items)}x)"
+
+            def title_fn(count: int, _agent: str = agent_name, _tier: str = failure_tier) -> str:
+                return f"{_agent} — {_tier} failures ({count}x)"
+
+            if existing:
+                # Dedup: occurrence_count is derived from the evidence union,
+                # so re-reading the same attempts does not inflate it.
+                learning_id = existing.id
+                count = await self._learning_repo.merge_evidence(
+                    learning_id,
+                    {
+                        "task_attempt_ids": attempt_ids,
+                        "execution_ids": execution_ids,
+                        "failure_tiers": [failure_tier],
+                    },
+                    kind=kind,
+                    confidence_fn=self._compute_confidence,
+                    title_fn=title_fn,
+                )
+                logger.debug(
+                    "Learning dedup: merged evidence",
+                    extra={"learning_id": learning_id, "occurrence_count": count},
+                )
+                continue
+
+            title = title_fn(len(items))
             body = self._build_body(items)
             recommendation = self._build_recommendation(items, has_success)
             confidence = self._compute_confidence(len(items))
-
-            # Dedup: check for existing learning with same agent + kind
-            existing = await self._learning_repo.find_by_agent_and_kind(
-                mission_id,
-                agent_name,
-                kind,
-            )
-            if existing:
-                # Increment occurrence instead of creating duplicate
-                await self._learning_repo.increment_occurrence(
-                    existing[0].id,
-                    new_evidence={
-                        "task_attempt_ids": attempt_ids,
-                        "execution_ids": execution_ids,
-                    },
-                )
-                logger.debug(
-                    "Learning dedup: incremented occurrence",
-                    extra={
-                        "learning_id": existing[0].id,
-                        "new_count": existing[0].occurrence_count + 1,
-                    },
-                )
-                continue
 
             learning = await self._learning_repo.create(
                 mission_id=mission_id,
@@ -427,7 +431,7 @@ class MissionLearningExtractor:
                 and_(
                     ExecutionRecord.mission_id == mission_id,
                     TaskExecution.agent_name == agent_name,
-                    TaskExecution.status == "completed",
+                    TaskExecution.status == TaskExecutionStatus.COMPLETED,
                 )
             )
         )

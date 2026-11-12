@@ -1,16 +1,19 @@
 """
 Integration tests for MissionLearningService + MissionLearningExtractor.
 
-Real database, no mocks (P12). Tests CRUD, dedup via occurrence increment,
+Real database, no mocks (P12). Tests CRUD, idempotent evidence-derived dedup,
 promote/retract, contradiction detection, and the deterministic extractor.
 """
 
+from datetime import timedelta
 from uuid import UUID, uuid5
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core import security
+from modules.backend.core.config import get_app_config
+from modules.backend.core.utils import utc_now
 from modules.backend.models.execution_record import (
     ExecutionRecord,
     ExecutionRecordStatus,
@@ -37,6 +40,9 @@ _EXEC_LEARN_001 = str(uuid5(_TEST_NS, "exec:learn-001"))
 _EXEC_LEARN_002 = str(uuid5(_TEST_NS, "exec:learn-002"))
 _TEX_LEARN_001 = str(uuid5(_TEST_NS, "tex:learn-001"))
 _TEX_LEARN_002 = str(uuid5(_TEST_NS, "tex:learn-002"))
+_TEX_LEARN_003 = str(uuid5(_TEST_NS, "tex:learn-003"))
+_EXEC_LEARN_004 = str(uuid5(_TEST_NS, "exec:learn-004"))
+_TEX_LEARN_004 = str(uuid5(_TEST_NS, "tex:learn-004"))
 
 
 @pytest.fixture
@@ -128,6 +134,35 @@ async def execution_with_failures(
 
     await db_session.flush()
     return record
+
+
+async def _failed_execution(
+    db_session: AsyncSession,
+    mission: Mission,
+    test_session: Session,
+    *,
+    agent_name: str,
+) -> TaskExecution:
+    """A FAILED task execution with no attempts; callers add the attempts."""
+    record = ExecutionRecord(
+        id=_EXEC_LEARN_004,
+        mission_id=mission.id,
+        session_id=test_session.id,
+        objective_statement="Extractor scenario",
+        status=ExecutionRecordStatus.COMPLETED,
+    )
+    db_session.add(record)
+    await db_session.flush()
+    tex = TaskExecution(
+        id=_TEX_LEARN_004,
+        execution_record_id=record.id,
+        task_id=str(uuid5(_TEST_NS, "task:learn-004")),
+        agent_name=agent_name,
+        status=TaskExecutionStatus.FAILED,
+    )
+    db_session.add(tex)
+    await db_session.flush()
+    return tex
 
 
 # ── MissionLearningService ───────────────────────────────────
@@ -337,7 +372,7 @@ class TestMissionLearningExtractor:
         assert len(unique_agent) == 0
 
     @pytest.mark.asyncio
-    async def test_dedup_increments_occurrence(
+    async def test_repeat_extraction_does_not_inflate_count(
         self,
         db_session: AsyncSession,
         mission: Mission,
@@ -345,13 +380,142 @@ class TestMissionLearningExtractor:
     ):
         extractor = MissionLearningExtractor(db_session)
 
-        # First extraction
         created1 = await extractor.extract_for_mission(mission.id)
-        assert len(created1) >= 1
+        assert len(created1) == 1
+        learning = created1[0]
+        await db_session.refresh(learning)
+        before = (learning.occurrence_count, learning.confidence, learning.updated_at)
 
-        # Second extraction (same data) — should dedup
         created2 = await extractor.extract_for_mission(mission.id)
-        assert len(created2) == 0  # no new learnings
+        assert created2 == []
+        await db_session.refresh(learning)
+        after = (learning.occurrence_count, learning.confidence, learning.updated_at)
+
+        assert after == before
+        assert learning.occurrence_count == 3
+        assert learning.evidence["failure_tiers"] == ["tier_1_structural"]
+
+    @pytest.mark.asyncio
+    async def test_new_failure_increments_count_by_exactly_one(
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        execution_with_failures: ExecutionRecord,
+    ):
+        extractor = MissionLearningExtractor(db_session)
+        learning = (await extractor.extract_for_mission(mission.id))[0]
+        await db_session.refresh(learning)
+        count_before = learning.occurrence_count
+
+        db_session.add(
+            TaskAttempt(
+                task_execution_id=_TEX_LEARN_001,
+                attempt_number=4,
+                status=TaskAttemptStatus.FAILED,
+                failure_tier="tier_1_structural",
+                failure_reason="Validation failed: error 3",
+            )
+        )
+        await db_session.flush()
+
+        assert await extractor.extract_for_mission(mission.id) == []
+        await db_session.refresh(learning)
+        assert learning.occurrence_count == count_before + 1
+        assert learning.confidence == pytest.approx(
+            MissionLearningExtractor._compute_confidence(count_before + 1)
+        )
+        assert f"({count_before + 1}x)" in learning.title
+
+    @pytest.mark.asyncio
+    async def test_kind_flip_updates_existing_learning(
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        execution_with_failures: ExecutionRecord,
+    ):
+        extractor = MissionLearningExtractor(db_session)
+        learning = (await extractor.extract_for_mission(mission.id))[0]
+        assert learning.kind == LearningKind.FAILURE_PATTERN.value
+        learning_id = learning.id
+
+        db_session.add(
+            TaskExecution(
+                id=_TEX_LEARN_003,
+                execution_record_id=execution_with_failures.id,
+                task_id=str(uuid5(_TEST_NS, "task:learn-003")),
+                agent_name="software.quality.agent",
+                status=TaskExecutionStatus.COMPLETED,
+                domain_tags=["quality"],
+            )
+        )
+        await db_session.flush()
+
+        assert await extractor.extract_for_mission(mission.id) == []
+        await db_session.refresh(learning)
+        assert learning.id == learning_id
+        assert learning.kind == LearningKind.RETRY_STRATEGY.value
+        rows = await MissionLearningService(db_session).list_by_mission(mission.id, status=None)
+        assert [r.id for r in rows] == [learning_id]
+
+    @pytest.mark.asyncio
+    async def test_two_tiers_produce_two_learnings(
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        test_session: Session,
+    ):
+        tex = await _failed_execution(db_session, mission, test_session, agent_name="tiered.agent")
+        for i, tier in enumerate(
+            ["tier_1_structural", "tier_1_structural", "tier_2_quality", "tier_2_quality"]
+        ):
+            db_session.add(
+                TaskAttempt(
+                    task_execution_id=tex.id,
+                    attempt_number=i + 1,
+                    status=TaskAttemptStatus.FAILED,
+                    failure_tier=tier,
+                    failure_reason=f"fail {i}",
+                )
+            )
+        await db_session.flush()
+
+        created = await MissionLearningExtractor(db_session).extract_for_mission(mission.id)
+
+        tiered = [c for c in created if "tiered.agent" in c.agent_names]
+        assert len(tiered) == 2
+        assert {tuple(c.evidence["failure_tiers"]) for c in tiered} == {
+            ("tier_1_structural",),
+            ("tier_2_quality",),
+        }
+        assert all(c.occurrence_count == 2 for c in tiered)
+
+    @pytest.mark.asyncio
+    async def test_window_excludes_old_attempts_from_creation(
+        self,
+        db_session: AsyncSession,
+        mission: Mission,
+        test_session: Session,
+    ):
+        window_days = get_app_config().missions.knowledge.learnings.extraction_window_days
+        old = utc_now() - timedelta(days=window_days + 1)
+        tex = await _failed_execution(db_session, mission, test_session, agent_name="old.agent")
+        for i in range(3):
+            db_session.add(
+                TaskAttempt(
+                    task_execution_id=tex.id,
+                    attempt_number=i + 1,
+                    status=TaskAttemptStatus.FAILED,
+                    failure_tier="tier_1_structural",
+                    failure_reason=f"old fail {i}",
+                    created_at=old,
+                    updated_at=old,
+                )
+            )
+        await db_session.flush()
+
+        created = await MissionLearningExtractor(db_session).extract_for_mission(mission.id)
+
+        assert [c for c in created if "old.agent" in c.agent_names] == []
 
     @pytest.mark.asyncio
     async def test_confidence_formula(

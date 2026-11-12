@@ -5,11 +5,16 @@ Data access for the mission_learnings table. Structured queries only —
 all vector operations go through EmbeddingRepository.
 """
 
+from collections.abc import Callable
+
 from sqlalchemy import and_, desc, func, select, update
 
 from modules.backend.core.utils import utc_now
-from modules.backend.models.mission_learning import LearningStatus, MissionLearning
+from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
 from modules.backend.repositories.base import BaseRepository
+
+_FAILURE_KINDS = (LearningKind.FAILURE_PATTERN.value, LearningKind.RETRY_STRATEGY.value)
+_EVIDENCE_ID_KEYS = ("task_attempt_ids", "execution_ids", "failure_tiers", "artifact_ids")
 
 
 class MissionLearningRepository(BaseRepository[MissionLearning]):
@@ -115,59 +120,81 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         result = await self.session.execute(query)
         return result.scalar_one()
 
-    async def find_by_agent_and_kind(
+    async def find_failure_learning(
         self,
         mission_id: str,
         agent_name: str,
-        kind: str,
-        *,
-        status: str = LearningStatus.ACTIVE.value,
-    ) -> list[MissionLearning]:
-        """Find learnings for a specific agent and kind (for dedup)."""
+        failure_tier: str,
+    ) -> MissionLearning | None:
+        """Find the active failure learning for one (agent, failure tier) group.
+
+        Matches FAILURE_PATTERN and RETRY_STRATEGY so a kind flip updates the
+        existing row instead of creating a duplicate. agent_names and
+        evidence.failure_tiers are post-filtered in Python for JSON compat.
+        Newest updated_at first; returns the first match or None.
+        """
         result = await self.session.execute(
             select(MissionLearning)
             .where(
                 and_(
                     MissionLearning.mission_id == mission_id,
-                    MissionLearning.kind == kind,
-                    MissionLearning.status == status,
+                    MissionLearning.status == LearningStatus.ACTIVE.value,
+                    MissionLearning.kind.in_(_FAILURE_KINDS),
                 )
             )
-            .order_by(desc(MissionLearning.confidence))
+            .order_by(desc(MissionLearning.updated_at))
         )
-        rows = list(result.scalars().all())
-        # Post-filter agent_names for SQLite JSON compat
-        return [r for r in rows if agent_name in (r.agent_names or [])]
+        for row in result.scalars().all():
+            if agent_name not in (row.agent_names or []):
+                continue
+            if failure_tier in (row.evidence or {}).get("failure_tiers", []):
+                return row
+        return None
 
-    async def increment_occurrence(
+    async def merge_evidence(
         self,
         learning_id: str,
+        new_evidence: dict,
         *,
-        new_evidence: dict | None = None,
+        kind: str,
+        confidence_fn: Callable[[int], float],
+        title_fn: Callable[[int], str],
     ) -> int:
-        """Increment occurrence_count for an existing learning.
+        """Union new evidence into a learning and re-derive its count-based fields.
 
-        Optionally merges new evidence IDs into the existing evidence.
-        Returns the updated occurrence count.
+        occurrence_count is len(evidence["task_attempt_ids"]), so merging the
+        same evidence twice is a no-op. updated_at moves only when evidence,
+        kind, confidence or title actually changed. Returns occurrence_count.
         """
         learning = await self.get_by_id(learning_id)
 
-        learning.occurrence_count += 1
-        learning.updated_at = utc_now()
+        existing = learning.evidence or {}
+        merged = dict(existing)
+        for key in _EVIDENCE_ID_KEYS:
+            new_ids = new_evidence.get(key, [])
+            if new_ids:
+                merged[key] = list(dict.fromkeys(existing.get(key, []) + new_ids))
 
-        # Merge evidence if provided
-        if new_evidence:
-            existing = learning.evidence or {}
-            for key in ("task_attempt_ids", "execution_ids", "failure_tiers", "artifact_ids"):
-                new_ids = new_evidence.get(key, [])
-                if new_ids:
-                    existing_ids = existing.get(key, [])
-                    merged = list(dict.fromkeys(existing_ids + new_ids))  # dedup, preserve order
-                    existing[key] = merged
-            learning.evidence = existing
+        count = len(merged.get("task_attempt_ids", []))
+        confidence = confidence_fn(count)
+        title = title_fn(count)
 
-        await self.session.flush()
-        return learning.occurrence_count
+        changed = (
+            merged != existing
+            or learning.kind != kind
+            or learning.confidence != confidence
+            or learning.title != title
+            or learning.occurrence_count != count
+        )
+        if changed:
+            learning.evidence = merged
+            learning.kind = kind
+            learning.confidence = confidence
+            learning.title = title
+            learning.occurrence_count = count
+            learning.updated_at = utc_now()
+            await self.session.flush()
+        return count
 
     async def promote(
         self,
