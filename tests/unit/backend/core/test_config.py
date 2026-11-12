@@ -7,7 +7,10 @@ Failure scenarios use tmp_path to create controlled filesystems.
 No mocking — the config loader is the system under test.
 """
 
+import copy
+
 import pytest
+from pydantic import ValidationError
 
 from modules.backend.core.config import (
     AppConfig,
@@ -28,6 +31,12 @@ from modules.backend.core.config_schema import (
     GatewaySchema,
     LoggingSchema,
     SecuritySchema,
+)
+from modules.backend.core.config_schema_missions import (
+    CompactionSchema,
+    ContextPacketSchema,
+    KnowledgeLearningsSchema,
+    MissionsSchema,
 )
 
 
@@ -348,3 +357,52 @@ class TestGetServerBaseUrl:
         _, timeout = get_server_base_url()
         assert isinstance(timeout, float)
         assert timeout > 0
+
+
+# =============================================================================
+# missions.yaml: memory between runs (Plan 88 step 88.3.1)
+# =============================================================================
+
+
+def _missions_data() -> dict:
+    """The live missions.yaml as a dict, for mutation in negative tests."""
+    return copy.deepcopy(load_yaml_config("missions.yaml"))
+
+
+class TestMissionsMemoryConfig:
+    """Digest, context packet, compaction and learnings window keys."""
+
+    def test_context_packet_assembly_order_rejects_duplicate(self):
+        data = _missions_data()["context_packet"]
+        data["assembly_order"] = ["code_map", "code_map", "learnings", "history", "context_delta"]
+        with pytest.raises(ValidationError):
+            ContextPacketSchema(**data)
+
+    def test_context_packet_assembly_order_rejects_missing_layer(self):
+        data = _missions_data()["context_packet"]
+        data["assembly_order"] = ["previous_run_digest", "context_delta", "code_map", "learnings"]
+        with pytest.raises(ValidationError):
+            ContextPacketSchema(**data)
+
+    def test_missions_target_below_max_required(self):
+        data = _missions_data()
+        data["pcd_target_size_bytes"] = data["pcd_max_size_bytes"]
+        with pytest.raises(ValidationError):
+            MissionsSchema(**data)
+
+    def test_compaction_protected_roots_rejects_restricted(self):
+        data = _missions_data()["compaction"]
+        data["protected_roots"] = ["identity", "version"]
+        with pytest.raises(ValidationError):
+            CompactionSchema(**data)
+
+    def test_learnings_extraction_window_required(self):
+        data = _missions_data()["knowledge"]["learnings"]
+        del data["extraction_window_days"]
+        with pytest.raises(ValidationError):
+            KnowledgeLearningsSchema(**data)
+
+    def test_missions_yaml_loads(self):
+        missions = get_app_config().missions
+        assert missions.compaction.keep_recent_milestones == 5
+        assert missions.knowledge.learnings.extraction_window_days == 30

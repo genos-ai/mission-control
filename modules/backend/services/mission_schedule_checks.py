@@ -19,7 +19,7 @@ from temporalio.client import (
 )
 
 from modules.backend.core.config import get_app_config
-from modules.backend.core.config_schema import RecurrenceSchema
+from modules.backend.core.config_schema_missions import RecurrenceSchema
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.models.mission_schedule import MissionSchedule, MissionScheduleKind
 from modules.backend.repositories.workflow_definition import WorkflowDefinitionRepository

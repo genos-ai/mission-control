@@ -42,6 +42,7 @@ knowledge:
     promotion_min_missions: 2
     context_assembler_reserve_tokens: 1500
     context_assembler_max_entries: 5
+    extraction_window_days: 30          # learning extraction look-back window
     dedup_similarity_threshold: 0.92    # cosine; above = increment, not create
     evidence_render_limit: 20           # UI pagination only
 
@@ -68,3 +69,24 @@ recurrence:
   min_interval_seconds: 300                 # cron firing more often than this is rejected
   max_schedules_per_mission: 5
   objective_template_max_chars: 4000
+
+# =============================================================================
+# Memory between runs (Plan 88 Phase 3)
+# =============================================================================
+digest:
+  agent_name: "mission.digest.agent"   # catalog agent, config/agents/mission/digest/agent.yaml
+  summary_max_chars: 2000
+  max_outcomes: 50
+  headline_max_chars: 200              # outcome headline and open-item text truncation
+  task_excerpt_max_chars: 1500         # per-task output excerpt sent to the digest agent
+  agent_output_retries: 2              # pydantic-ai output_retries for the digest agent
+context_packet:
+  previous_digest_max_chars: 4000
+  context_delta_max_changes: 100
+  context_delta_max_tokens: 2000
+  context_delta_value_max_chars: 200
+  assembly_order: [previous_run_digest, context_delta, code_map, learnings, history]
+compaction:
+  decisions_max_age_days: 90
+  keep_recent_milestones: 5
+  protected_roots: [identity, guardrails, current_state]

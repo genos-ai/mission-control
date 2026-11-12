@@ -36,7 +36,6 @@ from modules.backend.core.config_schema import (
     GateSchema,
     GatewaySchema,
     LoggingSchema,
-    MissionsSchema,
     ModelsSchema,
     NotificationsSchema,
     ProvidersSchema,
@@ -46,6 +45,7 @@ from modules.backend.core.config_schema import (
     TemporalSchema,
     WorkflowsSchema,
 )
+from modules.backend.core.config_schema_missions import MissionsSchema
 
 
 def find_project_root() -> Path:

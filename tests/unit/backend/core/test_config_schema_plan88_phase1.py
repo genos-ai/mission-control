@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from modules.backend.core.config import get_app_config
-from modules.backend.core.config_schema import RecurrenceSchema, TemporalSchema
+from modules.backend.core.config_schema import TemporalSchema
+from modules.backend.core.config_schema_missions import RecurrenceSchema
 
 
 def _recurrence_data() -> dict:

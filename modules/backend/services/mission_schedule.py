@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio.service import RPCError
 
 from modules.backend.core.config import get_app_config
-from modules.backend.core.config_schema import RecurrenceSchema
+from modules.backend.core.config_schema_missions import RecurrenceSchema
 from modules.backend.core.exceptions import (
     ConflictError,
     ExternalServiceError,

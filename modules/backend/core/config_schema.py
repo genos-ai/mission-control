@@ -302,7 +302,7 @@ class SessionsSchema(_StrictBase):
 
 
 # =============================================================================
-# missions.yaml
+# missions.yaml (MissionsSchema and its nested schemas: config_schema_missions.py)
 # =============================================================================
 
 
@@ -477,105 +477,6 @@ class NotificationsSchema(_StrictBase):
     notify_on_completion: bool = True
     notify_on_failure: bool = True
     notify_channels: list[str] = Field(default_factory=lambda: ["telegram"])
-
-
-# =============================================================================
-# projects.yaml
-# =============================================================================
-
-
-class KnowledgeEmbeddingSchema(_StrictBase):
-    """Embedding provider configuration."""
-
-    provider: str = "openai"  # openai | voyage | local
-    model: str = "text-embedding-3-small"
-    dimensions: int = 1536
-    version: int = 1  # bumps trigger backfill
-    backfill_batch_size: int = 50
-    default_search_mode: str = "hybrid"
-    fail_open: bool = True
-
-
-class KnowledgeLearningsSchema(_StrictBase):
-    """Learnings extraction and promotion configuration."""
-
-    min_occurrence_for_extraction: int = 2
-    promotion_confidence_threshold: float = 0.7
-    promotion_min_missions: int = 2
-    context_assembler_reserve_tokens: int = 1500
-    context_assembler_max_entries: int = 5
-    dedup_similarity_threshold: float = 0.92
-    evidence_render_limit: int = 20
-
-
-class KnowledgeIntentSchema(_StrictBase):
-    """Intent capture configuration."""
-
-    auto_capture: bool = True
-    summary_max_chars: int = 160
-    dedup_similarity_threshold: float = 0.95
-
-
-class KnowledgeSessionMemorySchema(_StrictBase):
-    """Session rolling summary configuration."""
-
-    compression_threshold_messages: int = 50
-    summary_max_tokens: int = 8000
-
-
-class KnowledgeOfficerSchema(_StrictBase):
-    """Knowledge Officer agent configuration."""
-
-    budget_usd_per_run: float = 0.10
-    model: str = "haiku"
-
-
-class KnowledgeSchema(_StrictBase):
-    """Knowledge platform configuration (Plan 57)."""
-
-    enabled: bool = True
-    embedding: KnowledgeEmbeddingSchema = Field(default_factory=KnowledgeEmbeddingSchema)
-    learnings: KnowledgeLearningsSchema = Field(default_factory=KnowledgeLearningsSchema)
-    intent: KnowledgeIntentSchema = Field(default_factory=KnowledgeIntentSchema)
-    session_memory: KnowledgeSessionMemorySchema = Field(
-        default_factory=KnowledgeSessionMemorySchema
-    )
-    officer: KnowledgeOfficerSchema = Field(default_factory=KnowledgeOfficerSchema)
-
-
-class RecurrenceSchema(_StrictBase):
-    """Recurring mission schedule limits (Plan 88)."""
-
-    enabled: bool = Field(...)
-    default_catch_up_window_seconds: int = Field(..., ge=60)
-    max_catch_up_window_seconds: int = Field(..., ge=60)
-    min_interval_seconds: int = Field(..., ge=60)
-    max_schedules_per_mission: int = Field(..., ge=1)
-    objective_template_max_chars: int = Field(..., ge=100)
-
-    @model_validator(mode="after")
-    def _default_window_within_max(self) -> "RecurrenceSchema":
-        if self.default_catch_up_window_seconds > self.max_catch_up_window_seconds:
-            raise ValueError(
-                "missions.recurrence.default_catch_up_window_seconds must not exceed "
-                "max_catch_up_window_seconds"
-            )
-        return self
-
-
-class MissionsSchema(_StrictBase):
-    """Mission system configuration."""
-
-    default_budget_ceiling_usd: float | None = None
-    max_missions_per_owner: int = 50
-    pcd_max_size_bytes: int = 20_480  # 20KB
-    pcd_target_size_bytes: int = 15_360  # 15KB
-    pcd_prune_threshold_pct: int = 80
-    pcd_alert_threshold_pct: int = 90
-    history_summarize_after_days: int = 30
-    enable_context_assembly: bool = True
-    knowledge: KnowledgeSchema = Field(default_factory=KnowledgeSchema)
-    recurrence: RecurrenceSchema = Field(...)
 
 
 # =============================================================================
