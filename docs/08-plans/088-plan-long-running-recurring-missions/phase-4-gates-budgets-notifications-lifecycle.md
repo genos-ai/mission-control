@@ -11,7 +11,7 @@ The phase covers decisions 6, 7, 9 and 10. Every file:line below was checked aga
 
 **Entry criteria:** Phases 0 to 3 are merged to main. Stop if any of the following is false:
 
-1. **Migrations.** `python admin.py migrate current` reports `plan88_003`. `plan88_002` created `llm_calls.mission_run_id`, `llm_calls.task_id`, `ix_llm_calls_mission_run_id` and `ix_llm_calls_mission_created`.
+1. **Migrations.** `python admin.py migrate current` reports `plan88_003a` (88.3.4's data-only learning repair). `plan88_002` created `llm_calls.mission_run_id`, `llm_calls.task_id`, `ix_llm_calls_mission_run_id` and `ix_llm_calls_mission_created`.
 2. **Models.** `MissionRun`, `MissionSchedule`, `MissionRunDigest`, `GateMode`, `MissionMemberRole` and `MissionRunStateError` exist.
 3. **Operator rule.** `MissionService.is_operator(mission, user)` and `require_mission_operator` exist (88.0.9) and guard `PATCH /missions/{id}/plan`, the run endpoints (88.1.12) and the gate decide endpoint (88.0.13).
 4. **Workflow.** `MissionRunWorkflow` has `@workflow.init`, `_end_run(status, reason, detail)`, the module functions `_exec(fn, arg, p)` and `_cause_type(e)`, the handler-owned fields `_approved_seq`, `_pause_requested`, `_paused` and `_decision` (88.1.8), `_layer_boundary(self) -> str | None` (88.2.6, which holds the duration check), the `_gate(point, task_id)` seam returning `"continue"` (88.2.6) and `_maybe_continue_as_new` (88.2.7). It takes a `RunConfigSnapshot`, runs one `execute_plan_task` per task and contains no budget branch.
@@ -73,7 +73,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
   - Web: `types/mission.ts:19,40,48`, `hooks/use-mission-plan.ts:68-69,86,135`, `mission-edit-modal.tsx:18,31-32,45,93-104`, `plan-board-top-bar.tsx:60-62,129-133`, `mission-card.tsx:54,116-119`, `overview.tsx:62,148-152`, `costs-tab.tsx:57`, `new.tsx:43,68,148-160`.
 
 **Change**
-1. **Migration `plan88_004_budget_caps`** (`revision = "plan88_004"`, `down_revision = "plan88_003"`). It never calls `get_app_config()`. The backfill values are module constants:
+1. **Migration `plan88_004_budget_caps`** (`revision = "plan88_004"`, `down_revision = "plan88_003a"`). It never calls `get_app_config()`. The backfill values are module constants:
    ```python
    DEFAULT_PER_RUN_USD = 5.00  # missions.budgets.default_per_run_usd at plan88_004
    DEFAULT_PER_MONTH_USD = 100.00  # missions.budgets.default_per_month_usd at plan88_004
@@ -181,7 +181,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
 
 **Done when**
 - `rg -n "total_spent_usd|budget_usd_ceiling|budget_ceiling_usd|default_budget_ceiling_usd" modules config --glob '!modules/backend/migrations/**'` returns nothing.
-- `python admin.py migrate upgrade head`, then `python admin.py migrate downgrade plan88_003`, then `python admin.py migrate upgrade head` succeeds.
+- `python admin.py migrate upgrade head`, then `python admin.py migrate downgrade plan88_003a`, then `python admin.py migrate upgrade head` succeeds.
 - `cd modules/frontend && npm run build && npm run lint` passes.
 - The listed tests pass.
 
@@ -1084,7 +1084,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
 ```bash
 cd /Users/herman.young/development/mission-control
 python admin.py migrate upgrade head
-python admin.py migrate downgrade plan88_003 && python admin.py migrate upgrade head
+python admin.py migrate downgrade plan88_003a && python admin.py migrate upgrade head
 pytest tests/unit -q -p no:cacheprovider
 pytest tests/integration -q -p no:cacheprovider
 pytest tests/unit/backend/temporal -q -k "gate or budget or lifecycle or replay or patch_ids"

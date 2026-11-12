@@ -4,7 +4,7 @@ Run N must start knowing what run N-1 did, what changed in the Mission Context D
 
 **Entry criteria:** Phases 0, 1 and 2 are merged to `main`. Concretely:
 - `git status --porcelain` lists no changes under `modules/`, `config/`, `tests/`, `requirements*.txt`, `pyproject.toml` or `mc.py`/`admin.py`/`services.py`. Uncommitted work in progress is committed or stashed first. If such work is committed, re-verify by symbol the line citations in the files it touched before starting this phase.
-- `alembic heads` returns only `plan88_003`. Phase 3 adds no migration.
+- `alembic heads` returns only `plan88_003` at phase entry. Phase 3 adds no schema change; 88.3.4 adds the data-only revision `plan88_003a_learning_count_repair` (review follow-up), which repairs failure learnings inflated before the fix.
 - `plan88_002_mission_runs` is applied, so these exist: `mission_runs`, `mission_run_digests`, `context_changes.mission_run_id`, `ix_context_changes_context_version (context_id, version)`, `tasks.mission_run_id`, `task_executions.mission_run_id`, `task_executions.idempotency_key`, `llm_calls.mission_run_id` and `llm_calls.task_id`.
 - These symbols exist on `main`:
   - `MissionRunService.begin`, `plan` and `finalise` (88.1.7), with `begin` writing `context_version_start` and `previous_run_id`, and `finalise` writing `cost_usd` through `LlmLedgerRepository.sum_cost` (`repositories/llm_ledger.py`, 88.1.7);

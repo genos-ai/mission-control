@@ -361,6 +361,8 @@ class MissionLearningExtractor:
             def title_fn(count: int, _agent: str = agent_name, _tier: str = failure_tier) -> str:
                 return f"{_agent} — {_tier} failures ({count}x)"
 
+            recommendation = self._build_recommendation(items, has_success)
+
             if existing:
                 # Dedup: occurrence_count is derived from the evidence union,
                 # so re-reading the same attempts does not inflate it.
@@ -373,6 +375,7 @@ class MissionLearningExtractor:
                         "failure_tiers": [failure_tier],
                     },
                     kind=kind,
+                    recommendation=recommendation,
                     confidence_fn=self._compute_confidence,
                     title_fn=title_fn,
                 )
@@ -384,7 +387,6 @@ class MissionLearningExtractor:
 
             title = title_fn(len(items))
             body = self._build_body(items)
-            recommendation = self._build_recommendation(items, has_success)
             confidence = self._compute_confidence(len(items))
 
             learning = await self._learning_repo.create(

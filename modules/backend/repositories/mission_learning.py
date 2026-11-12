@@ -5,6 +5,7 @@ Data access for the mission_learnings table. Structured queries only —
 all vector operations go through EmbeddingRepository.
 """
 
+import math
 from collections.abc import Callable
 
 from sqlalchemy import and_, desc, func, select, update
@@ -15,6 +16,8 @@ from modules.backend.repositories.base import BaseRepository
 
 _FAILURE_KINDS = (LearningKind.FAILURE_PATTERN.value, LearningKind.RETRY_STRATEGY.value)
 _EVIDENCE_ID_KEYS = ("task_attempt_ids", "execution_ids", "failure_tiers", "artifact_ids")
+# confidence is Numeric(12, 6): a reloaded value differs from the float by < 1e-6.
+_CONFIDENCE_TOLERANCE = 1e-6
 
 
 class MissionLearningRepository(BaseRepository[MissionLearning]):
@@ -157,14 +160,17 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         new_evidence: dict,
         *,
         kind: str,
+        recommendation: str,
         confidence_fn: Callable[[int], float],
         title_fn: Callable[[int], str],
     ) -> int:
         """Union new evidence into a learning and re-derive its count-based fields.
 
         occurrence_count is len(evidence["task_attempt_ids"]), so merging the
-        same evidence twice is a no-op. updated_at moves only when evidence,
-        kind, confidence or title actually changed. Returns occurrence_count.
+        same evidence twice is a no-op. kind and recommendation are set together
+        so a kind flip never leaves the other kind's advice behind. updated_at
+        moves only when evidence, kind, recommendation, confidence or title
+        actually changed. Returns occurrence_count.
         """
         learning = await self.get_by_id(learning_id)
 
@@ -182,13 +188,15 @@ class MissionLearningRepository(BaseRepository[MissionLearning]):
         changed = (
             merged != existing
             or learning.kind != kind
-            or learning.confidence != confidence
+            or learning.recommendation != recommendation
+            or not math.isclose(learning.confidence, confidence, abs_tol=_CONFIDENCE_TOLERANCE)
             or learning.title != title
             or learning.occurrence_count != count
         )
         if changed:
             learning.evidence = merged
             learning.kind = kind
+            learning.recommendation = recommendation
             learning.confidence = confidence
             learning.title = title
             learning.occurrence_count = count

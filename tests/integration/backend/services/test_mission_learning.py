@@ -426,6 +426,13 @@ class TestMissionLearningExtractor:
         )
         assert f"({count_before + 1}x)" in learning.title
 
+        # Count 4 gives a confidence the Numeric(12, 6) column rounds; a sweep
+        # over the reloaded row must still see no change.
+        updated_at = learning.updated_at
+        assert await extractor.extract_for_mission(mission.id) == []
+        await db_session.refresh(learning)
+        assert learning.updated_at == updated_at
+
     @pytest.mark.asyncio
     async def test_kind_flip_updates_existing_learning(
         self,
@@ -436,6 +443,7 @@ class TestMissionLearningExtractor:
         extractor = MissionLearningExtractor(db_session)
         learning = (await extractor.extract_for_mission(mission.id))[0]
         assert learning.kind == LearningKind.FAILURE_PATTERN.value
+        failure_recommendation = learning.recommendation
         learning_id = learning.id
 
         db_session.add(
@@ -454,6 +462,8 @@ class TestMissionLearningExtractor:
         await db_session.refresh(learning)
         assert learning.id == learning_id
         assert learning.kind == LearningKind.RETRY_STRATEGY.value
+        assert learning.recommendation != failure_recommendation
+        assert learning.recommendation == "Retry with feedback: Fix the validation"
         rows = await MissionLearningService(db_session).list_by_mission(mission.id, status=None)
         assert [r.id for r in rows] == [learning_id]
 
