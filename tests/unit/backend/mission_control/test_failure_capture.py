@@ -573,7 +573,11 @@ async def test_refine_with_failed_task_finalises(db_session, test_user, monkeypa
 
     orchestrator = MissionPlanOrchestrator(db_session, event_bus=NoOpEventBus())
     refined = await orchestrator.refine(
-        plan.id, "Retry the failing work", str(test_user.id), mission_run_id=None
+        plan.id,
+        "Retry the failing work",
+        str(test_user.id),
+        mission_run_id=None,
+        mission_budget_usd=10.0,
     )
 
     assert planner.finalise_result is not None and planner.finalise_result["valid"]

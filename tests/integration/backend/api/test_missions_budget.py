@@ -5,6 +5,7 @@ any member reads the budget; only an owner or maintainer replaces the caps.
 """
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
@@ -27,6 +28,18 @@ async def _shared(db: AsyncSession, role: MissionMemberRole) -> Mission:
     await db.flush()
     await db.refresh(mission, ["members"])
     return mission
+
+
+async def _caps(db: AsyncSession, mission: Mission) -> tuple:
+    """The plan's stored caps, read from the table rather than the identity map."""
+    row = await db.execute(
+        text(
+            "SELECT budget_per_run_usd, budget_per_month_usd, budget_lifetime_usd "
+            "FROM mission_plans WHERE mission_id = :mid"
+        ),
+        {"mid": mission.id},
+    )
+    return tuple(row.one())
 
 
 async def test_get_budget_member_ok(client, db_session, test_user, test_user_2):
@@ -64,6 +77,7 @@ async def test_put_budget_maintainer_ok_envelope(client, db_session, test_user, 
     assert body["success"] is True
     data = body["data"]
     assert (data["per_run_usd"], data["per_month_usd"], data["lifetime_usd"]) == (2.0, 20.0, 200.0)
+    assert await _caps(db_session, mission) == (2.0, 20.0, 200.0)
 
 
 async def test_put_budget_invalid_caps_rejected(client, db_session, test_user, test_user_2):
@@ -74,7 +88,9 @@ async def test_put_budget_invalid_caps_rejected(client, db_session, test_user, t
         json={"per_run_usd": 10.0, "per_month_usd": 5.0, "lifetime_usd": None},
     )
 
-    assert resp.status_code in (400, 422), resp.text
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["message"] == "per-month cap must be at least the per-run cap"
+    assert await _caps(db_session, mission) == (5.0, 100.0, None)
 
 
 async def test_breach_serialised_lowercase(client, db_session, test_user, test_user_2):

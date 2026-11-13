@@ -502,6 +502,53 @@ async def test_objective_plan_prompt_carries_previous_run_brief(
     assert instructions.endswith("\n\n## Objective\nWrite the report")
 
 
+async def test_objective_plan_validates_against_run_headroom(
+    db_session_factory, gateway, owner, monkeypatch
+) -> None:
+    """88.4.1 review: the objective refine is validated against the run's headroom.
+
+    Per-run cap 5, per-month cap 6, 4 already spent this month by an earlier
+    run: the planner's budget is min(5 - 0, 6 - 4) = 2, not a workflow default.
+    """
+    user, mission, plan = await owner()
+    async with db_session_factory() as session:
+        await session.execute(
+            text(
+                "UPDATE mission_plans SET budget_per_run_usd = 5.0, "
+                "budget_per_month_usd = 6.0, budget_lifetime_usd = NULL WHERE id = :id"
+            ),
+            {"id": plan.id},
+        )
+        session.add(
+            LlmCall(
+                agent_name="test.agent",
+                agent_role="worker",
+                model="test-model",
+                provider="test",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=4.0,
+                mission_id=mission.id,
+                mission_run_id=None,
+            )
+        )
+        await session.commit()
+    run = await _start(db_session_factory, mission, user, objective="Write the report")
+    begun = await _begin(db_session_factory, run.id)
+
+    budgets: list[float] = []
+
+    async def fake_refine(self, plan_id, instructions, user_id, **kwargs):
+        budgets.append(kwargs["mission_budget_usd"])
+
+    monkeypatch.setattr(MissionPlanOrchestrator, "refine", fake_refine)
+    async with db_session_factory() as session:
+        result = await _svc(session).plan(run.id, begun.session_id)
+
+    assert result.status == "planned"
+    assert budgets == [pytest.approx(2.0)]
+
+
 async def test_plan_rejects_dependency_on_unfinished_task_of_other_run(
     db_session_factory, gateway, owner
 ) -> None:

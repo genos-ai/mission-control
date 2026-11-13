@@ -511,11 +511,9 @@ class AutonomousPostRunReviewer:
         """Return True if there's enough budget for the next wave.
 
         Uses observed-average cost estimation per §4.6 breaker #4.
-        Returns True (headroom OK) if no ceiling is set.
+        Every mission has caps (88.4.1), so ``budget_usd`` is this run's spend
+        plus its headroom; zero means the caps are exhausted, never unlimited.
         """
-        if context.budget_usd <= 0:
-            return True  # No ceiling — unlimited budget
-
         remaining = context.budget_usd - context.total_cost_usd
         if remaining <= 0:
             return False  # Already at or over ceiling

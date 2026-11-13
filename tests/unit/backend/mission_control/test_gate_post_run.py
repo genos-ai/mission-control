@@ -199,6 +199,18 @@ class TestBreakerBudgetHeadroom:
         assert decision.rule == "4-headroom"
 
     @pytest.mark.asyncio
+    async def test_exhausted_caps_with_no_run_spend_escalates(self, db_session: AsyncSession):
+        # Monthly or lifetime cap used up by earlier runs: this run spent 0
+        # and has 0 headroom, so budget_usd = 0 + 0 (supervisor_activities).
+        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
+        ctx = _context(budget_usd=0.0, total_cost_usd=0.0, proposed=2)
+
+        decision = await reviewer.review(ctx)
+
+        assert decision.action == GateAction.ESCALATE
+        assert decision.rule == "4-headroom"
+
+    @pytest.mark.asyncio
     async def test_headroom_sufficient(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
         ctx = _context(
@@ -316,10 +328,10 @@ class TestRulePlanExhausted:
 
 
 class TestCheckBudgetHeadroom:
-    def test_no_ceiling_returns_true(self, db_session: AsyncSession):
+    def test_zero_budget_is_exhausted_not_unlimited(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(budget_usd=0, total_cost_usd=100.0)
-        assert reviewer._check_budget_headroom(ctx, proposed_count=10) is True
+        ctx = _context(budget_usd=0, total_cost_usd=0.0)
+        assert reviewer._check_budget_headroom(ctx, proposed_count=1) is False
 
     def test_remaining_exceeds_estimate(self, db_session: AsyncSession):
         reviewer = AutonomousPostRunReviewer(

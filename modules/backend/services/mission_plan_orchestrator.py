@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ValidationError
 from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.events.types import MissionPlanRefinedEvent, SystemEvent
@@ -94,7 +93,7 @@ class MissionPlanOrchestrator(BaseService):
         user_id: str,
         *,
         mission_run_id: str | None,
-        mission_budget_usd: float | None = None,
+        mission_budget_usd: float,
     ) -> MissionPlan:
         """Refine the plan by delegating to the Planning Agent.
 
@@ -124,8 +123,8 @@ class MissionPlanOrchestrator(BaseService):
                 sees and reconciliation touches. None means the mission's
                 active run, or the backlog only when no run is active.
             mission_budget_usd: Budget to validate the new plan against.
-                Defaults to get_default_budget_usd() when None. Run and
-                Director callers pass the plan's per-run cap.
+                Required: the run planning path passes the run's headroom,
+                Director callers the plan's per-run cap.
 
         Returns:
             The refreshed MissionPlan with updated tasks and bumped
@@ -136,8 +135,6 @@ class MissionPlanOrchestrator(BaseService):
             ValidationError: If the Planning Agent returns an invalid
                 TaskPlan (fails plan_validator's 11 rules).
         """
-        mission_budget_usd = mission_budget_usd or get_default_budget_usd()
-
         from modules.backend.agents.mission_control.helpers.agent_executor import (
             _call_planning_agent,
         )
@@ -323,7 +320,7 @@ class MissionPlanOrchestrator(BaseService):
         plan_dict: dict,
         user_id: str,
         *,
-        mission_budget_usd: float | None = None,
+        mission_budget_usd: float,
     ) -> dict:
         """Validate and persist a pre-computed TaskPlan without calling the Planning Agent.
 
@@ -337,8 +334,6 @@ class MissionPlanOrchestrator(BaseService):
         Raises:
             ValidationError: If the plan fails schema or semantic validation.
         """
-        mission_budget_usd = mission_budget_usd or get_default_budget_usd()
-
         from modules.backend.agents.mission_control.plan_validator import validate_plan
         from modules.backend.agents.mission_control.roster import derive_roster_from_team
 

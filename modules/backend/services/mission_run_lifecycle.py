@@ -36,6 +36,7 @@ from modules.backend.repositories.workflow_definition import (
 from modules.backend.schemas.session import SessionCreate
 from modules.backend.schemas.task_failure import FailureClass
 from modules.backend.schemas.task_plan import TaskPlan
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.mission_plan_orchestrator import MissionPlanOrchestrator
 from modules.backend.services.mission_plan_taskio import assert_run_local_dependencies
 from modules.backend.services.run_memory import RunMemoryService
@@ -199,7 +200,16 @@ class MissionRunLifecycleMixin:
                 status = "planned" if ready else "empty"
             elif objective is not None:
                 prompt = await self._planning_prompt(run_id, objective)
-                await orchestrator.refine(plan_id, prompt, owner_id, mission_run_id=run_id)
+                # Plan validation (rule 7) is against what this run may still
+                # spend under the run, monthly and lifetime caps.
+                headroom = (await BudgetService(self._session).check_run(run_id)).headroom_usd
+                await orchestrator.refine(
+                    plan_id,
+                    prompt,
+                    owner_id,
+                    mission_run_id=run_id,
+                    mission_budget_usd=headroom,
+                )
                 status = "planned"
             else:
                 definition = await WorkflowDefinitionRepository(self._session).get_by_id(
