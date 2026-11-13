@@ -375,15 +375,33 @@ class AutonomousPostRunReviewer:
                 db_session=self._session,
             )
 
-            # Build the prompt with context the Haiku agent needs.
-            recent_outcomes_json = json.dumps(
-                context.recent_run_outcomes[:3], indent=2, default=str
-            )
+            # The gate runs before finalise, so this run's own execution record
+            # is still RUNNING. Unlabelled, the model reads it as a stale or
+            # inconsistent prior run and escalates a run that did its work.
+            current_run = [
+                r
+                for r in context.recent_run_outcomes
+                if r.get("execution_record_id") == execution_record_id
+            ]
+            previous_runs = [
+                r
+                for r in context.recent_run_outcomes
+                if r.get("execution_record_id") != execution_record_id
+            ]
+            current_run_json = json.dumps(current_run, indent=2, default=str)
+            previous_runs_json = json.dumps(previous_runs[:3], indent=2, default=str)
             plan_task_summary_json = json.dumps(context.plan_task_summary, indent=2, default=str)
             prompt = (
                 f"Mission brief: {context.mission_brief or 'not available'}\n\n"
-                f"Recent run outcomes:\n{recent_outcomes_json}\n\n"
-                f"Plan task summary: {plan_task_summary_json}\n\n"
+                "This run's execution record (the run under review; its status "
+                "stays running until the run is finalised after this decision):\n"
+                f"{current_run_json}\n\n"
+                f"Previous runs' outcomes (newest first):\n{previous_runs_json}\n\n"
+                "Plan task summary (approved, proposed, running, completed and failed "
+                "are cumulative over every wave and run of this plan; total_completed "
+                "sums the records listed above; wave and failures are this wave only, "
+                "so judge this run by them):\n"
+                f"{plan_task_summary_json}\n\n"
                 f"Budget: spent ${context.total_cost_usd:.4f} "
                 f"of ${context.budget_usd:.4f} ceiling.\n\n"
                 "Based on the above, classify this situation."

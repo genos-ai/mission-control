@@ -10,7 +10,8 @@ The cached-decision test (A.2.11) inserts real DB rows.
 
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -737,6 +738,43 @@ class TestClassifierModelComesFromConfig:
 
         create_agent.assert_called_once_with("fixture:reviewer")
         assert decision.reviewer == "ai:fixture:reviewer"
+
+
+class TestClassifierPromptSeparatesCurrentRun:
+    @pytest.mark.asyncio
+    async def test_current_run_record_is_labelled_not_listed_as_a_previous_run(
+        self, db_session: AsyncSession
+    ):
+        """The run under review is still RUNNING at gate time; it must not read as a prior run."""
+        fake_result = SimpleNamespace(
+            output=SimpleNamespace(decision="PROPOSE_COMPLETE", confidence=0.9, reason="done"),
+            usage=lambda: SimpleNamespace(input_tokens=10, output_tokens=5),
+        )
+        fake_agent = MagicMock()
+        fake_agent.run = AsyncMock(return_value=fake_result)
+        outcomes = [
+            {"execution_record_id": "rec-current", "status": "running", "completed_task_count": 1},
+            {"execution_record_id": "rec-prev", "status": "completed", "completed_task_count": 1},
+        ]
+
+        with patch(
+            "modules.backend.agents.mission.supervisor.agent.create_event_agent",
+            MagicMock(return_value=fake_agent),
+        ):
+            await AutonomousPostRunReviewer(
+                db_session, gate_mode=GateMode.AUTONOMOUS
+            )._classify_with_haiku(
+                _context(recent_run_outcomes=outcomes, execution_record_id="rec-current")
+            )
+
+        prompt = fake_agent.run.await_args.args[0]
+        current_section, rest = prompt.split("Previous runs' outcomes")
+        previous_section = rest.split("Plan task summary")[0]
+        assert "This run's execution record" in current_section
+        assert "rec-current" in current_section
+        assert "rec-prev" not in current_section
+        assert "rec-prev" in previous_section
+        assert "rec-current" not in previous_section
 
 
 # ---------------------------------------------------------------------------
