@@ -17,7 +17,7 @@ from modules.backend.models.mission import (
     MissionStatus,
     MissionTier,
 )
-from modules.backend.models.mission_plan import GateMode, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode
 from modules.backend.models.task import TaskStatus
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 from tests.integration.backend.api.helpers import (
@@ -53,12 +53,6 @@ async def world(db_session: AsyncSession, test_user, test_user_2):
     await create_tasks(db, plan_b, TaskStatus.PROPOSED, 4)
     await create_tasks(db, plan_b, TaskStatus.FAILED, 1)
 
-    # C: owned by the caller, but its plan is completed: failures there are history.
-    c = await create_mission(db, "mission-c", TEST_USER_ID)
-    plan_c = await set_plan(db, c, GateMode.INTERACTIVE, status=MissionPlanStatus.COMPLETED)
-    await create_tasks(db, plan_c, TaskStatus.FAILED, 5)
-    await create_tasks(db, plan_c, TaskStatus.PROPOSED, 5)
-
     # D: someone else's. The caller must never see it.
     d = await create_mission(db, "mission-d", TEST_USER_ID_2)
     plan_d = await set_plan(db, d, GateMode.INTERACTIVE)
@@ -80,7 +74,7 @@ async def world(db_session: AsyncSession, test_user, test_user_2):
     g.tier = MissionTier.platform
     await create_tasks(db, await set_plan(db, g, GateMode.INTERACTIVE), TaskStatus.FAILED, 3)
     await db.flush()
-    return {m.name: m for m in (a, b, c, d, e, f, g)}
+    return {m.name: m for m in (a, b, d, e, f, g)}
 
 
 async def _get(client) -> dict:
@@ -130,12 +124,6 @@ class TestWhatIsLeftOut:
     @pytest.mark.asyncio
     async def test_proposed_tasks_in_an_auto_approving_plan_need_nobody(self, client, world):
         assert _items(await _get(client), world["mission-b"], "task_approval") == []
-
-    @pytest.mark.asyncio
-    async def test_a_completed_plans_tasks_are_history(self, client, world):
-        data = await _get(client)
-        assert _items(data, world["mission-c"], "retry") == []
-        assert _items(data, world["mission-c"], "task_approval") == []
 
     @pytest.mark.asyncio
     async def test_an_archived_mission_is_left_out(self, client, world):
@@ -191,7 +179,7 @@ class TestShape:
         assert counts[str(world["mission-a"].id)] == 4  # gate + input + approval + failures
         assert counts[str(world["mission-b"].id)] == 1  # failures only
         assert counts[str(world["mission-e"].id)] == 1
-        assert str(world["mission-c"].id) not in counts
+        assert str(world["mission-f"].id) not in counts
 
     @pytest.mark.asyncio
     async def test_each_item_names_its_mission(self, client, world):

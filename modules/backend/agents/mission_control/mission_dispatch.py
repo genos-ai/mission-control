@@ -335,10 +335,6 @@ async def handle_mission(
             plan_svc = MissionPlanService(db_session, event_bus=event_bus)
             mission_plan = await plan_svc.get_or_create_plan(mission_id)
 
-            # Reactivate if previously completed
-            if mission_plan.status != "ACTIVE":
-                mission_plan.status = "ACTIVE"
-
             orchestrator = MissionPlanOrchestrator(db_session, event_bus=event_bus)
             await orchestrator._persist_plan(
                 mission_plan, plan, source="handle_mission", mission_run_id=None

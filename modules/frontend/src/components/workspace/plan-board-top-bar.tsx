@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { Loader2, X, Play, Square, Sparkles, AlertTriangle } from 'lucide-react'
+import { Loader2, X, Play, Sparkles, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,8 +19,9 @@ import {
   type MissionPlan,
 } from '@/hooks/use-mission-plan'
 import { useMissionBudget } from '@/hooks/use-mission-budget'
+import { useRunningMissionRun } from '@/hooks/use-mission-runs'
+import { useMission } from '@/hooks/use-missions'
 import { fmtUsd } from '@/lib/format'
-import { planProgress } from '@/lib/plan-progress'
 import type { Tone } from '@/lib/status-tone'
 import type { GateMode } from '@/types/mission'
 import type { JoinedTask } from './plan-board-types'
@@ -50,7 +51,9 @@ export function PlanTopBar({
 }) {
   const updatePlan = useUpdatePlan(missionId)
   const dispatch = useDispatchApproved(missionId)
-  const { data: lastDecision } = useLastSupervisorDecision(missionId, plan.status)
+  const { data: mission } = useMission(missionId)
+  const run = useRunningMissionRun(missionId)
+  const { data: lastDecision } = useLastSupervisorDecision(missionId, mission?.status)
   const [gateOpen, setGateOpen] = useState(false)
 
   const approvedTasks = joined.filter(
@@ -62,24 +65,13 @@ export function PlanTopBar({
   const budgetPct = budget ? (budget.month_spent_usd / budget.per_month_usd) * 100 : 0
   const budgetTone: Tone = budgetPct > 80 ? 'danger' : budgetPct > 50 ? 'warning' : 'brand'
 
-  const { done, total } = planProgress(plan)
-  const isPlanPaused = plan.status === 'paused'
+  const isMissionPaused = mission?.status === 'paused'
 
   async function handleGateMode(mode: GateMode) {
     try {
       await updatePlan.mutateAsync({ gate_mode: mode })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update gate mode')
-    }
-  }
-
-  async function handlePlanPauseToggle() {
-    const next = isPlanPaused ? 'active' : 'paused'
-    try {
-      await updatePlan.mutateAsync({ status: next })
-      toast.success(next === 'paused' ? 'Plan paused — dispatch stopped' : 'Plan resumed')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update plan status')
     }
   }
 
@@ -115,10 +107,17 @@ export function PlanTopBar({
           disabled={updatePlan.isPending}
         />
 
-        {total > 0 && (
-          <div className="flex items-center gap-2">
-            <Progress label="Plan progress" value={(done / total) * 100} tone="success" className="w-16" />
-            <span className="font-mono text-xs text-muted-foreground">{done} of {total}</span>
+        {run && run.task_count > 0 && (
+          <div className="flex items-center gap-2" title={`Run #${run.sequence}`}>
+            <Progress
+              label="Run progress"
+              value={(run.completed_task_count / run.task_count) * 100}
+              tone="success"
+              className="w-16"
+            />
+            <span className="font-mono text-xs text-muted-foreground">
+              {run.completed_task_count} of {run.task_count}
+            </span>
           </div>
         )}
 
@@ -142,20 +141,11 @@ export function PlanTopBar({
             Refine plan
           </Button>
           <Button
-            variant={isPlanPaused ? 'default' : 'destructive'}
-            onClick={handlePlanPauseToggle}
-            disabled={updatePlan.isPending}
-            title={isPlanPaused ? 'Resume autonomous dispatch' : 'Stop autonomous dispatch'}
-          >
-            {isPlanPaused ? <Play className="h-[13px] w-[13px]" /> : <Square className="h-[13px] w-[13px]" />}
-            {isPlanPaused ? 'Resume plan' : 'Stop plan'}
-          </Button>
-          <Button
             onClick={handleDispatch}
-            disabled={dispatch.isPending || approvedCount === 0 || isPlanPaused}
+            disabled={dispatch.isPending || approvedCount === 0 || isMissionPaused}
             title={
-              isPlanPaused
-                ? 'Resume the plan before running'
+              isMissionPaused
+                ? 'Resume the mission before running'
                 : approvedCount === 0
                   ? 'Approve tasks before running'
                   : `Run ${approvedCount} approved task${approvedCount === 1 ? '' : 's'}`
@@ -171,7 +161,7 @@ export function PlanTopBar({
         </div>
       </Panel>
 
-      {isPlanPaused && lastDecision?.action === 'escalate' && (
+      {isMissionPaused && lastDecision?.action === 'escalate' && (
         <div className="flex shrink-0 items-start gap-2.5 rounded-panel border border-danger/20 bg-danger/5 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
           <div className="min-w-0">

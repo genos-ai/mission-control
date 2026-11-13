@@ -7,7 +7,7 @@ from modules.backend.core.utils import utc_now
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole
-from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import Task, TaskStatus
 from modules.backend.models.workflow_run import WorkflowRun
 from modules.backend.services.agent_catalog import AgentCatalogService
@@ -76,13 +76,10 @@ async def record_spend(db: AsyncSession, mission: Mission, *costs: float) -> Non
     await db.flush()
 
 
-async def set_plan(
-    db: AsyncSession, mission: Mission, gate_mode: GateMode, status=None
-) -> MissionPlan:
-    """The mission's plan, set to `gate_mode` and ACTIVE unless a status is given."""
+async def set_plan(db: AsyncSession, mission: Mission, gate_mode: GateMode) -> MissionPlan:
+    """The mission's plan, set to `gate_mode`."""
     plan = await db.scalar(select(MissionPlan).where(MissionPlan.mission_id == mission.id))
     plan.gate_mode = gate_mode
-    plan.status = status or MissionPlanStatus.ACTIVE
     await db.flush()
     return plan
 

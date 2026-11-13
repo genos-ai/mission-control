@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { Loader2, MoreHorizontal, Pause, Play, RotateCcw } from 'lucide-react'
 
 import { TopBar, type TopBarSegment } from '@/components/layout/top-bar'
@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { useBackgroundTasks } from '@/hooks/use-executions'
 import { useMission, useUpdateMission } from '@/hooks/use-missions'
-import { useMissionPlan } from '@/hooks/use-mission-plan'
+import { useRunningMissionRun } from '@/hooks/use-mission-runs'
 import { MISSION_NAV_GROUPS, ROUTES } from '@/lib/constants'
-import { planProgress } from '@/lib/plan-progress'
 import { missionTone } from '@/lib/status-tone'
 import { useAuthStore } from '@/stores/auth'
 import type { MissionStatus } from '@/types'
@@ -36,13 +35,10 @@ export function MissionTopBar({ missionId, onOpenSettings, onRun }: MissionTopBa
   const { data: mission, isLoading } = useMission(missionId)
   const updateMission = useUpdateMission(missionId)
   const user = useAuthStore((s) => s.user)
-  const { data: plan } = useMissionPlan(missionId)
+  const run = useRunningMissionRun(missionId)
   const { activeCount: bgTaskCount, activeTasks: bgTasks } = useBackgroundTasks(missionId)
 
   const isOwner = mission?.owner_id === user?.id
-  const planRunning = plan?.status === 'active' && plan.gate_mode === 'autonomous'
-  const planPaused = plan?.status === 'paused'
-  const progress = plan ? planProgress(plan) : null
 
   const name = mission?.name ?? (isLoading ? 'Loading…' : 'Mission not found')
   const segments: TopBarSegment[] = [
@@ -63,7 +59,7 @@ export function MissionTopBar({ missionId, onOpenSettings, onRun }: MissionTopBa
   )
 
   const bgTitle = bgTasks.map((t) => `${t.task_type}: ${t.status}`).join('\n')
-  const showPill = planRunning || bgTaskCount > 0
+  const showPill = run !== null || bgTaskCount > 0
 
   return (
     <TopBar
@@ -77,13 +73,13 @@ export function MissionTopBar({ missionId, onOpenSettings, onRun }: MissionTopBa
               title={bgTitle || undefined}
             >
               <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-              {planRunning && progress ? (
+              {run ? (
                 <>
                   <span className="max-[1099px]:hidden">
-                    Plan running · {progress.done} of {progress.total}
+                    Run #{run.sequence} · {run.completed_task_count} of {run.task_count}
                   </span>
                   <span className="min-[1100px]:hidden">
-                    {progress.done}/{progress.total}
+                    {run.completed_task_count}/{run.task_count}
                   </span>
                 </>
               ) : (
@@ -92,16 +88,6 @@ export function MissionTopBar({ missionId, onOpenSettings, onRun }: MissionTopBa
                 </span>
               )}
             </div>
-          )}
-          {planPaused && (
-            <Link
-              to={ROUTES.MISSION_PLAN(missionId)}
-              className="flex h-[26px] items-center gap-1.5 rounded-full border border-border-strong bg-raised px-2.5 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
-              title="Autonomous dispatch is paused. Open the plan to resume."
-            >
-              <Pause className="h-3 w-3" />
-              Plan paused
-            </Link>
           )}
           {isOwner && mission?.status === 'active' && (
             <Button variant="secondary" onClick={() => updateMission.mutate({ status: 'paused' })}>

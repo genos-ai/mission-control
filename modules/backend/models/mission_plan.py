@@ -25,23 +25,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from modules.backend.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class MissionPlanStatus(str, enum.Enum):
-    """Lifecycle status of a mission plan.
-
-    ACTIVE    — the default. Plan accepts refinements, approvals, dispatch.
-    PAUSED    — dispatch is blocked. Used to temporarily halt autonomous
-                runs without destroying in-flight state.
-    COMPLETED — user or agent declared the plan complete. No more dispatch.
-                Kept for history; can be re-activated.
-    ARCHIVED  — terminal. Read-only. Cleaned up by retention policy.
-    """
-
-    ACTIVE = "active"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    ARCHIVED = "archived"
-
-
 class GateMode(str, enum.Enum):
     """Plan gate mode (Plan 88 contracts 3.1.2).
 
@@ -131,13 +114,6 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         comment="Autonomy mode. Set by MissionService.create_mission.",
     )
 
-    status: Mapped[str] = mapped_column(
-        Enum(MissionPlanStatus, native_enum=False),
-        default=MissionPlanStatus.ACTIVE,
-        server_default=MissionPlanStatus.ACTIVE.name,
-        nullable=False,
-    )
-
     version: Mapped[int] = mapped_column(
         Integer,
         default=1,
@@ -166,31 +142,6 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         comment="Optional cap on lifetime spend; NULL means no lifetime cap",
     )
 
-    # ── Supervisor autonomy loop (Plan 51 Phase C) ─────────────────────────
-
-    supervisor_iteration_count: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        server_default="0",
-        nullable=False,
-        comment=(
-            "How many times the post-run supervisor has been invoked. "
-            "Resets on user-initiated refine_plan or new plan creation."
-        ),
-    )
-
-    max_supervisor_iterations: Mapped[int] = mapped_column(
-        Integer,
-        default=20,
-        server_default="20",
-        nullable=False,
-        comment=(
-            "Circuit breaker: if supervisor_iteration_count >= this, "
-            "the supervisor short-circuits to ESCALATE without "
-            "evaluating rules or calling Haiku."
-        ),
-    )
-
     # ── Relationships ──────────────────────────────────────────────────────
 
     tasks: Mapped[list["Task"]] = relationship(  # noqa: F821
@@ -204,5 +155,5 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
     def __repr__(self) -> str:
         return (
             f"<MissionPlan(id={self.id}, mission_id={self.mission_id}, "
-            f"version={self.version}, status={self.status})>"
+            f"version={self.version}, gate_mode={self.gate_mode})>"
         )

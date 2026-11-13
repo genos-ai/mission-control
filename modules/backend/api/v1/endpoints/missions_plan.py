@@ -33,7 +33,6 @@ from modules.backend.schemas.mission_plan import (
     AddPlanTaskRequest,
     MissionPlanRefineRequest,
     MissionPlanResponse,
-    MissionPlanStatus,
     MissionPlanUpdate,
     TaskStatus,
     TaskTransitionResponse,
@@ -98,7 +97,7 @@ async def update_plan(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Update gate_mode or status. Budget caps change through PUT /missions/{id}/budget.
+    """Update gate_mode. Budget caps change through PUT /missions/{id}/budget.
 
     Only the fields present in the request body are applied — all are
     optional. Gate mode is validated against the existing gate system's
@@ -111,11 +110,6 @@ async def update_plan(
 
     if data.gate_mode is not None:
         plan = await service.set_gate_mode(plan.id, data.gate_mode)
-    if data.status is not None:
-        plan = await service.set_plan_status(
-            plan.id,
-            MissionPlanStatus(data.status),
-        )
     # Plan 72: task ordering is by created_at — no manual reorder needed.
 
     # Refetch to include updated tasks relationship

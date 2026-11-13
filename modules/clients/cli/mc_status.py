@@ -68,14 +68,11 @@ async def show_status(
     # ── Plan state ────────────────────────────────────────────────
     if plan:
         task_states = plan.get("task_states", [])
-        plan_status = plan.get("status", "active")
+        mission_status = mission["status"]
+        if mission.get("paused_reason"):
+            mission_status = f"{mission_status} ({mission['paused_reason']})"
 
-        parts = [f"[bold]Plan[/bold] {plan_status}"]
-        parts.append(f"v{plan.get('version', 1)}")
-        sup_count = plan.get("supervisor_iteration_count", 0)
-        if sup_count:
-            parts.append(f"supervisor x{sup_count}")
-        console.print("  ".join(parts))
+        console.print(f"[bold]Plan[/bold] {mission_status}  v{plan.get('version', 1)}")
 
         for ts in sorted(task_states, key=lambda x: x.get("task_id", "")):
             status = ts.get("status", "")

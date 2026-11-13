@@ -56,9 +56,9 @@ async def show(
             console.print("[dim]Plan has no tasks.[/dim]")
         return
 
-    plan_status = plan.get("status", "?")
+    mission = await api.get(f"/missions/{mission_id}")
     gate_mode = plan["gate_mode"]
-    header = f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}"
+    header = f"Plan {plan.get('id', '')}  mission={mission['status']}  gate={gate_mode}"
     console.print(f"[bold]{header}[/bold]\n")
 
     columns = [

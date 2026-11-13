@@ -32,9 +32,8 @@ async def get_plan_state(
 ) -> dict[str, Any]:
     """Read the current mission plan with all tasks.
 
-    Returns plan metadata, per-task status, gate_mode, budget caps with
-    this month's spend, and supervisor counters. Used by both Director
-    and Supervisor agents.
+    Returns plan metadata, per-task status, gate_mode, and budget caps with
+    this month's spend. Used by both Director and Supervisor agents.
     """
     svc = MissionPlanService(session)
     plan = await svc.get_or_create_plan(mission_id)
@@ -44,13 +43,11 @@ async def get_plan_state(
     return {
         "plan_id": plan.id,
         "version": plan.version,
-        "status": plan.status,
         "gate_mode": plan.gate_mode,
         "budget_per_run_usd": budget.per_run_usd,
         "budget_per_month_usd": budget.per_month_usd,
         "month_spent_usd": budget.month_spent_usd,
         "budget_lifetime_usd": budget.lifetime_usd,
-        "supervisor_iteration_count": plan.supervisor_iteration_count,
         "summary": plan.summary,
         "estimated_cost_usd": plan.estimated_cost_usd,
         "estimated_duration": plan.estimated_duration,

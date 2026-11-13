@@ -8,9 +8,19 @@ agents operate within a single mission at a time.
 """
 
 import enum
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,8 +52,9 @@ class MissionStatus(str, enum.Enum):
 class MissionPauseReason(str, enum.Enum):
     """Why a mission is PAUSED (Plan 88 contracts 3.1.2).
 
-    The budget members are the breach values BudgetService reports (88.4.1);
-    the ``missions.paused_reason`` column arrives with plan88_005 (88.4.2).
+    The budget members are the breach values BudgetService reports (88.4.1).
+    Stored by NAME in ``missions.paused_reason``, which is set exactly when
+    the mission is PAUSED (``ck_missions_pause_consistent``).
     """
 
     USER = "user"
@@ -65,6 +76,12 @@ class Mission(UUIDMixin, TimestampMixin, Base):
     """A long-lived mission that groups executions, context, and history."""
 
     __tablename__ = "missions"
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'PAUSED') = (paused_reason IS NOT NULL)",
+            name="ck_missions_pause_consistent",
+        ),
+    )
 
     name: Mapped[str] = mapped_column(
         String(200),
@@ -127,6 +144,21 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         server_default="0",
         nullable=False,
         comment="Last mission_runs.sequence issued (Plan 88, 3.1.3)",
+    )
+    paused_reason: Mapped[MissionPauseReason | None] = mapped_column(
+        Enum(MissionPauseReason, native_enum=False, length=32),
+        nullable=True,
+        comment="Why the mission is PAUSED; NULL exactly when it is not",
+    )
+    paused_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    paused_by_user_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="The user who paused the mission; NULL for a system pause",
     )
 
     # Relationships

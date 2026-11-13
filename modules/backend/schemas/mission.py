@@ -8,6 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from modules.backend.models.mission import MissionPauseReason
 from modules.backend.models.mission_plan import GateMode
 
 
@@ -101,7 +102,6 @@ class MissionUpdate(BaseModel):
 
     description: str | None = Field(None, min_length=1, max_length=2000)
     brief: str | None = Field(None, max_length=10000)
-    status: str | None = Field(None, pattern=r"^(active|paused|archived)$")
     default_roster: str | None = Field(None, pattern=r"^[a-z][a-z0-9_-]*$")
     repo_url: str | None = None
     repo_root: str | None = None
@@ -132,6 +132,8 @@ class MissionResponse(BaseModel):
     repo_root: str | None
     tier: str
     execution_environment: str | None
+    paused_reason: MissionPauseReason | None
+    paused_at: datetime | None
     # All-time LLM spend (the Costs tab figure); 0.0 means no calls recorded, never null.
     spent_usd: float
     created_at: datetime

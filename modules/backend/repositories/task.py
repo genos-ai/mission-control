@@ -18,7 +18,8 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import aliased, selectinload
 
 from modules.backend.core.logging import get_logger
-from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.task import TERMINAL_TASK_STATUSES, Task, TaskDependency, TaskStatus
 from modules.backend.repositories.base import BaseRepository
 from modules.backend.schemas.task_failure import TaskFailure
@@ -207,12 +208,11 @@ class TaskRepository(BaseRepository[Task]):
         *,
         exclude_gate_modes: frozenset[GateMode] = frozenset(),
     ) -> list[TaskGroup]:
-        """Count each mission's tasks in `status`, for plans that are still open.
+        """Count each mission's tasks in `status`, for missions that are not archived.
 
-        Only plans that are ACTIVE or PAUSED count: a failed task in a completed or
-        archived plan is history, not something to act on. One grouped query for all the
-        missions, however many tasks there are. `exclude_gate_modes` leaves out plans in
-        those gate modes.
+        A failed task in an archived mission is history, not something to act on. One
+        grouped query for all the missions, however many tasks there are.
+        `exclude_gate_modes` leaves out plans in those gate modes.
         """
         if not mission_ids:
             return []
@@ -223,11 +223,12 @@ class TaskRepository(BaseRepository[Task]):
                 func.min(Task.created_at),
                 func.max(Task.updated_at),
             )
+            .join(Mission, Mission.id == Task.mission_id)
             .join(MissionPlan, MissionPlan.id == Task.plan_id)
             .where(
                 Task.mission_id.in_(mission_ids),
                 Task.status == status,
-                MissionPlan.status.in_([MissionPlanStatus.ACTIVE, MissionPlanStatus.PAUSED]),
+                Mission.status != MissionStatus.ARCHIVED,
             )
             .group_by(Task.mission_id)
         )

@@ -7,6 +7,12 @@ import type { AgentConfigSummary } from './agent'
 // Mission types
 export type MissionStatus = 'active' | 'paused' | 'archived'
 export type MissionTier = 'user' | 'platform'
+export type MissionPauseReason =
+  | 'user'
+  | 'budget_run_cap'
+  | 'budget_monthly_cap'
+  | 'budget_lifetime_cap'
+  | 'gate_timeout'
 
 export interface MissionListItem {
   id: string
@@ -19,6 +25,9 @@ export interface MissionListItem {
   /** All-time LLM spend, the same figure as the Costs tab; 0 when no calls are recorded. */
   spent_usd: number
   execution_environment: string | null
+  /** Set exactly when status is 'paused'. */
+  paused_reason: MissionPauseReason | null
+  paused_at: string | null
   created_at: string
   updated_at: string
 }

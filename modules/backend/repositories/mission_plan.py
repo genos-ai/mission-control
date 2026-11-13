@@ -8,7 +8,7 @@ operations have moved to TaskRepository (Plan 72).
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -68,7 +68,6 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
         plan = MissionPlan(
             mission_id=mission_id,
             gate_mode=gate_mode,
-            status=MissionPlanStatus.ACTIVE,
             version=1,
             budget_per_run_usd=budget_per_run_usd,
             budget_per_month_usd=budget_per_month_usd,

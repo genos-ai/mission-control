@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from modules.backend.models.mission_plan import GateMode, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode
 from modules.backend.models.task import TaskStatus
 
 # ── Plan-level ───────────────────────────────────────────────────────────
@@ -42,7 +42,8 @@ class MissionPlanRefineRequest(BaseModel):
 class MissionPlanUpdate(BaseModel):
     """Schema for PATCH /missions/:id/plan.
 
-    All fields optional — the service applies only the ones present.
+    All fields optional — the service applies only the ones present. The
+    plan has no lifecycle of its own: missions.status is the only one.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -50,10 +51,6 @@ class MissionPlanUpdate(BaseModel):
     gate_mode: GateMode | None = Field(
         None,
         description=f"Autonomy mode. One of: {[m.value for m in GateMode]}.",
-    )
-    status: str | None = Field(
-        None,
-        description=f"Plan lifecycle: {[s.value for s in MissionPlanStatus]}",
     )
 
 
@@ -124,10 +121,7 @@ class MissionPlanResponse(BaseModel):
     estimated_duration: int = 0
     execution_hints_json: dict = Field(default_factory=dict)
     gate_mode: GateMode
-    status: str
     version: int
-    supervisor_iteration_count: int = 0
-    max_supervisor_iterations: int = 20
     tasks: list[TaskResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

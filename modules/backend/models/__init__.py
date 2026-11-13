@@ -25,7 +25,7 @@ from modules.backend.models.mission_context import ContextChange, ContextMilesto
 from modules.backend.models.mission_history import MilestoneSummary, MissionDecision
 from modules.backend.models.mission_intent import IntentSource, MissionIntent
 from modules.backend.models.mission_learning import LearningKind, LearningStatus, MissionLearning
-from modules.backend.models.mission_plan import GateMode, MissionPlan, MissionPlanStatus
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_run import (
     ACTIVE_RUN_STATUSES,
     TERMINAL_RUN_STATUSES,
@@ -92,7 +92,6 @@ __all__ = [
     "MissionMember",
     "MissionPauseReason",
     "MissionPlan",
-    "MissionPlanStatus",
     "MissionRun",
     "MissionRunDigest",
     "MissionRunStatus",

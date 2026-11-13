@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from modules.backend.models.mission import MissionPauseReason
 from modules.backend.schemas.mission import (
     MissionCreate,
     MissionResponse,
@@ -94,15 +95,11 @@ class TestMissionUpdate:
     def test_all_none(self):
         schema = MissionUpdate()
         assert schema.description is None
-        assert schema.status is None
 
-    def test_valid_status(self):
-        schema = MissionUpdate(status="paused")
-        assert schema.status == "paused"
-
-    def test_invalid_status(self):
-        with pytest.raises(ValidationError):
-            MissionUpdate(status="deleted")
+    def test_mission_update_rejects_status(self):
+        """Status changes only through the lifecycle endpoints (88.4.2)."""
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            MissionUpdate(status="paused")
 
 
 class TestMissionResponse:
@@ -120,9 +117,33 @@ class TestMissionResponse:
             repo_url=None,
             repo_root=None,
             execution_environment=None,
+            paused_reason=None,
+            paused_at=None,
             spent_usd=0.0,
             created_at="2025-01-01T00:00:00",
             updated_at="2025-01-01T00:00:00",
         )
         assert resp.id == "abc-123"
         assert resp.name == "resp-mission"
+
+    def test_paused_reason_serialised_as_lowercase_value(self):
+        resp = MissionResponse(
+            id="abc-123",
+            name="resp-mission",
+            description="Response test",
+            brief=None,
+            status="paused",
+            tier="user",
+            owner_id=TEST_USER_ID,
+            team_id=None,
+            default_roster="default",
+            repo_url=None,
+            repo_root=None,
+            execution_environment=None,
+            paused_reason=MissionPauseReason.BUDGET_MONTHLY_CAP,
+            paused_at="2025-01-01T00:00:00Z",
+            spent_usd=0.0,
+            created_at="2025-01-01T00:00:00",
+            updated_at="2025-01-01T00:00:00",
+        )
+        assert resp.model_dump(mode="json")["paused_reason"] == "budget_monthly_cap"

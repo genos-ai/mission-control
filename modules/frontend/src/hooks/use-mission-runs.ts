@@ -55,6 +55,14 @@ export function useMissionRuns(missionId: string | undefined, filters: MissionRu
   })
 }
 
+const RUNNING_RUN: MissionRunFilters = { statuses: ['running'], limit: 1 }
+
+/** The mission's running run, or null when no run is running. Progress counts come from the backend. */
+export function useRunningMissionRun(missionId: string | undefined): MissionRunResponse | null {
+  const { data } = useMissionRuns(missionId, RUNNING_RUN)
+  return data?.runs[0] ?? null
+}
+
 /** One run by id or sequence, with its execution record id, tasks and digest. */
 export function useMissionRun(missionId: string | undefined, runIdOrSeq: string | undefined) {
   return useQuery({

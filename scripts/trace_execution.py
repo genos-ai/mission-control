@@ -397,8 +397,6 @@ def build_execution_events(record: ExecutionRecord, details: dict) -> list[Trace
 def build_plan_metadata_events(plan: MissionPlan, run: MissionRun | None) -> list[TraceEvent]:
     """Emit a summary event for the MissionPlan itself."""
     events: list[TraceEvent] = []
-    plan_status = plan.status.name if hasattr(plan.status, "name") else plan.status
-
     # Plan creation / current state
     tasks = plan.tasks or []
     task_ids = [_short_id(t.id) for t in tasks]
@@ -407,9 +405,9 @@ def build_plan_metadata_events(plan: MissionPlan, run: MissionRun | None) -> lis
         TraceEvent(
             plan.created_at,
             "PLAN",
-            f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  status={plan_status}  gate_mode={plan.gate_mode}",  # noqa: E501
+            f"MissionPlan  id={_short_id(plan.id)}  v{plan.version}  gate_mode={plan.gate_mode}",
             [
-                f"budget_ceiling=${plan.budget_usd_ceiling or 0:.2f}  spent=${plan.total_spent_usd or 0:.4f}",  # noqa: E501
+                f"budget per_run=${plan.budget_per_run_usd:.2f}  per_month=${plan.budget_per_month_usd:.2f}",  # noqa: E501
                 f"tasks ({len(tasks)}): {', '.join(task_ids[:10])}"
                 + ("..." if len(task_ids) > 10 else ""),
                 (

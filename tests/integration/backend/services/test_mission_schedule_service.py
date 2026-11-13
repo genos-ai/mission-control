@@ -20,7 +20,7 @@ from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.base import SessionEvent
 from modules.backend.events.mission_run_types import MissionScheduleSyncFailedEvent
-from modules.backend.models.mission import Mission, MissionStatus
+from modules.backend.models.mission import Mission, MissionPauseReason, MissionStatus
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_schedule import (
     MissionSchedule,
@@ -286,7 +286,14 @@ async def test_effective_state_paused_when_mission_paused(
     schedule = await service.create_schedule(mission.id, _objective(), user.id)
     assert gateway.schedules[schedule.temporal_schedule_id].state.paused is False
 
-    await _set(db_session_factory, Mission, mission.id, status=MissionStatus.PAUSED)
+    await _set(
+        db_session_factory,
+        Mission,
+        mission.id,
+        status=MissionStatus.PAUSED,
+        paused_reason=MissionPauseReason.USER,
+        paused_at=utc_now(),
+    )
     assert await service.sync_to_temporal(schedule.id) == TemporalSyncState.SYNCED
     state = gateway.schedules[schedule.temporal_schedule_id].state
     assert state.paused is True

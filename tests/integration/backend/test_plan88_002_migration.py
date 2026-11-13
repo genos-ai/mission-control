@@ -110,8 +110,8 @@ def scratch_db() -> Iterator[str]:
     url = test_url.set(database=name).render_as_string(hide_password=False)
     try:
         asyncio.run(_create_schema(url))
-        # The models are at plan88_004: undo its budget columns first.
-        _alembic(url, "stamp", "plan88_004")
+        # The models are at plan88_005: undo its lifecycle and plan88_004's budget columns first.
+        _alembic(url, "stamp", "plan88_005")
         _alembic(url, "downgrade", "plan88_003a")
         _alembic(url, "stamp", _TARGET)
         _alembic(url, "downgrade", _PREVIOUS)

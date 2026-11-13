@@ -26,8 +26,6 @@ export type PlanTaskStatus =
   | 'skipped'
   | 'cancelled'
 
-export type MissionPlanStatus = 'active' | 'paused' | 'completed' | 'archived'
-
 /** Unified task: definition fields + state fields merged (Plan 72). */
 export interface PlanTask {
   id: string
@@ -62,7 +60,6 @@ export interface MissionPlan {
   estimated_duration: number | null
   execution_hints_json: Record<string, unknown> | null
   gate_mode: GateMode
-  status: MissionPlanStatus
   version: number
   tasks: PlanTask[]
   created_at: string
@@ -116,10 +113,9 @@ export function useRefinePlan(missionId: string) {
   })
 }
 
-/** Update plan-level settings (gate_mode / status). Budget caps use PUT /missions/{id}/budget. */
+/** Update plan-level settings (gate_mode). Budget caps use PUT /missions/{id}/budget. */
 export interface PlanUpdatePayload {
   gate_mode?: GateMode
-  status?: MissionPlanStatus
 }
 
 export function useUpdatePlan(missionId: string) {
@@ -187,10 +183,10 @@ export function useRetryTask(missionId: string) {
   })
 }
 
-/** Fetch the latest supervisor decision for a paused plan. */
+/** Fetch the latest supervisor decision for a paused mission. */
 export function useLastSupervisorDecision(
   missionId: string | undefined,
-  planStatus: string | undefined,
+  missionStatus: string | undefined,
 ) {
   return useQuery({
     queryKey: ['missions', missionId, 'supervisor-decision'],
@@ -208,7 +204,7 @@ export function useLastSupervisorDecision(
         reason: (data.reason as string) || '',
       }
     },
-    enabled: !!missionId && planStatus === 'paused',
+    enabled: !!missionId && missionStatus === 'paused',
     staleTime: 60_000,
   })
 }

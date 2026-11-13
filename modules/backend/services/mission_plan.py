@@ -24,13 +24,14 @@ from modules.backend.events.types import (
     MissionPlanTaskStatusChangedEvent,
 )
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
+from modules.backend.models.mission import Mission, MissionPauseReason, MissionStatus
 from modules.backend.models.mission_plan import (  # noqa: F401
     AUTO_APPROVE_GATE_MODES,
     GateMode,
     MissionPlan,
-    MissionPlanStatus,
 )
 from modules.backend.models.task import Task, TaskStatus
+from modules.backend.repositories.mission import MissionRepository
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.task import TaskRepository
 from modules.backend.services.base import BaseService
@@ -84,6 +85,7 @@ class MissionPlanService(BaseService):
     ) -> None:
         super().__init__(session)
         self._repo = MissionPlanRepository(session)
+        self._mission_repo = MissionRepository(session)
         self._task_repo = TaskRepository(session)
         # Optional: many callers only read/mutate plan state and never
         # emit (admin ops, gate-request queries). _emit() below tolerates
@@ -207,40 +209,28 @@ class MissionPlanService(BaseService):
         )
         return plan
 
-    async def set_plan_status(
-        self,
-        mission_plan_id: str,
-        status: MissionPlanStatus,
-    ) -> MissionPlan:
-        """Update the plan's lifecycle status."""
-        plan = await self._repo.get_by_id(mission_plan_id)
-        plan.status = status
-        await self._session.flush()
-        self._log_operation(
-            "MissionPlan status changed",
-            plan_id=mission_plan_id,
-            status=status,
-        )
-        return plan
-
     async def pause_all_autonomous_plans(self) -> int:
-        """Pause every ACTIVE plan running in autonomous gate mode.
+        """Pause every ACTIVE mission whose plan runs in autonomous gate mode.
 
-        Emergency stop: a single UPDATE — no per-plan loop, no race
-        window. The daemon's next tick sees zero active plans and idles.
-        Returns the number of plans paused. Caller commits.
+        Emergency stop: a single UPDATE, no per-mission loop and no race
+        window. Sets the mission PAUSED with reason USER. Returns the number
+        of missions paused. Caller commits.
         """
+        autonomous = select(MissionPlan.mission_id).where(
+            MissionPlan.gate_mode == GateMode.AUTONOMOUS
+        )
         result = await self._session.execute(
-            update(MissionPlan)
-            .where(
-                MissionPlan.status == MissionPlanStatus.ACTIVE,
-                MissionPlan.gate_mode == GateMode.AUTONOMOUS,
+            update(Mission)
+            .where(Mission.status == MissionStatus.ACTIVE, Mission.id.in_(autonomous))
+            .values(
+                status=MissionStatus.PAUSED,
+                paused_reason=MissionPauseReason.USER,
+                paused_at=utc_now(),
             )
-            .values(status=MissionPlanStatus.PAUSED)
         )
         paused_count = result.rowcount
         self._log_operation(
-            "Emergency stop: all autonomous plans paused",
+            "Emergency stop: all autonomous missions paused",
             paused_count=paused_count,
         )
         return paused_count
@@ -574,25 +564,13 @@ class MissionPlanService(BaseService):
     ) -> MissionPlan:
         """Add a single proposed task to the plan.
 
-        Creates a Task row directly. If the plan is COMPLETED, it is
-        reactivated. ARCHIVED plans reject.
+        Creates a Task row directly. An archived mission rejects.
         """
         plan = await self._repo.get_by_id(mission_plan_id)
 
-        if plan.status == MissionPlanStatus.ARCHIVED:
-            raise ValidationError(
-                f"Cannot add tasks to archived plan {mission_plan_id}. "
-                f"Create a new plan or un-archive first."
-            )
-
-        if plan.status == MissionPlanStatus.COMPLETED:
-            self._log_operation(
-                "Reactivating plan for new task",
-                plan_id=mission_plan_id,
-                previous_status=plan.status,
-            )
-            plan.status = MissionPlanStatus.ACTIVE
-            await self._session.flush()
+        mission = await self._mission_repo.get_by_id(plan.mission_id)
+        if mission.status == MissionStatus.ARCHIVED:
+            raise ValidationError("Cannot add tasks to an archived mission")
 
         # Create the task row
         task = await self._task_repo.create_task(

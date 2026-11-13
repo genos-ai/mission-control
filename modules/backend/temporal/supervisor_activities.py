@@ -253,20 +253,18 @@ async def approve_run_proposed_tasks(mission_run_id: str) -> int:
 
 @activity.defn
 async def check_plan_active(mission_id: str) -> bool:
-    """Return True if the plan is still active. False if paused/completed.
+    """Return True if the mission is ACTIVE; False if it is PAUSED or ARCHIVED.
 
-    Called before applying supervisor decisions — if someone paused
-    the plan while we were evaluating, we should not advance.
+    Called before applying supervisor decisions: if someone paused the
+    mission while we were evaluating, we should not advance.
     """
     from modules.backend.core.database import get_async_session
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.models.mission import MissionStatus
+    from modules.backend.services.mission import MissionService
 
     async with get_async_session() as db:
-        svc = MissionPlanService(db)
-        plan = await svc.get_or_create_plan(mission_id)
-        from modules.backend.models.mission_plan import MissionPlanStatus
-
-        return plan.status == MissionPlanStatus.ACTIVE
+        mission = await MissionService(db).get_mission(mission_id)
+        return mission.status == MissionStatus.ACTIVE
 
 
 @activity.defn
