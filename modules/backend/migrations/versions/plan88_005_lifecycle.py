@@ -67,6 +67,11 @@ def downgrade() -> None:
         "mission_plans",
         sa.Column("status", sa.String(9), server_default="ACTIVE", nullable=False),
     )
+    # Keep an emergency stop in force across rollback: pre-88.4.2 code reads plan status.
+    op.execute(
+        "UPDATE mission_plans p SET status = 'PAUSED' "
+        "FROM missions m WHERE m.id = p.mission_id AND m.status = 'PAUSED'"
+    )
 
     op.drop_constraint(_PAUSE_CHECK, "missions", type_="check")
     op.drop_constraint(_PAUSED_BY_FK, "missions", type_="foreignkey")

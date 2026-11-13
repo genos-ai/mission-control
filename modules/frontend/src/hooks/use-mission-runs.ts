@@ -37,18 +37,20 @@ export interface MissionRunFilters {
   beforeSequence?: number
 }
 
+function fetchMissionRuns(missionId: string | undefined, filters: MissionRunFilters) {
+  const params = new URLSearchParams()
+  for (const s of filters.statuses ?? []) params.append('status', s)
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit))
+  if (filters.beforeSequence !== undefined)
+    params.set('before_sequence', String(filters.beforeSequence))
+  const qs = params.toString()
+  return api.get<MissionRunListResponse>(`/missions/${missionId}/runs${qs ? `?${qs}` : ''}`)
+}
+
 export function useMissionRuns(missionId: string | undefined, filters: MissionRunFilters) {
   return useQuery({
     queryKey: missionRunKeys.list(missionId!, filters),
-    queryFn: () => {
-      const params = new URLSearchParams()
-      for (const s of filters.statuses ?? []) params.append('status', s)
-      if (filters.limit !== undefined) params.set('limit', String(filters.limit))
-      if (filters.beforeSequence !== undefined)
-        params.set('before_sequence', String(filters.beforeSequence))
-      const qs = params.toString()
-      return api.get<MissionRunListResponse>(`/missions/${missionId}/runs${qs ? `?${qs}` : ''}`)
-    },
+    queryFn: () => fetchMissionRuns(missionId, filters),
     enabled: !!missionId,
     refetchInterval: (query) =>
       query.state.data?.runs.some((r) => ACTIVE_RUN_STATUSES.has(r.status)) ? POLL_MS : false,
@@ -57,9 +59,18 @@ export function useMissionRuns(missionId: string | undefined, filters: MissionRu
 
 const RUNNING_RUN: MissionRunFilters = { statuses: ['running'], limit: 1 }
 
-/** The mission's running run, or null when no run is running. Progress counts come from the backend. */
+/**
+ * The mission's running run, or null when no run is running. Progress counts come from the backend.
+ * Polls unconditionally: runs start from schedule ticks, the CLI and Telegram, and resume after a
+ * gate, none of which invalidate this query.
+ */
 export function useRunningMissionRun(missionId: string | undefined): MissionRunResponse | null {
-  const { data } = useMissionRuns(missionId, RUNNING_RUN)
+  const { data } = useQuery({
+    queryKey: missionRunKeys.list(missionId!, RUNNING_RUN),
+    queryFn: () => fetchMissionRuns(missionId, RUNNING_RUN),
+    enabled: !!missionId,
+    refetchInterval: POLL_MS,
+  })
   return data?.runs[0] ?? null
 }
 

@@ -1043,7 +1043,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
 ### 88.4.10 Web lifecycle, budget, recipients and Telegram link UI
 
 **Files**
-- modify `modules/frontend/src/hooks/use-missions.ts`, `modules/frontend/src/hooks/use-mission-budget.ts`, `modules/frontend/src/types/index.ts`
+- modify `modules/frontend/src/hooks/use-missions.ts`, `modules/frontend/src/hooks/use-mission-budget.ts`, `modules/frontend/src/types/index.ts`, `modules/frontend/src/types/mission.ts`
 - modify `modules/frontend/src/components/mission/mission-top-bar.tsx`, `modules/frontend/src/components/mission/archive-mission-button.tsx`, `modules/frontend/src/components/dashboard/mission-card.tsx`, `modules/frontend/src/components/workspace/run-row-detail.tsx`, `modules/frontend/src/components/workspace/mission-settings-drawer.tsx`, `modules/frontend/src/pages/profile.tsx`
 - create `modules/frontend/src/types/notification.ts`, `modules/frontend/src/hooks/use-notification-recipients.ts`, `modules/frontend/src/hooks/use-channel-identities.ts`, `modules/frontend/src/components/workspace/mission-budget-section.tsx`, `modules/frontend/src/components/workspace/notification-recipients-section.tsx`, `modules/frontend/src/components/profile/telegram-link-panel.tsx`
 
@@ -1070,12 +1070,14 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
    - The identity list from `useChannelIdentities()` shows each row's `@username` and Telegram id. An unconfirmed row has a "Confirm" button (`useConfirmChannelIdentity`) with the text "Confirm only if this is your Telegram account." A confirmed row has "Unlink" (`useUnlinkChannelIdentity`).
    - `use-channel-identities.ts` exports `useCreateTelegramLinkCode`, `useChannelIdentities`, `useConfirmChannelIdentity` and `useUnlinkChannelIdentity`.
 8. **Types.** `types/notification.ts` holds `NotificationKind` (lowercase union), `NotificationRecipient`, `NotificationRecipientCreate`, `ChannelIdentity` and `TelegramLinkCode`; export them from `types/index.ts`.
+9. **Mission update type (`types/mission.ts`).** Delete `status` from `MissionUpdateRequest`. 88.4.2 removed it from the API but left the field (declared deviation) because the header still sent it; once Change 2 and 3 move lifecycle to the action endpoints, no caller sends it.
 
 **Tests:** the frontend has no unit test harness. The gates are `npm run build` and `npm run lint` with zero warnings, plus the browser checks in Verification.
 
 **Done when**
 - `cd modules/frontend && npm run build && npm run lint` passes.
-- `rg -n "status: 'archived'|status: 'paused'|status: 'active'" modules/frontend/src/components modules/frontend/src/hooks` returns nothing outside type and tone definitions.
+- `rg -n "status: 'archived'|status: 'paused'|status: 'active'" modules/frontend/src/components modules/frontend/src/hooks modules/frontend/src/types` returns nothing outside type and tone definitions.
+- `MissionUpdateRequest` in `types/mission.ts` has no `status` field.
 
 ---
 

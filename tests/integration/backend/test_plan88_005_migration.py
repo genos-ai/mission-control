@@ -177,6 +177,7 @@ def test_check_rejects_paused_without_reason(scratch_db: str):
 
 def test_downgrade_restores_columns(scratch_db: str):
     mission_id = _seed_mission(scratch_db, "PAUSED")
+    active_id = _seed_mission(scratch_db, "ACTIVE")
     _alembic(scratch_db, "upgrade", _TARGET)
     _alembic(scratch_db, "downgrade", _PREVIOUS)
 
@@ -188,9 +189,13 @@ def test_downgrade_restores_columns(scratch_db: str):
     [plan] = asyncio.run(
         _fetch(scratch_db, "SELECT * FROM mission_plans WHERE mission_id = $1", mission_id)
     )
-    assert plan["status"] == "ACTIVE"
+    assert plan["status"] == "PAUSED"
     assert plan["supervisor_iteration_count"] == 0
     assert plan["max_supervisor_iterations"] == 20
+    [active_plan] = asyncio.run(
+        _fetch(scratch_db, "SELECT * FROM mission_plans WHERE mission_id = $1", active_id)
+    )
+    assert active_plan["status"] == "ACTIVE"
 
     _alembic(scratch_db, "upgrade", _TARGET)
     assert _mission(scratch_db, mission_id)["paused_reason"] == "USER"
