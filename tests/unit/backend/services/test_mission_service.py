@@ -4,13 +4,20 @@ Per P12: tests run against the live platform. Uses real db_session fixture
 with transaction rollback for isolation.
 """
 
+import uuid
+from unittest.mock import MagicMock
+
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.models.mission import MissionMemberRole, MissionStatus
+from modules.backend.models.notification import MissionNotificationRecipient
+from modules.backend.models.user_channel_identity import ChannelKind
 from modules.backend.repositories.mission_plan import MissionPlanRepository
+from modules.backend.services import mission as mission_module
 from modules.backend.services.mission import MissionService
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
@@ -121,6 +128,51 @@ class TestCreateMission:
                 budget_per_month_usd=5.0,
             )
         assert await service.get_mission_by_name("bad-caps") is None
+
+
+async def _recipients(service: MissionService, mission_id: str) -> list:
+    rows = await service.session.execute(
+        select(MissionNotificationRecipient).where(
+            MissionNotificationRecipient.mission_id == mission_id
+        )
+    )
+    return list(rows.scalars().all())
+
+
+class TestOwnerRecipient:
+    @pytest.mark.asyncio
+    async def test_create_mission_adds_owner_telegram_recipient(self, service):
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="recipient-owner",
+            description="Owner gets the default kinds",
+            owner_id=TEST_USER_ID,
+        )
+        [recipient] = await _recipients(service, mission.id)
+        assert recipient.user_id == TEST_USER_ID
+        assert recipient.channel == ChannelKind.TELEGRAM
+        assert recipient.kinds == list(get_app_config().notifications.default_kinds)
+
+    @pytest.mark.asyncio
+    async def test_create_mission_non_user_owner_no_recipient(self, service, monkeypatch):
+        # A non-user owner already fails create_mission at the owner membership FK
+        # (mission_members.user_id -> users), so the rule is exercised directly.
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="recipient-non-user",
+            description="Only the real owner is subscribed",
+            owner_id=TEST_USER_ID,
+        )
+        fake_logger = MagicMock()
+        monkeypatch.setattr(mission_module, "logger", fake_logger)
+
+        for owner_id in ("cli-admin", str(uuid.uuid4())):
+            await service._add_owner_recipient(mission.id, owner_id)
+            fake_logger.warning.assert_called_with(
+                "mission.recipient_skipped",
+                extra={"mission_id": mission.id, "owner_id": owner_id},
+            )
+        assert [r.user_id for r in await _recipients(service, mission.id)] == [TEST_USER_ID]
 
 
 class TestGetMission:

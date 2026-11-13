@@ -15,6 +15,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Phase 2: New tables
+from modules.backend.models.action_token import ActionToken  # noqa: F401
 from modules.backend.models.agent_catalog import AgentCatalog  # noqa: F401
 from modules.backend.models.api_key import ApiKey  # noqa: F401
 
@@ -30,6 +31,7 @@ from modules.backend.models.execution_record import (  # noqa: F401
     TaskAttempt,
     TaskExecution,
 )
+from modules.backend.models.gate_request import GateRequest  # noqa: F401
 from modules.backend.models.llm_call import LlmCall  # noqa: F401
 from modules.backend.models.llm_call_daily_aggregate import LlmCallDailyAggregate  # noqa: F401
 from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
@@ -44,6 +46,10 @@ from modules.backend.models.mission_run_digest import MissionRunDigest  # noqa: 
 from modules.backend.models.mission_schedule import MissionSchedule  # noqa: F401
 from modules.backend.models.mission_team import MissionTeamMember  # noqa: F401
 from modules.backend.models.model_pricing import ModelPricing  # noqa: F401
+from modules.backend.models.notification import (  # noqa: F401
+    MissionNotificationRecipient,
+    NotificationDelivery,
+)
 from modules.backend.models.prompt_version import PromptVersion  # noqa: F401
 from modules.backend.models.revoked_session import RevokedSession  # noqa: F401
 from modules.backend.models.session import Session, SessionChannel, SessionMessage  # noqa: F401
@@ -52,6 +58,7 @@ from modules.backend.models.task import Task, TaskDependency  # noqa: F401
 
 # Phase 3: Users and API keys
 from modules.backend.models.user import User  # noqa: F401
+from modules.backend.models.user_channel_identity import UserChannelIdentity  # noqa: F401
 from modules.backend.models.workflow_definition import WorkflowDefinition  # noqa: F401
 
 # Import all models here so Alembic can detect them

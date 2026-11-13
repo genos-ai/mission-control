@@ -9,6 +9,8 @@
 #   notify_on_completion          - Send notification when a workflow run completes (boolean)
 #   notify_on_failure             - Send notification when a workflow run fails (boolean)
 #   notify_channels               - Channels to send notifications to (list of strings)
+#   default_kinds                 - NotificationKind values a new mission's owner
+#                                   recipient subscribes to (list, lowercase)
 # =============================================================================
 
 enabled: true
@@ -17,3 +19,4 @@ notify_on_completion: true
 notify_on_failure: true
 notify_channels:
   - telegram
+default_kinds: [run_succeeded, run_failed, gate_waiting, gate_escalated, gate_timeout_paused, budget_paused, run_skipped, run_missed]

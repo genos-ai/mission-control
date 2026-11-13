@@ -23,10 +23,28 @@ from modules.backend.models.base import Base, UUIDMixin
 
 
 class GateRequestStatus(str, enum.Enum):
+    """Durable gate lifecycle (contracts 3.2.4)."""
+
     PENDING = "pending"
-    DECIDED = "decided"
+    ESCALATED = "escalated"
     TIMED_OUT = "timed_out"
+    DECIDED = "decided"
     CANCELLED = "cancelled"
+
+
+UNDECIDED_GATE_STATUSES = frozenset(
+    {GateRequestStatus.PENDING, GateRequestStatus.ESCALATED, GateRequestStatus.TIMED_OUT}
+)
+
+
+class DecisionChannel(str, enum.Enum):
+    """Where a gate decision came from; WORKFLOW is a reviewer inside the run (contracts 3.1.2)."""
+
+    WEB = "web"
+    CLI = "cli"
+    API = "api"
+    TELEGRAM = "telegram"
+    WORKFLOW = "workflow"
 
 
 class GateRequest(UUIDMixin, Base):
@@ -35,6 +53,8 @@ class GateRequest(UUIDMixin, Base):
     Lifecycle: created PENDING by ConfigurableGate.review() → updated to
     DECIDED via POST /gates/{id}/decide → or TIMED_OUT if the dispatcher's
     wait expires → or CANCELLED if the mission is aborted while pending.
+    Durable gates (Plan 88, contracts 3.2.4) add ESCALATED between PENDING
+    and TIMED_OUT, and link the row to its run.
     """
 
     __tablename__ = "gate_requests"
@@ -51,6 +71,14 @@ class GateRequest(UUIDMixin, Base):
         nullable=True,
         index=True,
     )
+    mission_run_id: Mapped[str | None] = mapped_column(
+        PgUUID(as_uuid=False),
+        ForeignKey("mission_runs.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="The run that opened the gate; NULL only on legacy rows (plan88_006).",
+    )
+    task_id: Mapped[str | None] = mapped_column(PgUUID(as_uuid=False), nullable=True)
     session_id: Mapped[str | None] = mapped_column(
         PgUUID(as_uuid=False),
         ForeignKey("sessions.id", ondelete="SET NULL"),
@@ -73,7 +101,7 @@ class GateRequest(UUIDMixin, Base):
         comment="Serialised GateContext at the time of the pause.",
     )
     status: Mapped[str] = mapped_column(
-        Enum(GateRequestStatus, native_enum=False),
+        Enum(GateRequestStatus, native_enum=False, length=32),
         default=GateRequestStatus.PENDING,
         nullable=False,
         index=True,
@@ -99,6 +127,18 @@ class GateRequest(UUIDMixin, Base):
     timed_out_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+    escalate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pause_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_channel: Mapped[DecisionChannel | None] = mapped_column(
+        Enum(DecisionChannel, native_enum=False, length=32),
+        nullable=True,
+    )
+    ai_recommendation_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="The AI reviewer's recommendation shown beside the gate (AI_ASSISTED).",
     )
 
     def __repr__(self) -> str:

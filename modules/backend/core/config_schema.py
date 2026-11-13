@@ -469,6 +469,21 @@ class WorkflowsSchema(_StrictBase):
     workshop: WorkshopSchema = Field(default_factory=WorkshopSchema)
 
 
+# NotificationKind values (models/notification.py). A Literal, not the enum, because
+# importing modules.backend.models from here is circular (models -> core.exceptions ->
+# core.logging -> core.config); test_notification_kind_literal_matches_enum pins it.
+NotificationKindValue = Literal[
+    "run_succeeded",
+    "run_failed",
+    "gate_waiting",
+    "gate_escalated",
+    "gate_timeout_paused",
+    "budget_paused",
+    "run_skipped",
+    "run_missed",
+]
+
+
 class NotificationsSchema(_StrictBase):
     """Run notification configuration."""
 
@@ -477,6 +492,7 @@ class NotificationsSchema(_StrictBase):
     notify_on_completion: bool = True
     notify_on_failure: bool = True
     notify_channels: list[str] = Field(default_factory=lambda: ["telegram"])
+    default_kinds: list[NotificationKindValue] = Field(..., min_length=1)
 
 
 # =============================================================================

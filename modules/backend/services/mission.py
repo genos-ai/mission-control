@@ -6,6 +6,7 @@ and mission-scoping enforcement.
 """
 
 import json
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -24,9 +25,15 @@ from modules.backend.core.logging import get_logger
 from modules.backend.models.mission import Mission, MissionMember, MissionMemberRole, MissionStatus
 from modules.backend.models.mission_event import MissionEvent
 from modules.backend.models.mission_plan import GateMode
+from modules.backend.models.notification import NotificationKind
 from modules.backend.models.user import User
+from modules.backend.models.user_channel_identity import ChannelKind
 from modules.backend.repositories.mission import MissionMemberRepository, MissionRepository
+from modules.backend.repositories.mission_notification_recipient import (
+    MissionNotificationRecipientRepository,
+)
 from modules.backend.repositories.mission_plan import MissionPlanRepository
+from modules.backend.repositories.user import UserRepository
 from modules.backend.schemas.mission import MissionResponse
 from modules.backend.services.base import BaseService
 from modules.backend.services.budget import BudgetService
@@ -48,6 +55,32 @@ class MissionService(BaseService):
         super().__init__(session)
         self._mission_repo = MissionRepository(session)
         self._member_repo = MissionMemberRepository(session)
+
+    async def _add_owner_recipient(self, mission_id: str, owner_id: str) -> None:
+        """Subscribe the owner on TELEGRAM to notifications.default_kinds (contracts 3.1.10).
+
+        Only when owner_id is an existing user id; otherwise no recipient is
+        added and mission.recipient_skipped is logged.
+        """
+        try:
+            owner_uuid = str(uuid.UUID(owner_id))
+        except ValueError:
+            owner = None
+        else:
+            owner = await UserRepository(self._session).get_by_id_or_none(owner_uuid)
+        if owner is None:
+            logger.warning(
+                "mission.recipient_skipped",
+                extra={"mission_id": mission_id, "owner_id": owner_id},
+            )
+            return
+        kinds = [NotificationKind(k).value for k in get_app_config().notifications.default_kinds]
+        await MissionNotificationRecipientRepository(self._session).create(
+            mission_id=mission_id,
+            user_id=str(owner.id),
+            channel=ChannelKind.TELEGRAM,
+            kinds=kinds,
+        )
 
     async def to_responses(self, missions: list[Mission]) -> list[MissionResponse]:
         """API responses for missions, each with its spend, from one aggregate query.
@@ -91,7 +124,8 @@ class MissionService(BaseService):
         """Create a new mission with initial owner membership.
 
         Creates: missions row, mission_plans row (with the gate mode and
-        budget caps), mission_members row (owner), seed MCD. Omitted per-run
+        budget caps), mission_members row (owner), the owner's TELEGRAM
+        notification recipient (when the owner is a user), seed MCD. Omitted per-run
         and per-month caps take missions.budgets defaults. Raises
         ValidationError for an unknown gate mode, invalid caps or an
         execution environment with no backend.
@@ -141,6 +175,7 @@ class MissionService(BaseService):
             user_id=owner_id,
             role=MissionMemberRole.OWNER,
         )
+        await self._add_owner_recipient(mission.id, owner_id)
 
         # Create seed MCD
         from modules.backend.services.mission_context import MissionContextManager

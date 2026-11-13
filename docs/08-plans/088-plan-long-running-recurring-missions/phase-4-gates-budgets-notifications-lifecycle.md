@@ -254,6 +254,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
 - create `modules/backend/models/user_channel_identity.py`, `modules/backend/models/action_token.py`, `modules/backend/models/notification.py` (holding `MissionNotificationRecipient`, `NotificationDelivery`, `NotificationKind` and `NotificationDeliveryStatus`)
 - create `modules/backend/repositories/user_channel_identity.py`, `action_token.py`, `mission_notification_recipient.py`, `notification_delivery.py`, `gate_request.py` (absent at baseline)
 - modify `modules/backend/models/gate_request.py`, `modules/backend/models/__init__.py`, `modules/backend/migrations/env.py`, `modules/backend/services/mission.py`
+- modify `modules/backend/core/config_schema.py` and `config/settings/notifications.yaml`: add `default_kinds` only, which item 5 reads (the rest of the file is 88.4.4)
 
 **Current state**
 - **Gate request status.** `GateRequestStatus` has PENDING, DECIDED, TIMED_OUT and CANCELLED (`models/gate_request.py:25-29`), stored by an `Enum(native_enum=False)` column with no explicit length (`:75-80`). There is no run link, no escalation timestamps and no decision channel; `timed_out_at` exists (`:99`).
@@ -329,7 +330,7 @@ All commits use the prefix `Plan 88 Phase 4:`, one commit per step. Phase 4 is r
 - **Secrets in error text.** aiogram and aiohttp error strings can contain `https://api.telegram.org/bot<TOKEN>/…`. `redact_secrets` (88.1.6) covers schedule sync errors only; nothing redacts notification delivery errors before storage or SSE.
 
 **Change**
-1. **Config.** Replace `notifications.yaml` with 3.4.4 and `NotificationsSchema` (`config_schema.py:393`) with the 3.4.6 classes. `default_kinds` holds lowercase values (`[run_succeeded, run_failed, gate_waiting, gate_escalated, gate_timeout_paused, budget_paused, run_skipped, run_missed]`) and is typed `list[NotificationKind]`, imported from `models/notification.py`. The cross-file check `gate_decision_ttl_seconds >= gate.durable.pause_after_seconds` is added in 88.4.8, where `gate.durable` lands.
+1. **Config.** Replace `notifications.yaml` with 3.4.4 and `NotificationsSchema` (`config_schema.py:393`) with the 3.4.6 classes. `default_kinds` holds lowercase values (`[run_succeeded, run_failed, gate_waiting, gate_escalated, gate_timeout_paused, budget_paused, run_skipped, run_missed]`); it exists since 88.4.3, typed `list[NotificationKindValue]` (contracts 3.4.6: importing the enum here is circular). The cross-file check `gate_decision_ttl_seconds >= gate.durable.pause_after_seconds` is added in 88.4.8, where `gate.durable` lands.
 2. **Redaction.** `core/redaction.py` exists since 88.1.6 (pattern from 3.5.5), which already applies it to `mission_schedules.temporal_sync_error` and `MissionScheduleSyncFailedEvent.error`. This step imports `redact_secrets` and applies it to every stored `notification_deliveries.error` and to `NotificationDeliveryFailedEvent.error`. It does not create or change the module.
 3. **`TelegramAdapter.send_notification`.**
    ```python

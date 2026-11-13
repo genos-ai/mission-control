@@ -1,4 +1,5 @@
 # Database models package
+from modules.backend.models.action_token import ActionToken, ActionTokenPurpose
 from modules.backend.models.agent_catalog import AgentCatalog
 from modules.backend.models.api_key import ApiKey
 from modules.backend.models.base import Base
@@ -9,7 +10,7 @@ from modules.backend.models.execution_record import (
     TaskAttempt,
     TaskExecution,
 )
-from modules.backend.models.gate_request import GateRequest, GateRequestStatus
+from modules.backend.models.gate_request import DecisionChannel, GateRequest, GateRequestStatus
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.llm_call_daily_aggregate import LlmCallDailyAggregate
@@ -45,6 +46,12 @@ from modules.backend.models.mission_schedule import (
 )
 from modules.backend.models.mission_team import MissionTeamMember
 from modules.backend.models.model_pricing import ModelPricing
+from modules.backend.models.notification import (
+    MissionNotificationRecipient,
+    NotificationDelivery,
+    NotificationDeliveryStatus,
+    NotificationKind,
+)
 from modules.backend.models.prompt_version import PromptVersion
 from modules.backend.models.revoked_session import RevokedSession
 from modules.backend.models.session import Session, SessionChannel, SessionMessage
@@ -56,18 +63,23 @@ from modules.backend.models.task import (
     TaskStatus,
 )
 from modules.backend.models.user import SystemRole, User
+from modules.backend.models.user_channel_identity import ChannelKind, UserChannelIdentity
 from modules.backend.models.workflow_definition import WorkflowDefinition
 from modules.backend.models.workflow_run import WorkflowRun, WorkflowRunState
 
 __all__ = [
     "ACTIVE_RUN_STATUSES",
+    "ActionToken",
+    "ActionTokenPurpose",
     "AgentCatalog",
     "ApiKey",
     "ArtifactContentType",
     "ArtifactType",
     "Base",
+    "ChannelKind",
     "ContextChange",
     "ContextMilestone",
+    "DecisionChannel",
     "DigestGenerator",
     "Embedding",
     "ExecutionDecision",
@@ -90,6 +102,7 @@ __all__ = [
     "MissionIntent",
     "MissionLearning",
     "MissionMember",
+    "MissionNotificationRecipient",
     "MissionPauseReason",
     "MissionPlan",
     "MissionRun",
@@ -103,6 +116,9 @@ __all__ = [
     "MissionScheduleStatus",
     "MissionTeamMember",
     "ModelPricing",
+    "NotificationDelivery",
+    "NotificationDeliveryStatus",
+    "NotificationKind",
     "PromptVersion",
     "RevokedSession",
     "Session",
@@ -118,6 +134,7 @@ __all__ = [
     "TERMINAL_RUN_STATUSES",
     "TERMINAL_TASK_STATUSES",
     "User",
+    "UserChannelIdentity",
     "VALID_ARTIFACT_TYPES",
     "VALID_CONTENT_TYPES",
     "VALID_RUN_TRANSITIONS",

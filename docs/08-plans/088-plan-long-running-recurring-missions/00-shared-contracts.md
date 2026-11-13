@@ -1420,7 +1420,7 @@ class ActionTokensSchema(_StrictBase):                        # 88.4.4
 class NotificationsSchema(_StrictBase):                       # 88.4.4; replaces the existing class
     enabled: bool = Field(...)
     channels: NotificationChannelsSchema
-    default_kinds: list[NotificationKind] = Field(..., min_length=1)
+    default_kinds: list[NotificationKindValue] = Field(..., min_length=1)   # 88.4.3
     action_tokens: ActionTokensSchema
     message_max_chars: int = Field(..., ge=500, le=4096)
 
@@ -1459,7 +1459,7 @@ class CliSchema(_StrictBase):                                 # 88.1.13
 # ExecutionsSchema: 88.5.3 deletes retention_days.
 ```
 
-`NotificationsSchema` imports `NotificationKind` from `modules/backend/models/notification.py`. No module under `models/` imports `core.config`, so the import creates no cycle.
+`default_kinds` is typed `list[NotificationKindValue]`, a `Literal` of the lowercase `NotificationKind` values defined in `config_schema.py` and pinned to the enum by `test_notification_kind_literal_matches_enum` (88.4.3). Importing `modules/backend/models/notification.py` from `config_schema.py` is circular (`models/__init__` → `models/mission_run` → `core.exceptions` → `core.logging` → `core.config`), the same reason `GateSchema.mode` uses `_GateMode`. Services convert with `NotificationKind(value)`. 88.4.3 adds `default_kinds` to the existing class; 88.4.4 replaces the rest.
 
 **Changes in `AppConfig.__init__`** (`core/config.py`):
 - 88.1.13: load `cli.yaml` with `_load_validated(CliSchema, "cli.yaml")`, required, and add the `cli` property.
