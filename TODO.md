@@ -250,6 +250,18 @@ open on purpose.
     picks it up (contract 3.1.7: every run that reached RUNNING has a
     digest). Narrator failures fall back to a deterministic digest, so
     only DB or infrastructure errors reach this path.
+  - The live check did not exercise the `learnings` packet layer: the
+    test mission had no learnings because no task failed. Covered by
+    `test_mission_learning.py` and `test_context_assembler.py` only.
+    Confirm on the first live mission with a task failure that the next
+    run's packet carries `learnings`.
+  - The Phase 3 Verification block checks
+    `task_executions.input_data`, a column that does not exist. The
+    packet is not persisted; the assembler's "Context assembled" line is
+    debug level. The live check rebuilt the packet with
+    `ContextAssembler.build`. Persist the layer names (not contents) on
+    the task execution, or log them at info, so this can be checked from
+    data.
   - Step "lint-imports passes" criteria (88.3.5, 88.3.7) cannot be met
     until the two Plan 71 contracts are fixed (see above).
 - [ ] **`missions.recurrence.enabled` ships as `true` (2026-11-11).**

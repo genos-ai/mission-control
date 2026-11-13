@@ -1,6 +1,6 @@
 # Plan 88: Long-Running and Recurring Missions
 
-**Status:** In progress (Phases 0, 1 and 2 done)
+**Status:** In progress (Phases 0, 1, 2 and 3 done)
 **Owner:** unassigned
 **Created:** 2026-11-07
 **Baseline:** code verified at `a28ca771`. Backend and config are identical to `9adaa69d`; later commits change only the frontend.
@@ -114,7 +114,7 @@ Each phase file is self-contained apart from its references to the contracts.
 | 0 | [phase-0-correctness-fixes.md](088-plan-long-running-recurring-missions/phase-0-correctness-fixes.md) | State-corrupting defects fixed: reconciler, gate defaults, workflow ids, cancel and delete, IDOR, swallowed exceptions, Telegram fail-open | Baseline commit | Done 2026-11-09 (88.0.12 skipped; 88.0.13a added) |
 | 1 | [phase-1-missionrun-and-schedules.md](088-plan-long-running-recurring-missions/phase-1-missionrun-and-schedules.md) | `MissionRun` entity; mission schedules backed by Temporal Schedules; event-driven dispatch; run reconciliation; API, `mc` and web | Phase 0 done; Alembic head `plan87_002` | Done 2026-11-10 (live check passed; web UI check not run; deferred items in `TODO.md`) |
 | 2 | [phase-2-durable-execution.md](088-plan-long-running-recurring-missions/phase-2-durable-execution.md) | One activity per task with heartbeats and idempotency; fail-closed execution boundary; typed failure records; config snapshot as input; `workflow.patched`; replay tests in CI; continue-as-new | Phase 1 done | Done 2026-11-11 (crash and failure drills passed; lint-imports contracts broken since Plan 71 and other deferred items in `TODO.md`) |
-| 3 | [phase-3-memory-between-runs.md](088-plan-long-running-recurring-missions/phase-3-memory-between-runs.md) | Run digest, MCD delta and watermark, learnings in context, bounded prior outputs, automatic compaction | Phase 2 done | Not started |
+| 3 | [phase-3-memory-between-runs.md](088-plan-long-running-recurring-missions/phase-3-memory-between-runs.md) | Run digest, MCD delta and watermark, learnings in context, bounded prior outputs, automatic compaction | Phase 2 done | Done 2026-11-13 (live check on p88-memory: agent and deterministic digests, previous digest and context delta in the next run's packet; digest agent renamed system.digest.agent; learnings layer not exercised live, see `TODO.md`) |
 | 4 | [phase-4-gates-budgets-notifications-lifecycle.md](088-plan-long-running-recurring-missions/phase-4-gates-budgets-notifications-lifecycle.md) | Budget caps on the single ledger; mission lifecycle reaching Temporal; durable gates; per-mission notifications; Telegram approvals; web lifecycle UI | Phase 3 done | Not started |
 | 5 | [phase-5-retention-observability-acceptance.md](088-plan-long-running-recurring-missions/phase-5-retention-observability-acceptance.md) | Retention and rollup; health views; stale-gate sweep; endurance evaluator; CI endurance variant; the 7-day and 4-week acceptance runs | Phase 4 done | Not started |
 
