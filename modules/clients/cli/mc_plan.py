@@ -58,13 +58,7 @@ async def show(
 
     plan_status = plan.get("status", "?")
     gate_mode = plan["gate_mode"]
-    spent = plan.get("total_spent_usd", 0.0) or 0.0
-    ceiling = plan.get("budget_usd_ceiling")
-    header = (
-        f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}  spent=${spent:.2f}"
-    )
-    if ceiling:
-        header += f" / ${ceiling:.2f}"
+    header = f"Plan {plan.get('id', '')}  status={plan_status}  gate={gate_mode}"
     console.print(f"[bold]{header}[/bold]\n")
 
     columns = [

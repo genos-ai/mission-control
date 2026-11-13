@@ -218,7 +218,14 @@ class TestCancelExecutionOperatorRule:
         )
         db_session.add_all([viewer, mission])
         await db_session.flush()
-        db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+        db_session.add(
+            MissionPlan(
+                mission_id=mission.id,
+                gate_mode=GateMode.MANUAL,
+                budget_per_run_usd=5.0,
+                budget_per_month_usd=100.0,
+            )
+        )
         record = ExecutionRecord(mission_id=mission.id, status=ExecutionRecordStatus.RUNNING)
         db_session.add_all(
             [

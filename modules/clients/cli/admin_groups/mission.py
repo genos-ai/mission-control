@@ -34,7 +34,6 @@ def mission(ctx):
 @click.option("--description", required=True, help="Mission purpose.")
 @click.option("--brief", default=None, help="Strategic directive for agents.")
 @click.option("--roster", default="default", help="Default agent roster.")
-@click.option("--budget", type=float, default=None, help="Budget ceiling (USD).")
 @click.option("--repo-url", default=None, help="Repository URL.")
 @click.option("--repo-root", default=None, help="Local repo root path.")
 @click.option(
@@ -48,9 +47,7 @@ def mission(ctx):
     help="Plan gate mode.",
 )
 @click.pass_obj
-def mission_create(
-    ctx, name, description, brief, roster, budget, repo_url, repo_root, tier, gate_mode
-):
+def mission_create(ctx, name, description, brief, roster, repo_url, repo_root, tier, gate_mode):
     """Create a new mission."""
     from modules.clients.cli.mission_cmds import run_mission
 
@@ -61,7 +58,6 @@ def mission_create(
         description=description,
         brief=brief,
         roster=roster,
-        budget=budget,
         repo_url=repo_url,
         repo_root=repo_root,
         gate_mode=gate_mode,

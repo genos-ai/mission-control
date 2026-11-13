@@ -21,7 +21,14 @@ async def _seed_mission(db_session: AsyncSession) -> Mission:
     )
     db_session.add(mission)
     await db_session.flush()
-    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    db_session.add(
+        MissionPlan(
+            mission_id=mission.id,
+            gate_mode=GateMode.MANUAL,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
 
     member = MissionMember(
         mission_id=mission.id,

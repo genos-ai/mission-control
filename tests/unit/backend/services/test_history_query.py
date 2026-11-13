@@ -80,7 +80,14 @@ async def _ensure_parent_rows(test_user, db_session: AsyncSession):
         db_session.add(Mission(id=_MID(slug), name=slug, description="test", owner_id=TEST_USER_ID))
     await db_session.flush()
     for slug in _MISSION_SLUGS:
-        db_session.add(MissionPlan(mission_id=_MID(slug), gate_mode=GateMode.MANUAL))
+        db_session.add(
+            MissionPlan(
+                mission_id=_MID(slug),
+                gate_mode=GateMode.MANUAL,
+                budget_per_run_usd=5.0,
+                budget_per_month_usd=100.0,
+            )
+        )
     await db_session.flush()
 
 

@@ -23,7 +23,14 @@ async def create_mission(db: AsyncSession, name: str, owner_id: str) -> Mission:
     )
     db.add(mission)
     await db.flush()
-    db.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    db.add(
+        MissionPlan(
+            mission_id=mission.id,
+            gate_mode=GateMode.MANUAL,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     db.add(MissionMember(mission_id=mission.id, user_id=owner_id, role=MissionMemberRole.OWNER))
     await db.flush()
     await db.refresh(mission, ["members"])

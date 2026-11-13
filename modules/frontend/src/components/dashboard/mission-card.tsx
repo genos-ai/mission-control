@@ -7,7 +7,6 @@ import toast from 'react-hot-toast'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Menu, type MenuItem } from '@/components/ui/menu'
 import { Panel } from '@/components/ui/panel'
-import { Progress } from '@/components/ui/progress'
 import { StatusPill } from '@/components/ui/status-pill'
 import { missionKeys, useDeleteMission } from '@/hooks/use-missions'
 import { api } from '@/lib/api'
@@ -51,7 +50,6 @@ export function MissionCard({ mission, isAdmin }: { mission: MissionListItem; is
     if (e.key === 'Enter' && e.target === e.currentTarget) open()
   }
 
-  const ceiling = mission.budget_ceiling_usd
   const canArchive = mission.status !== 'archived'
   const menuItems: MenuItem[] = [
     ...(canArchive ? [{ label: 'Archive', icon: Archive, onSelect: () => setDialog('archive') }] : []),
@@ -112,12 +110,7 @@ export function MissionCard({ mission, isAdmin }: { mission: MissionListItem; is
 
         <div className="mt-auto flex items-end justify-between gap-3 text-xs">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span className="font-mono text-text-3">
-              {ceiling === null ? fmtUsd(mission.spent_usd) : `${fmtUsd(mission.spent_usd)} of ${fmtUsd(ceiling)}`}
-            </span>
-            {ceiling !== null && (
-              <Progress value={(mission.spent_usd / ceiling) * 100} tone="brand" size="sm" label="Budget used" />
-            )}
+            <span className="font-mono text-text-3">{fmtUsd(mission.spent_usd)}</span>
           </div>
           <span className="shrink-0 text-subtle">created {formatRelative(mission.created_at)}</span>
         </div>

@@ -16,7 +16,6 @@ export interface MissionListItem {
   status: MissionStatus
   tier: MissionTier
   owner_id: string
-  budget_ceiling_usd: number | null
   /** All-time LLM spend, the same figure as the Costs tab; 0 when no calls are recorded. */
   spent_usd: number
   execution_environment: string | null
@@ -40,7 +39,9 @@ export interface MissionCreateRequest {
   owner_id: string
   gate_mode: GateMode
   tier?: MissionTier
-  budget_ceiling_usd?: number
+  budget_per_run_usd?: number
+  budget_per_month_usd?: number
+  budget_lifetime_usd?: number
   repo_url?: string
 }
 
@@ -48,7 +49,6 @@ export interface MissionUpdateRequest {
   description?: string
   brief?: string
   status?: MissionStatus
-  budget_ceiling_usd?: number | null
   repo_url?: string
   execution_environment?: string | null
 }

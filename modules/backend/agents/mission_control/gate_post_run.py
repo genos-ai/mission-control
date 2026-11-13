@@ -125,17 +125,6 @@ class AutonomousPostRunReviewer:
 
         # ── Circuit breakers (§4.6) — fire before rules ─────────────
 
-        # Breaker #1: Budget exhausted
-        if context.budget_usd > 0 and context.total_cost_usd >= context.budget_usd:
-            return self._decide(
-                GateAction.ESCALATE,
-                "Budget exhausted — total_spent_usd "
-                f"({context.total_cost_usd:.4f}) >= ceiling "
-                f"({context.budget_usd:.4f}).",
-                execution_record_id=execution_record_id,
-                rule=1,
-            )
-
         # Breaker #3: Stall detection. Within a run the workflow counts consecutive
         # zero-completion waves; recent_run_outcomes holds one record per run.
         zero_waves = context.plan_task_summary.get("zero_completion_waves", 0)

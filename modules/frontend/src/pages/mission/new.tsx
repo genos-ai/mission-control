@@ -49,7 +49,9 @@ export default function NewMissionPage() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [brief, setBrief] = useState('')
-  const [budgetCeiling, setBudgetCeiling] = useState('')
+  const [budgetPerRun, setBudgetPerRun] = useState('')
+  const [budgetPerMonth, setBudgetPerMonth] = useState('')
+  const [budgetLifetime, setBudgetLifetime] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [gateMode, setGateMode] = useState<GateMode | ''>('')
   const [error, setError] = useState('')
@@ -77,7 +79,9 @@ export default function NewMissionPage() {
         brief: brief || undefined,
         owner_id: user.id,
         gate_mode: gateMode,
-        budget_ceiling_usd: budgetCeiling ? parseFloat(budgetCeiling) : undefined,
+        budget_per_run_usd: budgetPerRun ? parseFloat(budgetPerRun) : undefined,
+        budget_per_month_usd: budgetPerMonth ? parseFloat(budgetPerMonth) : undefined,
+        budget_lifetime_usd: budgetLifetime ? parseFloat(budgetLifetime) : undefined,
         repo_url: repoUrl || undefined,
       })
       navigate(ROUTES.MISSION_TEAM(mission.id), { replace: true })
@@ -178,29 +182,56 @@ export default function NewMissionPage() {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Budget ceiling" htmlFor="mission-budget">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Budget per run" htmlFor="mission-budget-run" note="optional">
               <InputGroup
-                id="mission-budget"
+                id="mission-budget-run"
                 type="number"
                 prefixLabel="$"
                 suffixLabel="USD"
-                placeholder="No limit"
-                value={budgetCeiling}
-                onChange={(e) => setBudgetCeiling(e.target.value)}
+                placeholder="Default"
+                value={budgetPerRun}
+                onChange={(e) => setBudgetPerRun(e.target.value)}
                 min="0.01"
                 step="0.01"
               />
             </Field>
-            <Field label="Repository" htmlFor="mission-repo" note="optional">
-              <Input
-                id="mission-repo"
-                placeholder="https://github.com/org/repo"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
+            <Field label="Budget per month" htmlFor="mission-budget-month" note="optional">
+              <InputGroup
+                id="mission-budget-month"
+                type="number"
+                prefixLabel="$"
+                suffixLabel="USD"
+                placeholder="Default"
+                value={budgetPerMonth}
+                onChange={(e) => setBudgetPerMonth(e.target.value)}
+                min="0.01"
+                step="0.01"
+              />
+            </Field>
+            <Field label="Lifetime budget" htmlFor="mission-budget-lifetime" note="optional">
+              <InputGroup
+                id="mission-budget-lifetime"
+                type="number"
+                prefixLabel="$"
+                suffixLabel="USD"
+                placeholder="No limit"
+                value={budgetLifetime}
+                onChange={(e) => setBudgetLifetime(e.target.value)}
+                min="0.01"
+                step="0.01"
               />
             </Field>
           </div>
+
+          <Field label="Repository" htmlFor="mission-repo" note="optional">
+            <Input
+              id="mission-repo"
+              placeholder="https://github.com/org/repo"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+            />
+          </Field>
 
           {error && <p className="text-sm text-danger">{error}</p>}
 

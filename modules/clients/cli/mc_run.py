@@ -262,7 +262,6 @@ async def _stream_plan_sse(
     sse_token = sse_token_data.get("token", "")
 
     task_statuses: dict[str, str] = {}  # step_id → latest status
-    total_cost: float = 0.0
     terminal = {"completed", "failed", "cancelled"}
 
     # SSE wire format after format_event_for_sse():
@@ -328,14 +327,12 @@ async def _stream_plan_sse(
             plan_states = plan.get("task_states", [])
             all_done = plan_states and all(ts.get("status", "") in terminal for ts in plan_states)
             if all_done:
-                cost = plan.get("total_spent_usd", total_cost)
                 completed = sum(1 for ts in plan_states if ts.get("status") == "completed")
                 failed_count = sum(1 for ts in plan_states if ts.get("status") == "failed")
                 label = "success" if failed_count == 0 else "failed"
                 console.print(
                     f"\n[bold]Plan complete:[/bold] {label}"
                     f" | {completed}/{len(plan_states)} succeeded"
-                    f" | ${cost:.4f}"
                 )
                 return
 
@@ -378,14 +375,12 @@ async def _poll_plan_fallback(
 
         all_terminal = all(ts.get("status", "") in terminal for ts in task_states)
         if all_terminal:
-            cost = plan.get("total_spent_usd", 0)
             completed = sum(1 for ts in task_states if ts.get("status") == "completed")
             failed = sum(1 for ts in task_states if ts.get("status") == "failed")
             status_label = "success" if failed == 0 else "failed"
             console.print(
                 f"\n[bold]Plan complete:[/bold] {status_label}"
                 f" | {completed}/{len(task_states)} succeeded"
-                f" | ${cost:.4f}"
             )
             return
 

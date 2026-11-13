@@ -18,7 +18,7 @@ Plan 72 changes:
 
 import enum
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import JSON, CheckConstraint, Enum, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,10 +65,21 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
 
     One row per mission (enforced by unique constraint). Tasks live in the
     `tasks` table as first-class entities (Plan 72). This model holds
-    plan-level metadata, gate configuration, and budget tracking.
+    plan-level metadata, gate configuration and the budget caps.
     """
 
     __tablename__ = "mission_plans"
+    __table_args__ = (
+        CheckConstraint("budget_per_run_usd > 0", name="ck_mission_plans_per_run_pos"),
+        CheckConstraint("budget_per_month_usd > 0", name="ck_mission_plans_per_month_pos"),
+        CheckConstraint(
+            "budget_per_month_usd >= budget_per_run_usd", name="ck_mission_plans_month_ge_run"
+        ),
+        CheckConstraint(
+            "budget_lifetime_usd IS NULL OR budget_lifetime_usd > 0",
+            name="ck_mission_plans_lifetime_pos",
+        ),
+    )
 
     mission_id: Mapped[str] = mapped_column(
         PgUUID(as_uuid=False),
@@ -135,20 +146,24 @@ class MissionPlan(UUIDMixin, TimestampMixin, Base):
         comment="Bumped on each refinement.",
     )
 
-    # ── Budget tracking ────────────────────────────────────────────────────
+    # ── Budget caps (Plan 88 contracts 3.1.4; spend lives in the llm_calls ledger) ──
 
-    budget_usd_ceiling: Mapped[float | None] = mapped_column(
+    budget_per_run_usd: Mapped[float] = mapped_column(
         Numeric(12, 6, asdecimal=False),
-        nullable=True,
-        comment="Cumulative cap across all runs from this plan",
+        nullable=False,
+        comment="Cap on one run's spend; snapshotted into mission_runs.budget_cap_usd at begin",
     )
 
-    total_spent_usd: Mapped[float] = mapped_column(
+    budget_per_month_usd: Mapped[float] = mapped_column(
         Numeric(12, 6, asdecimal=False),
-        default=0.0,
-        server_default="0.0",
         nullable=False,
-        comment="Running total across all dispatched executions",
+        comment="Cap on spend per UTC calendar month",
+    )
+
+    budget_lifetime_usd: Mapped[float | None] = mapped_column(
+        Numeric(12, 6, asdecimal=False),
+        nullable=True,
+        comment="Optional cap on lifetime spend; NULL means no lifetime cap",
     )
 
     # ── Supervisor autonomy loop (Plan 51 Phase C) ─────────────────────────

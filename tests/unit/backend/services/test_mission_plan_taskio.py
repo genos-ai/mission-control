@@ -38,7 +38,15 @@ async def _seed(db_session) -> dict[str, str]:
     db_session.add(
         Mission(id=mission_id, name=f"taskio-{mission_id}", description="t", owner_id=str(uuid4()))
     )
-    db_session.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
+    db_session.add(
+        MissionPlan(
+            id=plan_id,
+            mission_id=mission_id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     summaries = {
         "a": json.dumps({"result": "from a"}),
         "b": "plain text",
@@ -120,7 +128,15 @@ async def _two_run_seed(db_session) -> dict[str, str]:
     db_session.add(
         Mission(id=mission_id, name=f"taskio-{mission_id}", description="t", owner_id=str(uuid4()))
     )
-    db_session.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
+    db_session.add(
+        MissionPlan(
+            id=plan_id,
+            mission_id=mission_id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     await db_session.flush()
     ids = {"mission": mission_id, "plan": plan_id}
     for seq, status in ((1, MissionRunStatus.SUCCEEDED), (2, MissionRunStatus.RUNNING)):

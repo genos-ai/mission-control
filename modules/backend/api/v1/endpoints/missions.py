@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from modules.backend.api.v1.endpoints import (
     missions_artifacts,
+    missions_budget,
     missions_context,
     missions_costs,
     missions_gates,
@@ -37,6 +38,7 @@ router.include_router(missions_plan.router)
 router.include_router(missions_artifacts.router)
 router.include_router(missions_costs.router)
 router.include_router(missions_gates.router)
+router.include_router(missions_budget.router)
 
 
 # ---- Mission CRUD ----
@@ -73,7 +75,9 @@ async def create_mission(
         owner_id=current_user.id,
         team_id=data.team_id,
         default_roster=data.default_roster,
-        budget_ceiling_usd=data.budget_ceiling_usd,
+        budget_per_run_usd=data.budget_per_run_usd,
+        budget_per_month_usd=data.budget_per_month_usd,
+        budget_lifetime_usd=data.budget_lifetime_usd,
         repo_url=data.repo_url,
         repo_root=data.repo_root,
         gate_mode=data.gate_mode,

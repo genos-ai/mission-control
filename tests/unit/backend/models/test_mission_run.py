@@ -105,7 +105,12 @@ async def test_enum_stores_name(db_session: AsyncSession, test_user):
     )
     db_session.add(mission)
     await db_session.flush()
-    plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+    plan = MissionPlan(
+        mission_id=mission.id,
+        gate_mode=GateMode.MANUAL,
+        budget_per_run_usd=5.0,
+        budget_per_month_usd=100.0,
+    )
     db_session.add(plan)
     await db_session.flush()
     run = MissionRun(

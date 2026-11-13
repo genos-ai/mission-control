@@ -7,8 +7,10 @@ with transaction rollback for isolation.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.exceptions import ConflictError, NotFoundError
+from modules.backend.core.config import get_app_config
+from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.models.mission import MissionMemberRole, MissionStatus
+from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.services.mission import MissionService
 from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
@@ -76,15 +78,49 @@ class TestCreateMission:
             owner_id=TEST_USER_ID,
             team_id="team-alpha",
             default_roster="research",
-            budget_ceiling_usd=50.0,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=50.0,
+            budget_lifetime_usd=500.0,
             repo_url="https://github.com/test/repo",
             repo_root="/home/test/repo",
         )
         assert mission.team_id == "team-alpha"
         assert mission.default_roster == "research"
-        assert mission.budget_ceiling_usd == 50.0
+        plan = await MissionPlanRepository(service.session).get_by_mission_id_required(mission.id)
+        assert (
+            plan.budget_per_run_usd,
+            plan.budget_per_month_usd,
+            plan.budget_lifetime_usd,
+        ) == (5.0, 50.0, 500.0)
         assert mission.repo_url == "https://github.com/test/repo"
         assert mission.repo_root == "/home/test/repo"
+
+    @pytest.mark.asyncio
+    async def test_omitted_caps_take_configured_defaults(self, service):
+        mission = await service.create_mission(
+            gate_mode="manual",
+            name="default-caps",
+            description="Caps from missions.budgets",
+            owner_id=TEST_USER_ID,
+        )
+        plan = await MissionPlanRepository(service.session).get_by_mission_id_required(mission.id)
+        budgets = get_app_config().missions.budgets
+        assert plan.budget_per_run_usd == budgets.default_per_run_usd
+        assert plan.budget_per_month_usd == budgets.default_per_month_usd
+        assert plan.budget_lifetime_usd is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_caps_rejected_before_insert(self, service):
+        with pytest.raises(ValidationError, match="per-month cap must be at least"):
+            await service.create_mission(
+                gate_mode="manual",
+                name="bad-caps",
+                description="Month below run",
+                owner_id=TEST_USER_ID,
+                budget_per_run_usd=10.0,
+                budget_per_month_usd=5.0,
+            )
+        assert await service.get_mission_by_name("bad-caps") is None
 
 
 class TestGetMission:

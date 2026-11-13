@@ -56,7 +56,15 @@ _END = {
 async def _mission(db: AsyncSession, owner_id: str = TEST_USER_ID) -> tuple[str, str]:
     mission_id, plan_id = str(uuid4()), str(uuid4())
     db.add(Mission(id=mission_id, name=f"dig-{mission_id}", description="t", owner_id=owner_id))
-    db.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
+    db.add(
+        MissionPlan(
+            id=plan_id,
+            mission_id=mission_id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     await db.flush()
     return mission_id, plan_id
 

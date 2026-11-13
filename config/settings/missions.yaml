@@ -2,7 +2,6 @@
 # Mission System Configuration
 # =============================================================================
 # Available options:
-#   default_budget_ceiling_usd  - Default mission budget ceiling (float, nullable)
 #   max_missions_per_owner      - Maximum missions per owner (integer)
 #   pcd_max_size_bytes          - Mission Context Document hard size cap in bytes (integer, 20480 = 20KB)
 #   pcd_target_size_bytes       - MCD target size in bytes (integer, 15360 = 15KB)
@@ -12,7 +11,6 @@
 #   enable_context_assembly     - Enable context assembly in dispatch loop (boolean)
 # =============================================================================
 
-default_budget_ceiling_usd: null
 max_missions_per_owner: 50
 pcd_max_size_bytes: 20480
 pcd_target_size_bytes: 15360
@@ -69,6 +67,15 @@ recurrence:
   min_interval_seconds: 300                 # cron firing more often than this is rejected
   max_schedules_per_mission: 5
   objective_template_max_chars: 4000
+
+# =============================================================================
+# Budget caps (Plan 88, 88.4.1). Spend is read from the llm_calls ledger.
+# =============================================================================
+budgets:
+  default_per_run_usd: 5.00                 # cap for one run when create omits it
+  default_per_month_usd: 100.00             # cap per UTC calendar month when create omits it
+  max_per_run_usd: 100.00
+  max_per_month_usd: 2000.00
 
 # =============================================================================
 # Memory between runs (Plan 88 Phase 3)

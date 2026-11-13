@@ -124,9 +124,8 @@ class MissionPlanOrchestrator(BaseService):
                 sees and reconciliation touches. None means the mission's
                 active run, or the backlog only when no run is active.
             mission_budget_usd: Budget to validate the new plan against.
-                Defaults to get_default_budget_usd() when None — callers
-                that have a per-plan budget ceiling should pass it in
-                explicitly.
+                Defaults to get_default_budget_usd() when None. Run and
+                Director callers pass the plan's per-run cap.
 
         Returns:
             The refreshed MissionPlan with updated tasks and bumped
@@ -170,7 +169,7 @@ class MissionPlanOrchestrator(BaseService):
         # refinement succeeds). Pass it so the Planning Agent generates
         # task IDs with the correct version prefix: v{N}-task-001, etc.
         next_version = plan.version + 1
-        budget = plan.budget_usd_ceiling or mission_budget_usd
+        budget = mission_budget_usd
 
         # Retry loop: if the Planning Agent produces invalid output,
         # feed the validation errors back and re-call. Max 3 attempts.
@@ -352,7 +351,7 @@ class MissionPlanOrchestrator(BaseService):
         # Semantic validation (11 rules)
         roster = await derive_roster_from_team(mission_id, self._session)
         plan = await self._plan_svc.get_or_create_plan(mission_id)
-        budget = plan.budget_usd_ceiling or mission_budget_usd
+        budget = mission_budget_usd
 
         validation = validate_plan(candidate, roster, budget)
         if not validation.is_valid:

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backend.core.agent_registry import get_registry
+from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import (
     ConflictError,
     ExternalServiceError,
@@ -28,6 +29,7 @@ from modules.backend.repositories.mission import MissionMemberRepository, Missio
 from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.schemas.mission import MissionResponse
 from modules.backend.services.base import BaseService
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.token_economics import TokenEconomicsService
 
 logger = get_logger(__name__)
@@ -78,7 +80,9 @@ class MissionService(BaseService):
         brief: str | None = None,
         team_id: str | None = None,
         default_roster: str = "default",
-        budget_ceiling_usd: float | None = None,
+        budget_per_run_usd: float | None = None,
+        budget_per_month_usd: float | None = None,
+        budget_lifetime_usd: float | None = None,
         repo_url: str | None = None,
         repo_root: str | None = None,
         tier: str = "user",
@@ -86,9 +90,11 @@ class MissionService(BaseService):
     ) -> Mission:
         """Create a new mission with initial owner membership.
 
-        Creates: missions row, mission_plans row (with the gate mode),
-        mission_members row (owner), seed MCD. Raises ValidationError for an
-        unknown gate mode or an execution environment with no backend.
+        Creates: missions row, mission_plans row (with the gate mode and
+        budget caps), mission_members row (owner), seed MCD. Omitted per-run
+        and per-month caps take missions.budgets defaults. Raises
+        ValidationError for an unknown gate mode, invalid caps or an
+        execution environment with no backend.
         """
         _reject_unbacked_environment(execution_environment)
         try:
@@ -97,6 +103,12 @@ class MissionService(BaseService):
             raise ValidationError(
                 f"Invalid gate_mode {gate_mode!r}. Must be one of: {[m.value for m in GateMode]}"
             ) from exc
+        budget_defaults = get_app_config().missions.budgets
+        if budget_per_run_usd is None:
+            budget_per_run_usd = budget_defaults.default_per_run_usd
+        if budget_per_month_usd is None:
+            budget_per_month_usd = budget_defaults.default_per_month_usd
+        BudgetService.validate_caps(budget_per_run_usd, budget_per_month_usd, budget_lifetime_usd)
 
         existing = await self._mission_repo.get_by_name(name)
         if existing:
@@ -109,7 +121,6 @@ class MissionService(BaseService):
             owner_id=owner_id,
             team_id=team_id,
             default_roster=default_roster,
-            budget_ceiling_usd=budget_ceiling_usd,
             repo_url=repo_url,
             repo_root=repo_root,
             tier=tier,
@@ -119,7 +130,9 @@ class MissionService(BaseService):
         await MissionPlanRepository(self._session).create_for_mission(
             mission_id=mission.id,
             gate_mode=resolved_gate_mode,
-            budget_usd_ceiling=budget_ceiling_usd,
+            budget_per_run_usd=budget_per_run_usd,
+            budget_per_month_usd=budget_per_month_usd,
+            budget_lifetime_usd=budget_lifetime_usd,
         )
 
         # Auto-create owner membership

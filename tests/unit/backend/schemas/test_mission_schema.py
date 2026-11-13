@@ -30,11 +30,17 @@ class TestMissionCreate:
             gate_mode="manual",
             team_id="team-alpha",
             default_roster="research",
-            budget_ceiling_usd=50.0,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=50.0,
+            budget_lifetime_usd=500.0,
             repo_url="https://github.com/test/repo",
             repo_root="/home/test/repo",
         )
-        assert schema.budget_ceiling_usd == 50.0
+        assert (
+            schema.budget_per_run_usd,
+            schema.budget_per_month_usd,
+            schema.budget_lifetime_usd,
+        ) == (5.0, 50.0, 500.0)
 
     def test_invalid_name_uppercase(self):
         with pytest.raises(ValidationError):
@@ -70,7 +76,7 @@ class TestMissionCreate:
                 description="Negative budget",
                 owner_id=TEST_USER_ID,
                 gate_mode="manual",
-                budget_ceiling_usd=0.0,
+                budget_per_run_usd=0.0,
             )
 
     def test_extra_fields_rejected(self):
@@ -111,7 +117,6 @@ class TestMissionResponse:
             owner_id=TEST_USER_ID,
             team_id=None,
             default_roster="default",
-            budget_ceiling_usd=None,
             repo_url=None,
             repo_root=None,
             execution_environment=None,

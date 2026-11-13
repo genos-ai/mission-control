@@ -26,7 +26,15 @@ async def _mission(db_session: AsyncSession) -> tuple[str, str]:
     db_session.add(
         Mission(id=mission_id, name=f"mem-{mission_id}", description="t", owner_id=TEST_USER_ID)
     )
-    db_session.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
+    db_session.add(
+        MissionPlan(
+            id=plan_id,
+            mission_id=mission_id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     await db_session.flush()
     return mission_id, plan_id
 

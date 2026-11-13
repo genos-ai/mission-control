@@ -16,7 +16,6 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.backend.core.config import get_default_budget_usd
 from modules.backend.core.exceptions import ConflictError, NotFoundError, ValidationError
 from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
@@ -65,21 +64,6 @@ def gate_mode_auto_approves(gate_mode: GateMode) -> bool:
     For callers outside the service layer, such as agent tools, which may not import models.
     """
     return gate_mode in AUTO_APPROVE_GATE_MODES
-
-
-def plan_budget_ceiling_usd(plan: MissionPlan) -> float:
-    """The plan's lifetime cap.
-
-    A NULL ceiling means the configured default cap (missions.default_budget_ceiling_usd).
-    """
-    if plan.budget_usd_ceiling is not None:
-        return plan.budget_usd_ceiling
-    return get_default_budget_usd()
-
-
-def remaining_plan_budget_usd(plan: MissionPlan, spent_usd: float) -> float:
-    """Lifetime cap minus spend; spend is MissionPlanService.total_task_cost_usd."""
-    return plan_budget_ceiling_usd(plan) - spent_usd
 
 
 class MissionPlanService(BaseService):
@@ -182,14 +166,6 @@ class MissionPlanService(BaseService):
             mission_plan_id,
             status=status,
         )
-
-    async def total_task_cost_usd(self, mission_plan_id: str) -> float:
-        """Sum of the plan's task costs, written per task by execute_plan_task (88.2.6)."""
-        return await self._task_repo.sum_cost_by_plan(mission_plan_id)
-
-    async def remaining_budget_usd(self, plan: MissionPlan) -> float:
-        """The plan's lifetime cap minus its task costs, the spend breaker #1 reads."""
-        return remaining_plan_budget_usd(plan, await self.total_task_cost_usd(plan.id))
 
     async def get_task(self, task_id: str) -> Task | None:
         """Get a single task by id, or None if it doesn't exist."""

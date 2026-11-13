@@ -40,6 +40,7 @@ from modules.backend.agents.mission.director.tools.refine_plan import refine_pla
 from modules.backend.core.config import get_app_config
 from modules.backend.models.execution_record import ExecutionDecision
 from modules.backend.models.mission_run import MissionRunTrigger
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run import MissionRunService
@@ -175,7 +176,9 @@ def env(bare_env: WorkflowEnvironment, monkeypatch) -> WorkflowEnvironment:
         "get_or_create_plan",
         AsyncMock(return_value=SimpleNamespace(id=str(uuid.uuid4()))),
     )
-    monkeypatch.setattr(MissionPlanService, "remaining_budget_usd", AsyncMock(return_value=5.0))
+    monkeypatch.setattr(
+        BudgetService, "get_status", AsyncMock(return_value=SimpleNamespace(per_run_usd=5.0))
+    )
     monkeypatch.setattr(
         MissionRunService, "get_active_run", AsyncMock(return_value=SimpleNamespace(id=run_id))
     )

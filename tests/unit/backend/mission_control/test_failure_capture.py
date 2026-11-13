@@ -529,12 +529,15 @@ async def test_refine_with_failed_task_finalises(db_session, test_user, monkeypa
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Refine with a failed task",
         owner_id=test_user.id,
-        budget_ceiling_usd=10.0,
     )
     db_session.add(mission)
     await db_session.flush()
     plan = MissionPlan(
-        mission_id=mission.id, gate_mode=GateMode.AUTONOMOUS, budget_usd_ceiling=10.0
+        mission_id=mission.id,
+        gate_mode=GateMode.AUTONOMOUS,
+        budget_per_run_usd=5.0,
+        budget_per_month_usd=100.0,
+        budget_lifetime_usd=10.0,
     )
     db_session.add(plan)
     await db_session.flush()

@@ -41,11 +41,16 @@ async def _persist(db_session: AsyncSession, owner_id: str, gate_mode: GateMode)
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for _persist_workflow_as_plan",
         owner_id=owner_id,
-        budget_ceiling_usd=10.0,
     )
     db_session.add(mission)
     await db_session.flush()
-    plan = MissionPlan(mission_id=mission.id, gate_mode=gate_mode, budget_usd_ceiling=10.0)
+    plan = MissionPlan(
+        mission_id=mission.id,
+        gate_mode=gate_mode,
+        budget_per_run_usd=5.0,
+        budget_per_month_usd=100.0,
+        budget_lifetime_usd=10.0,
+    )
     db_session.add(plan)
     await db_session.flush()
 

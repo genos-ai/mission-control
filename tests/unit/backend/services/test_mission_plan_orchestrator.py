@@ -33,12 +33,17 @@ async def mission_context(db_session: AsyncSession, test_user) -> dict:
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for orchestrator helpers",
         owner_id=test_user.id,
-        budget_ceiling_usd=10.0,
     )
     db_session.add(m)
     await db_session.flush()
     db_session.add(
-        MissionPlan(mission_id=m.id, gate_mode=GateMode.AUTONOMOUS, budget_usd_ceiling=10.0)
+        MissionPlan(
+            mission_id=m.id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+            budget_lifetime_usd=10.0,
+        )
     )
     await db_session.flush()
     return {"mission_id": m.id, "user_id": test_user.id}

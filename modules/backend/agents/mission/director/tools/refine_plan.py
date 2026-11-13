@@ -69,6 +69,7 @@ async def refine_plan(
 
     from modules.backend.core.config import get_app_config
     from modules.backend.core.exceptions import ExternalServiceError
+    from modules.backend.services.budget import BudgetService
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan import MissionPlanService
     from modules.backend.services.mission_run import MissionRunService
@@ -89,7 +90,8 @@ async def refine_plan(
     mission = await MissionService(db_session).get_mission(mission_id)
     plan_svc = MissionPlanService(db_session)
     plan = await plan_svc.get_or_create_plan(mission_id)
-    remaining_budget_usd = await plan_svc.remaining_budget_usd(plan)
+    budget = await BudgetService(db_session).get_status(mission_id)
+    per_run_usd = budget.per_run_usd
     active_run = await MissionRunService(db_session, event_bus).get_active_run(mission_id)
     # Save what the workflow needs before the commit expires the ORM
     # attributes (P-pattern: commit expires everything).
@@ -106,7 +108,7 @@ async def refine_plan(
         plan_id=plan_id,
         instructions=instructions,
         user_id=owner_id,
-        mission_budget_usd=remaining_budget_usd,
+        mission_budget_usd=per_run_usd,
         timeouts=build_workflow_timeouts_snapshot(),
     )
     log_extra = {

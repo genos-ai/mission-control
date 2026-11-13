@@ -61,14 +61,17 @@ class TestCreateMission:
             brief="Strategic brief for agents",
             owner_id=regular_user.id,
             default_roster="research",
-            budget_ceiling_usd=50.0,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=50.0,
             repo_url="https://github.com/test/repo",
             tier="user",
         )
 
         assert mission.brief == "Strategic brief for agents"
         assert mission.default_roster == "research"
-        assert mission.budget_ceiling_usd == 50.0
+        plan = await MissionPlanService(db_session).get_plan(mission.id)
+        assert (plan.budget_per_run_usd, plan.budget_per_month_usd) == (5.0, 50.0)
+        assert plan.budget_lifetime_usd is None
         assert mission.repo_url == "https://github.com/test/repo"
 
 
@@ -152,18 +155,6 @@ class TestUpdateMission:
             description="Updated description",
         )
         assert updated.description == "Updated description"
-
-    async def test_update_budget(
-        self,
-        db_session: AsyncSession,
-        test_mission: Mission,
-    ):
-        service = MissionService(db_session)
-        updated = await service.update_mission(
-            test_mission.id,
-            budget_ceiling_usd=100.0,
-        )
-        assert updated.budget_ceiling_usd == 100.0
 
 
 class TestDeleteMission:

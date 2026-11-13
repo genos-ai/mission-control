@@ -42,6 +42,7 @@ async def show_status(
         exec_data.get("total", len(executions)) if isinstance(exec_data, dict) else len(executions)
     )
     total_cost = sum(e.get("total_cost_usd", 0) for e in executions)
+    budget = await api.get(f"/missions/{mission_id}/budget")
 
     if verbose:
         data = {
@@ -49,7 +50,8 @@ async def show_status(
                 "id": mission["id"],
                 "name": mission["name"],
                 "description": mission.get("description", ""),
-                "budget_ceiling_usd": mission.get("budget_ceiling_usd"),
+                "per_month_usd": budget["per_month_usd"],
+                "month_spent_usd": budget["month_spent_usd"],
             },
             "total_runs": total,
             "total_cost_usd": total_cost,
@@ -58,11 +60,7 @@ async def show_status(
         print(json.dumps(data, default=str, indent=2), flush=True)
         return
 
-    budget_str = (
-        f"${mission['budget_ceiling_usd']:.2f}"
-        if mission.get("budget_ceiling_usd")
-        else "unlimited"
-    )
+    budget_str = f"${budget['month_spent_usd']:.2f} this month of ${budget['per_month_usd']:.2f}"
     console.print(f"[bold]{mission['name']}[/bold]  Budget: {budget_str}")
     console.print(f"  {mission.get('description', '')}")
     console.print()
@@ -71,11 +69,9 @@ async def show_status(
     if plan:
         task_states = plan.get("task_states", [])
         plan_status = plan.get("status", "active")
-        plan_cost = f"${plan.get('total_spent_usd', 0):.4f}"
 
         parts = [f"[bold]Plan[/bold] {plan_status}"]
         parts.append(f"v{plan.get('version', 1)}")
-        parts.append(f"spent {plan_cost}")
         sup_count = plan.get("supervisor_iteration_count", 0)
         if sup_count:
             parts.append(f"supervisor x{sup_count}")

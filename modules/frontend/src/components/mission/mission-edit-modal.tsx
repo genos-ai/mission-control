@@ -7,7 +7,6 @@ import { useUpdateMission } from '@/hooks/use-missions'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Field } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -15,22 +14,18 @@ interface MissionEditModalProps {
   mission: {
     description: string
     brief: string | null
-    budget_ceiling_usd: number | null
     execution_environment: string | null
   }
   missionId: string
   onClose: () => void
 }
 
-/** Edits the mission's description, brief, budget and execution environment. */
+/** Edits the mission's description, brief and execution environment. */
 export function MissionEditModal({ mission, missionId, onClose }: MissionEditModalProps) {
   const ids = useId()
   const updateMission = useUpdateMission(missionId)
   const [description, setDescription] = useState(mission.description)
   const [brief, setBrief] = useState(mission.brief ?? '')
-  const [budget, setBudget] = useState(
-    mission.budget_ceiling_usd != null ? String(mission.budget_ceiling_usd) : '',
-  )
   const [execEnv, setExecEnv] = useState(mission.execution_environment ?? 'local')
 
   // aria-modal promises the keyboard a way out, as ConfirmDialog gives.
@@ -42,7 +37,6 @@ export function MissionEditModal({ mission, missionId, onClose }: MissionEditMod
       {
         description,
         brief: brief || undefined,
-        budget_ceiling_usd: budget ? parseFloat(budget) : null,
         execution_environment: execEnv === 'local' ? undefined : execEnv,
       },
       {
@@ -87,18 +81,6 @@ export function MissionEditModal({ mission, missionId, onClose }: MissionEditMod
               onChange={(e) => setBrief(e.target.value)}
               rows={6}
               placeholder="Strategic brief for agents..."
-            />
-          </Field>
-
-          <Field label="Budget (USD)" htmlFor={`${ids}-budget`}>
-            <Input
-              id={`${ids}-budget`}
-              type="number"
-              step="0.01"
-              min="0"
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              placeholder="No limit"
             />
           </Field>
 

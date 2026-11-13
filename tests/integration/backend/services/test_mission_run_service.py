@@ -232,6 +232,23 @@ async def test_begin_owner_not_user_fails_start_failed(db_session_factory, gatew
     assert stored.status_detail == "owner not a platform user"
 
 
+async def test_begin_snapshots_run_cap(db_session_factory, gateway, owner) -> None:
+    user, mission, plan = await owner()
+    run = await _start(db_session_factory, mission, user)
+    assert run.budget_cap_usd is None
+    async with db_session_factory() as session:
+        await session.execute(
+            update(MissionPlan).where(MissionPlan.id == plan.id).values(budget_per_run_usd=7.25)
+        )
+        await session.commit()
+
+    await _begin(db_session_factory, run.id)
+
+    stored = await _run(db_session_factory, run.id)
+    assert stored.status == MissionRunStatus.RUNNING
+    assert stored.budget_cap_usd == pytest.approx(7.25)
+
+
 async def test_begin_adopts_backlog_and_is_idempotent(db_session_factory, gateway, owner) -> None:
     user, mission, plan = await owner()
     approved = await _task(db_session_factory, plan, TaskStatus.APPROVED)

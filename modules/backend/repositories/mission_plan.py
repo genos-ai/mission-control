@@ -26,18 +26,25 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
 
     # ── Plan-level queries ───────────────────────────────────────────────
 
-    async def get_by_mission_id(self, mission_id: str) -> MissionPlan | None:
-        """Return the plan for a mission, or None if not yet created."""
-        result = await self.session.execute(
-            select(MissionPlan)
-            .where(MissionPlan.mission_id == mission_id)
-            .options(selectinload(MissionPlan.tasks))
-        )
+    async def get_by_mission_id(
+        self, mission_id: str, *, load_tasks: bool = True
+    ) -> MissionPlan | None:
+        """Return the plan for a mission, or None if not yet created.
+
+        ``load_tasks=False`` skips eager-loading the task list, for callers
+        that read plan-level columns only.
+        """
+        stmt = select(MissionPlan).where(MissionPlan.mission_id == mission_id)
+        if load_tasks:
+            stmt = stmt.options(selectinload(MissionPlan.tasks))
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_mission_id_required(self, mission_id: str) -> MissionPlan:
+    async def get_by_mission_id_required(
+        self, mission_id: str, *, load_tasks: bool = True
+    ) -> MissionPlan:
         """Return the plan for a mission. Raises if it does not exist."""
-        plan = await self.get_by_mission_id(mission_id)
+        plan = await self.get_by_mission_id(mission_id, load_tasks=load_tasks)
         if plan is None:
             from modules.backend.core.exceptions import NotFoundError
 
@@ -49,7 +56,9 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
         mission_id: str,
         *,
         gate_mode: GateMode,
-        budget_usd_ceiling: float | None = None,
+        budget_per_run_usd: float,
+        budget_per_month_usd: float,
+        budget_lifetime_usd: float | None,
     ) -> MissionPlan:
         """Create a new empty plan for a mission.
 
@@ -61,8 +70,9 @@ class MissionPlanRepository(BaseRepository[MissionPlan]):
             gate_mode=gate_mode,
             status=MissionPlanStatus.ACTIVE,
             version=1,
-            budget_usd_ceiling=budget_usd_ceiling,
-            total_spent_usd=0.0,
+            budget_per_run_usd=budget_per_run_usd,
+            budget_per_month_usd=budget_per_month_usd,
+            budget_lifetime_usd=budget_lifetime_usd,
         )
         self.session.add(plan)
         await self.session.flush()

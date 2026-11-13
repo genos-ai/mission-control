@@ -55,11 +55,6 @@ class MissionPlanUpdate(BaseModel):
         None,
         description=f"Plan lifecycle: {[s.value for s in MissionPlanStatus]}",
     )
-    budget_usd_ceiling: float | None = Field(
-        None,
-        ge=0.0,
-        description="Cumulative cap across all runs from this plan",
-    )
 
 
 class TaskResponse(BaseModel):
@@ -131,8 +126,6 @@ class MissionPlanResponse(BaseModel):
     gate_mode: GateMode
     status: str
     version: int
-    budget_usd_ceiling: float | None = None
-    total_spent_usd: float = 0.0
     supervisor_iteration_count: int = 0
     max_supervisor_iterations: int = 20
     tasks: list[TaskResponse] = Field(default_factory=list)

@@ -121,9 +121,10 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
     from modules.backend.events.bus import SessionEventBus
     from modules.backend.models.mission_plan import GateMode
     from modules.backend.models.task import TaskStatus
+    from modules.backend.services.budget import BudgetService
     from modules.backend.services.execution_persistence import ExecutionPersistenceService
     from modules.backend.services.mission import MissionService
-    from modules.backend.services.mission_plan import MissionPlanService, plan_budget_ceiling_usd
+    from modules.backend.services.mission_plan import MissionPlanService
     from modules.backend.services.mission_run import MissionRunService
 
     cap = get_app_config().failures.supervisor.max_failure_digests
@@ -148,8 +149,11 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
             svc = MissionPlanService(db)
             plan = await svc.get_or_create_plan(input.mission_id)
             task_states = await svc.get_tasks(plan.id)
-            total_cost_usd = await svc.total_task_cost_usd(plan.id)
-            budget_usd = plan_budget_ceiling_usd(plan)
+            # The run's spend and its remaining headroom under all three caps:
+            # _check_budget_headroom measures what is left (88.4.1).
+            check = await BudgetService(db).check_run(input.mission_run_id)
+            total_cost_usd = check.run_spent_usd
+            budget_usd = check.run_spent_usd + check.headroom_usd
             digests, truncated = await runs.failure_digests(
                 input.mission_run_id, input.wave_task_ids, cap
             )

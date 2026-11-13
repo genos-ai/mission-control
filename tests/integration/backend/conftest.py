@@ -57,7 +57,12 @@ async def committed_owner(
             )
             session.add(mission)
             await session.flush()
-            plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+            plan = MissionPlan(
+                mission_id=mission.id,
+                gate_mode=GateMode.MANUAL,
+                budget_per_run_usd=5.0,
+                budget_per_month_usd=100.0,
+            )
             session.add(plan)
             await session.commit()
             users.append(user.id)

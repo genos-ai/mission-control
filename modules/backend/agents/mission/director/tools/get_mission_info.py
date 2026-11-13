@@ -27,14 +27,16 @@ async def get_mission_info(db_session: AsyncSession, mission_id: str) -> dict:
         mission_id: Mission to read.
 
     Returns:
-        Name, description, brief, status, gate mode, budget ceiling, owner
-        and creation time.
+        Name, description, brief, status, gate mode, budget caps with this
+        month's spend, owner and creation time.
     """
+    from modules.backend.services.budget import BudgetService
     from modules.backend.services.mission import MissionService
     from modules.backend.services.mission_plan import MissionPlanService
 
     mission = await MissionService(db_session).get_mission(mission_id)
     plan = await MissionPlanService(db_session).get_or_create_plan(mission_id)
+    budget = await BudgetService(db_session).get_status(mission_id)
 
     return {
         "name": mission.name,
@@ -43,7 +45,10 @@ async def get_mission_info(db_session: AsyncSession, mission_id: str) -> dict:
         # status may be the enum or an already-coerced string.
         "status": (mission.status if isinstance(mission.status, str) else mission.status.value),
         "gate_mode": plan.gate_mode.value,
-        "budget_ceiling_usd": mission.budget_ceiling_usd,
+        "budget_per_run_usd": budget.per_run_usd,
+        "budget_per_month_usd": budget.per_month_usd,
+        "month_spent_usd": budget.month_spent_usd,
+        "budget_lifetime_usd": budget.lifetime_usd,
         "owner_id": mission.owner_id,
         "created_at": str(mission.created_at),
     }

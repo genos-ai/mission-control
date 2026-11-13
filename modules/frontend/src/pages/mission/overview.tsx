@@ -5,6 +5,7 @@ import { useMission, useDeleteMission } from '@/hooks/use-missions'
 import { useTeam } from '@/hooks/use-team'
 import { useMissionWorkflows } from '@/hooks/use-workflows'
 import { useExecutions } from '@/hooks/use-executions'
+import { useMissionBudget } from '@/hooks/use-mission-budget'
 import { Spinner } from '@/components/ui/spinner'
 import { Panel, PanelContent, PanelHeader } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,7 @@ export default function OverviewPage() {
   const { data: team } = useTeam(id)
   const { data: workflows } = useMissionWorkflows(id)
   const { data: executionData } = useExecutions({ limit: 10, mission_id: id })
+  const { data: budget } = useMissionBudget(id)
   const deleteMission = useDeleteMission()
 
   if (isLoading) {
@@ -59,7 +61,6 @@ export default function OverviewPage() {
   const workflowCount = workflows?.length ?? 0
   const hasBrief = !!mission.brief
   const needsSetup = !hasBrief || agentCount === 0
-  const ceiling = mission.budget_ceiling_usd
 
   const handleDelete = () => {
     setConfirmingDelete(false)
@@ -144,14 +145,18 @@ export default function OverviewPage() {
           <Fact label="Status" value={mission.status} capitalize />
           <Fact label="Environment" value={mission.execution_environment ?? 'local'} capitalize />
           <Fact
-            label="Budget"
-            value={ceiling != null ? `${fmtUsd(mission.spent_usd)} / ${fmtUsd(ceiling)}` : `${fmtUsd(mission.spent_usd)} spent`}
+            label="Budget this month"
+            value={
+              budget
+                ? `${fmtUsd(budget.month_spent_usd)} / ${fmtUsd(budget.per_month_usd)}`
+                : '—'
+            }
           >
-            {ceiling != null && (
+            {budget && (
               <Progress
-                value={ceiling > 0 ? (mission.spent_usd / ceiling) * 100 : 100}
+                value={(budget.month_spent_usd / budget.per_month_usd) * 100}
                 size="sm"
-                label="Budget spent"
+                label="Spent this month of the monthly cap"
                 className="mt-2"
               />
             )}

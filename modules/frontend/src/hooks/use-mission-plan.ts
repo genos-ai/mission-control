@@ -64,8 +64,6 @@ export interface MissionPlan {
   gate_mode: GateMode
   status: MissionPlanStatus
   version: number
-  budget_usd_ceiling: number | null
-  total_spent_usd: number
   tasks: PlanTask[]
   created_at: string
   updated_at: string
@@ -118,11 +116,10 @@ export function useRefinePlan(missionId: string) {
   })
 }
 
-/** Update plan-level settings (gate_mode / status / budget). */
+/** Update plan-level settings (gate_mode / status). Budget caps use PUT /missions/{id}/budget. */
 export interface PlanUpdatePayload {
   gate_mode?: GateMode
   status?: MissionPlanStatus
-  budget_usd_ceiling?: number
 }
 
 export function useUpdatePlan(missionId: string) {

@@ -348,6 +348,10 @@ def _make_agent_executor(
                 task_id=task_id,
             )
         except Exception:
+            # In a run the ledger is the budget enforcement source: a lost row
+            # is a budget bypass, so the failure is fatal (88.4.1).
+            if mission_run_id is not None:
+                raise
             logger.warning(
                 "Failed to record LLM call for %s — cost data will be missing",
                 agent_name,
@@ -643,6 +647,9 @@ async def _call_planning_agent(
             mission_run_id=mission_run_id,
         )
     except Exception:
+        # Fatal in a run: the ledger is the budget enforcement source (88.4.1).
+        if mission_run_id is not None:
+            raise
         logger.warning(
             "Failed to record planning agent LLM call",
             exc_info=True,

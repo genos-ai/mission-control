@@ -31,6 +31,7 @@ from modules.backend.models.execution_record import (  # noqa: F401
     TaskExecution,
 )
 from modules.backend.models.llm_call import LlmCall  # noqa: F401
+from modules.backend.models.llm_call_daily_aggregate import LlmCallDailyAggregate  # noqa: F401
 from modules.backend.models.mission import Mission, MissionMember  # noqa: F401
 from modules.backend.models.mission_artifact import MissionArtifact  # noqa: F401
 from modules.backend.models.mission_context import ContextChange, MissionContext  # noqa: F401

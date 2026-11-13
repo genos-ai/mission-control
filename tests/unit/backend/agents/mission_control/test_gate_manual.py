@@ -138,7 +138,14 @@ async def committed_mission(db_session_factory):
         await session.flush()
         session.add(mission)
         await session.flush()
-        session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+        session.add(
+            MissionPlan(
+                mission_id=mission.id,
+                gate_mode=GateMode.MANUAL,
+                budget_per_run_usd=5.0,
+                budget_per_month_usd=100.0,
+            )
+        )
         await session.commit()
     yield mission.id, user.id
     async with db_session_factory() as session:

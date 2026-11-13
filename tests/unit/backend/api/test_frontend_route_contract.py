@@ -90,7 +90,14 @@ async def _mission_with_gate(
     )
     db_session.add(mission)
     await db_session.flush()
-    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    db_session.add(
+        MissionPlan(
+            mission_id=mission.id,
+            gate_mode=GateMode.MANUAL,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     gate = GateRequest(
         id=str(uuid4()),
         mission_id=mission.id,

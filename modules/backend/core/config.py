@@ -306,10 +306,11 @@ def get_mission_control_config():
 
 
 def get_default_budget_usd() -> float:
-    """Return the configured default mission budget from workflows.yaml.
+    """Return the configured default workflow budget from workflows.yaml.
 
-    Used as the fallback when a plan has no explicit budget_usd_ceiling.
-    Never hardcode 10.0 — always call this function.
+    The plan-validation budget for workflow and in-process dispatch paths
+    that are not given one. Mission spend caps live on the mission plan
+    (missions.budgets). Never hardcode 10.0; always call this function.
     """
     return get_app_config().workflows.default_budget_usd
 

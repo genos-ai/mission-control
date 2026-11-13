@@ -16,6 +16,7 @@ from temporalio.exceptions import ActivityError, ApplicationError, RetryState
 from modules.backend.agents.deps.base import RunRefineTurn
 from modules.backend.agents.mission.director.tools.refine_plan import refine_plan
 from modules.backend.core.exceptions import ExternalServiceError
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.mission import MissionService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run import MissionRunService
@@ -39,7 +40,9 @@ def client(monkeypatch) -> MagicMock:
         "get_or_create_plan",
         AsyncMock(return_value=SimpleNamespace(id=PLAN_ID)),
     )
-    monkeypatch.setattr(MissionPlanService, "remaining_budget_usd", AsyncMock(return_value=5.0))
+    monkeypatch.setattr(
+        BudgetService, "get_status", AsyncMock(return_value=SimpleNamespace(per_run_usd=5.0))
+    )
     return fake
 
 

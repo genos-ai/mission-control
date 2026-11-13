@@ -144,11 +144,6 @@ class TaskRepository(BaseRepository[Task]):
             for row in result.all()
         ]
 
-    async def sum_cost_by_plan(self, plan_id: str) -> float:
-        """Sum of tasks.cost_usd over the plan's tasks; 0.0 when none."""
-        query = select(func.coalesce(func.sum(Task.cost_usd), 0)).where(Task.plan_id == plan_id)
-        return float((await self.session.execute(query)).scalar_one())
-
     async def adopt_backlog(
         self,
         plan_id: str,

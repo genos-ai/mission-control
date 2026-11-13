@@ -96,6 +96,25 @@ _PACKET_LAYERS = ("previous_run_digest", "context_delta", "code_map", "learnings
 _MCD_RESTRICTED_ROOTS = frozenset({"version", "last_updated", "last_updated_by"})
 
 
+class BudgetDefaultsSchema(_StrictBase):
+    """Mission budget cap defaults and maxima (Plan 88, 88.4.1)."""
+
+    default_per_run_usd: float = Field(..., gt=0)
+    default_per_month_usd: float = Field(..., gt=0)
+    max_per_run_usd: float = Field(..., gt=0)
+    max_per_month_usd: float = Field(..., gt=0)
+
+    @model_validator(mode="after")
+    def _defaults_within_bounds(self) -> "BudgetDefaultsSchema":
+        if self.default_per_run_usd > self.default_per_month_usd:
+            raise ValueError("budgets.default_per_run_usd must not exceed default_per_month_usd")
+        if self.default_per_run_usd > self.max_per_run_usd:
+            raise ValueError("budgets.default_per_run_usd must not exceed max_per_run_usd")
+        if self.default_per_month_usd > self.max_per_month_usd:
+            raise ValueError("budgets.default_per_month_usd must not exceed max_per_month_usd")
+        return self
+
+
 class DigestSchema(_StrictBase):
     """End-of-run digest generation (Plan 88 Phase 3)."""
 
@@ -148,7 +167,6 @@ class CompactionSchema(_StrictBase):
 class MissionsSchema(_StrictBase):
     """Mission system configuration."""
 
-    default_budget_ceiling_usd: float | None = None
     max_missions_per_owner: int = 50
     pcd_max_size_bytes: int = 20_480  # 20KB
     pcd_target_size_bytes: int = 15_360  # 15KB
@@ -158,6 +176,7 @@ class MissionsSchema(_StrictBase):
     enable_context_assembly: bool = True
     knowledge: KnowledgeSchema = Field(...)
     recurrence: RecurrenceSchema = Field(...)
+    budgets: BudgetDefaultsSchema = Field(...)
     digest: DigestSchema = Field(...)
     context_packet: ContextPacketSchema = Field(...)
     compaction: CompactionSchema = Field(...)

@@ -137,9 +137,11 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
         mission_id = ctx.deps.mission_id
 
         try:
+            from modules.backend.services.budget import BudgetService
             from modules.backend.services.mission_plan import MissionPlanService
 
-            plan_svc = MissionPlanService(ctx.deps.db_session)
+            db = ctx.deps.db_session
+            plan_svc = MissionPlanService(db)
             plan = await plan_svc.get_or_create_plan(mission_id)
 
             # Plan summary
@@ -154,9 +156,13 @@ def create_agent(model: str | Model, tool_names: list[str] | None = None) -> Age
             parts.append(f"Version: {plan.version} | Gate: {gate} | Tasks: {len(tasks)}")
             if counts:
                 parts.append("Status: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
-            if plan.budget_usd_ceiling:
-                spent = await plan_svc.total_task_cost_usd(plan.id)
-                parts.append(f"Budget: ${spent:.2f} / ${plan.budget_usd_ceiling:.2f}")
+            budget = await BudgetService(db).get_status(mission_id)
+            lifetime = f"${budget.lifetime_usd:.2f}" if budget.lifetime_usd is not None else "none"
+            parts.append(
+                f"Budget: ${budget.month_spent_usd:.2f} spent this month of "
+                f"${budget.per_month_usd:.2f} | per run ${budget.per_run_usd:.2f} | "
+                f"lifetime cap {lifetime}"
+            )
 
             # Active runs
             from modules.backend.services.execution_persistence import (

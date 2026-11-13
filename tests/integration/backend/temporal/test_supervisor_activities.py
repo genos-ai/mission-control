@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from modules.backend.agents.mission_control.gate_models import GateAction, GateDecision
 from modules.backend.agents.mission_control.gate_post_run import AutonomousPostRunReviewer
 from modules.backend.models.execution_record import ExecutionRecord
+from modules.backend.models.llm_call import LlmCall
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_run import MissionRun, MissionRunTrigger
 from modules.backend.models.task import TaskStatus
@@ -98,6 +99,22 @@ async def test_post_run_context_carries_failure_digests(
         await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f2", "other"),
         await _failed_task(db_session_factory, plan.id, mission.id, run.id, "f1", "again"),
     ]
+    async with db_session_factory() as session:
+        for cost, run_id in ((1.0, run.id), (0.5, run.id), (2.0, None)):
+            session.add(
+                LlmCall(
+                    agent_name=AGENT,
+                    agent_role="worker",
+                    model="test-model",
+                    provider="test",
+                    input_tokens=1,
+                    output_tokens=1,
+                    cost_usd=cost,
+                    mission_id=mission.id,
+                    mission_run_id=run_id,
+                )
+            )
+        await session.commit()
 
     result = await evaluate_post_run(
         PostRunEvalInput(
@@ -120,7 +137,9 @@ async def test_post_run_context_carries_failure_digests(
     assert failures[0]["failure_class"] == "agent_reported_failure"
     assert context.plan_task_summary["failures_truncated"] == 0
     assert "max_supervisor_iterations" not in context.plan_task_summary
+    # Run spend from the ledger; budget = spend + headroom under the 5.00 run cap.
     assert context.total_cost_usd == pytest.approx(1.5)
+    assert context.budget_usd == pytest.approx(5.0)
 
     async with db_session_factory() as session:
         stored_run = await session.get(MissionRun, run.id)

@@ -34,8 +34,21 @@ def mission(ctx):
     type=click.Choice(["interactive", "manual", "ai_assisted", "autonomous"]),
     help="Plan gate mode.",
 )
-@click.option("--budget", type=float, default=None, help="Budget ceiling in USD.")
-def mission_create(name, description, brief, gate_mode, budget):
+@click.option(
+    "--budget-per-run", type=float, default=None, help="Per-run cap in USD (default from config)."
+)
+@click.option(
+    "--budget-per-month",
+    type=float,
+    default=None,
+    help="Per-calendar-month cap in USD (default from config).",
+)
+@click.option(
+    "--budget-lifetime", type=float, default=None, help="Lifetime cap in USD (default: no limit)."
+)
+def mission_create(
+    name, description, brief, gate_mode, budget_per_run, budget_per_month, budget_lifetime
+):
     """Create a new mission."""
     from modules.clients.cli.mc_mission import create
 
@@ -47,7 +60,9 @@ def mission_create(name, description, brief, gate_mode, budget):
                 description=description,
                 brief=brief,
                 gate_mode=gate_mode,
-                budget=budget,
+                budget_per_run=budget_per_run,
+                budget_per_month=budget_per_month,
+                budget_lifetime=budget_lifetime,
             )
 
     asyncio.run(_run())
@@ -112,17 +127,39 @@ def mission_set_gate(ctx, mode):
     asyncio.run(_run())
 
 
-@mission.command("set-budget")
-@click.argument("amount", type=float)
+@mission.command("budget")
 @click.pass_obj
-def mission_set_budget(ctx, amount):
-    """Set the budget ceiling for the current mission."""
-    from modules.clients.cli.mc_mission import set_budget
+def mission_budget(ctx):
+    """Show the current mission's budget caps, spend and breach."""
+    from modules.clients.cli.mc_mission import budget
 
     async def _run():
         async with api_client() as api:
             mid = await require_mission(api)
-            await set_budget(api, mid, amount)
+            await budget(api, mid)
+
+    asyncio.run(_run())
+
+
+@mission.command("set-budget")
+@click.option("--per-run", "per_run", type=float, required=True, help="Per-run cap in USD.")
+@click.option(
+    "--per-month", "per_month", type=float, required=True, help="Per-calendar-month cap in USD."
+)
+@click.option("--lifetime", type=float, default=None, help="Lifetime cap in USD.")
+@click.option("--no-lifetime", "no_lifetime", is_flag=True, help="Remove the lifetime cap.")
+@click.pass_obj
+def mission_set_budget(ctx, per_run, per_month, lifetime, no_lifetime):
+    """Replace the current mission's budget caps (all caps are set together)."""
+    from modules.clients.cli.mc_mission import set_budget
+
+    if (lifetime is None) == (not no_lifetime):
+        raise click.UsageError("Give exactly one of --lifetime or --no-lifetime.")
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await set_budget(api, mid, per_run=per_run, per_month=per_month, lifetime=lifetime)
 
     asyncio.run(_run())
 

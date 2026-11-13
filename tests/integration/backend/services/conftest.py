@@ -80,7 +80,14 @@ async def test_mission(db_session: AsyncSession, regular_user: User) -> Mission:
     )
     mission = await db_session.merge(mission)
     await db_session.flush()
-    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    db_session.add(
+        MissionPlan(
+            mission_id=mission.id,
+            gate_mode=GateMode.MANUAL,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     await db_session.flush()
     return mission
 
@@ -100,6 +107,13 @@ async def archived_mission(db_session: AsyncSession, regular_user: User) -> Miss
     )
     mission = await db_session.merge(mission)
     await db_session.flush()
-    db_session.add(MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL))
+    db_session.add(
+        MissionPlan(
+            mission_id=mission.id,
+            gate_mode=GateMode.MANUAL,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+        )
+    )
     await db_session.flush()
     return mission

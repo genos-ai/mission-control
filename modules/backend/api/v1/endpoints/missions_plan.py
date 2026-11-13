@@ -4,7 +4,7 @@ Mission Plan API endpoints (Plan 42).
 REST surface for the long-lived mission backlog:
 
     GET    /missions/{id}/plan                          get plan + task states
-    PATCH  /missions/{id}/plan                          update gate mode / status / budget
+    PATCH  /missions/{id}/plan                          update gate mode / status
     POST   /missions/{id}/plan/tasks/{task_id}/approve  approve (+ transitive deps)
     POST   /missions/{id}/plan/tasks/{task_id}/reject   reject (+ transitive dependents)
     POST   /missions/{id}/plan/tasks/{task_id}/retry    failed -> approved
@@ -13,7 +13,7 @@ Phase 1.0: CRUD + state transitions only. Refinement and dispatch arrive
 in Phase 1.5 and 1.6 respectively.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
@@ -39,6 +39,7 @@ from modules.backend.schemas.mission_plan import (
     TaskTransitionResponse,
 )
 from modules.backend.schemas.mission_run import MissionRunResponse, MissionRunTrigger
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.mission_plan import MissionPlanService
 from modules.backend.services.mission_run import MissionRunService
 
@@ -49,13 +50,6 @@ EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-
-async def _plan_response(service: MissionPlanService, plan: Any) -> MissionPlanResponse:
-    """The plan, with spend read from its task costs (the column is stale since 88.2.6)."""
-    response = MissionPlanResponse.model_validate(plan)
-    response.total_spent_usd = await service.total_task_cost_usd(plan.id)
-    return response
 
 
 # ── Plan-level endpoints ─────────────────────────────────────────────────
@@ -83,7 +77,7 @@ async def get_plan(
     service = MissionPlanService(db)
     plan = await service.get_or_create_plan(mission_id)
 
-    response = await _plan_response(service, plan)
+    response = MissionPlanResponse.model_validate(plan)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -104,7 +98,7 @@ async def update_plan(
     current_user: CurrentUser,
     event_bus: EventBus,
 ) -> ApiResponse:
-    """Update gate_mode, status, budget, or task display order.
+    """Update gate_mode or status. Budget caps change through PUT /missions/{id}/budget.
 
     Only the fields present in the request body are applied — all are
     optional. Gate mode is validated against the existing gate system's
@@ -122,14 +116,11 @@ async def update_plan(
             plan.id,
             MissionPlanStatus(data.status),
         )
-    if data.budget_usd_ceiling is not None:
-        plan.budget_usd_ceiling = data.budget_usd_ceiling
-        await db.flush()
     # Plan 72: task ordering is by created_at — no manual reorder needed.
 
     # Refetch to include updated tasks relationship
     plan = await service.get_or_create_plan(mission_id)
-    response = await _plan_response(service, plan)
+    response = MissionPlanResponse.model_validate(plan)
     return ApiResponse(
         success=True,
         data=response.model_dump(),
@@ -175,7 +166,7 @@ async def refine_plan(
 
     service = MissionPlanService(db, event_bus=event_bus)
     plan = await service.get_or_create_plan(mission_id)
-    remaining_budget_usd = await service.remaining_budget_usd(plan)
+    per_run_usd = (await BudgetService(db).get_status(mission_id)).per_run_usd
 
     client = await get_temporal_client()
     config = get_app_config().temporal
@@ -188,7 +179,7 @@ async def refine_plan(
             plan_id=plan.id,
             instructions=data.instructions,
             user_id=current_user.id,
-            mission_budget_usd=remaining_budget_usd,
+            mission_budget_usd=per_run_usd,
             timeouts=build_workflow_timeouts_snapshot(),
         ),
         id=workflow_id,
@@ -276,7 +267,7 @@ async def add_plan_task(
     )
     return ApiResponse(
         success=True,
-        data=(await _plan_response(service, updated)).model_dump(),
+        data=MissionPlanResponse.model_validate(updated).model_dump(),
         metadata={"request_id": request_id},
     )
 

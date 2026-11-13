@@ -63,44 +63,6 @@ def _context(
 
 
 # ---------------------------------------------------------------------------
-# A.2.1 — Circuit breaker #1: Budget exhausted
-# ---------------------------------------------------------------------------
-
-
-class TestBreakerBudgetExhausted:
-    @pytest.mark.asyncio
-    async def test_budget_exhausted(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(budget_usd=5.0, total_cost_usd=5.0)
-
-        decision = await reviewer.review(ctx)
-
-        assert decision.action == GateAction.ESCALATE
-        assert decision.rule == 1
-
-    @pytest.mark.asyncio
-    async def test_budget_exceeded(self, db_session: AsyncSession):
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(budget_usd=5.0, total_cost_usd=6.0)
-
-        decision = await reviewer.review(ctx)
-
-        assert decision.action == GateAction.ESCALATE
-        assert decision.rule == 1
-
-    @pytest.mark.asyncio
-    async def test_no_budget_ceiling_skips_breaker(self, db_session: AsyncSession):
-        """budget_usd=0 means unlimited — breaker #1 should not fire."""
-        reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
-        ctx = _context(budget_usd=0, total_cost_usd=100.0, proposed=2)
-
-        decision = await reviewer.review(ctx)
-
-        # Should reach rule #5 (auto-advance), not breaker #1
-        assert decision.action != GateAction.ESCALATE or decision.rule != 1
-
-
-# ---------------------------------------------------------------------------
 # A.2.2 — No supervisor iteration breaker (Plan 88 step 88.2.6)
 # ---------------------------------------------------------------------------
 
@@ -578,13 +540,12 @@ class TestCachedDecision:
 
         second = await reviewer.review(
             _context(
-                budget_usd=1.0,
-                total_cost_usd=1.0,
+                zero_completion_waves=3,
                 supervisor_iteration_count=2,
                 execution_record_id=record_id,
             )
         )
-        assert (second.action, second.rule) == (GateAction.ESCALATE, 1)
+        assert (second.action, second.rule) == (GateAction.ESCALATE, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +558,7 @@ class TestReasonIsHumanText:
     @pytest.mark.parametrize(
         ("kwargs", "rule"),
         [
-            ({"budget_usd": 1.0, "total_cost_usd": 1.0}, 1),
+            ({"zero_completion_waves": 3}, 3),
             ({"approved": 0, "proposed": 0, "recent_run_outcomes": []}, "fallthrough"),
         ],
     )
@@ -655,7 +616,7 @@ class TestDecisionIsPersistedAndReadBack:
 
         reviewer = AutonomousPostRunReviewer(db_session, gate_mode=GateMode.AUTONOMOUS)
         decision = await reviewer.review(
-            _context(budget_usd=1.0, total_cost_usd=1.0, execution_record_id=record_id)
+            _context(zero_completion_waves=3, execution_record_id=record_id)
         )
         await db_session.flush()
 
@@ -663,11 +624,11 @@ class TestDecisionIsPersistedAndReadBack:
         assert len(rows) == 1
         stored = decode_decision_reasoning(rows[0].reasoning)
         assert stored.human == decision.reason
-        assert stored.meta["rule"] == decision.rule == 1
+        assert stored.meta["rule"] == decision.rule == 3
         assert stored.meta["action"] == decision.action.value
 
         cached = await reviewer.review(
-            _context(budget_usd=1.0, total_cost_usd=1.0, execution_record_id=record_id)
+            _context(zero_completion_waves=3, execution_record_id=record_id)
         )
         assert (cached.action, cached.reason, cached.rule) == (
             decision.action,

@@ -22,7 +22,6 @@ def run_mission(
     brief: str | None = None,
     owner_id: str = CLI_SERVICE_ACCOUNT_ID,
     roster: str = "default",
-    budget: float | None = None,
     repo_url: str | None = None,
     repo_root: str | None = None,
     gate_mode: str | None = None,
@@ -57,7 +56,6 @@ def run_mission(
             brief=brief,
             owner_id=owner_id,
             roster=roster,
-            budget=budget,
             repo_url=repo_url,
             repo_root=repo_root,
             gate_mode=gate_mode,
@@ -75,7 +73,6 @@ async def _action_create(
     brief,
     owner_id,
     roster,
-    budget,
     repo_url,
     repo_root,
     gate_mode,
@@ -100,7 +97,6 @@ async def _action_create(
             brief=brief,
             owner_id=owner_id,
             default_roster=roster,
-            budget_ceiling_usd=budget,
             repo_url=repo_url,
             repo_root=repo_root,
             gate_mode=gate_mode,
@@ -187,6 +183,7 @@ async def _action_list(cli_logger, *, output_format, **_):
 
 async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
     """Show mission details."""
+    from modules.backend.services.budget import BudgetService
     from modules.backend.services.mission import MissionService
     from modules.clients.cli.mission_context import async_require_mission_id
 
@@ -202,6 +199,7 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
             if not mission:
                 console.print(f"[red]Mission not found: {name}[/red]")
                 sys.exit(1)
+        budget = await BudgetService(svc.session).get_status(mission.id)
 
     console.print(f"[bold]{mission.name}[/bold]  ({mission.status})")
     console.print(f"  ID:          {mission.id}")
@@ -210,8 +208,12 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
         console.print(f"  Brief:       {mission.brief}")
     console.print(f"  Owner:       {mission.owner_id}")
     console.print(f"  Roster:      {mission.default_roster}")
-    if mission.budget_ceiling_usd:
-        console.print(f"  Budget:      ${mission.budget_ceiling_usd:.2f}")
+    lifetime = f"${budget.lifetime_usd:.2f}" if budget.lifetime_usd is not None else "no limit"
+    console.print(
+        f"  Budget:      ${budget.per_run_usd:.2f} per run, "
+        f"${budget.month_spent_usd:.2f} spent this month of ${budget.per_month_usd:.2f}, "
+        f"lifetime {lifetime}"
+    )
     if mission.repo_url:
         console.print(f"  Repo:        {mission.repo_url}")
 

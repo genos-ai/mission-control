@@ -10,7 +10,7 @@ agents operate within a single mission at a time.
 import enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,20 @@ class MissionStatus(str, enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     ARCHIVED = "archived"
+
+
+class MissionPauseReason(str, enum.Enum):
+    """Why a mission is PAUSED (Plan 88 contracts 3.1.2).
+
+    The budget members are the breach values BudgetService reports (88.4.1);
+    the ``missions.paused_reason`` column arrives with plan88_005 (88.4.2).
+    """
+
+    USER = "user"
+    BUDGET_RUN_CAP = "budget_run_cap"
+    BUDGET_MONTHLY_CAP = "budget_monthly_cap"
+    BUDGET_LIFETIME_CAP = "budget_lifetime_cap"
+    GATE_TIMEOUT = "gate_timeout"
 
 
 class MissionMemberRole(str, enum.Enum):
@@ -85,10 +99,6 @@ class Mission(UUIDMixin, TimestampMixin, Base):
         String(100),
         default="default",
         nullable=False,
-    )
-    budget_ceiling_usd: Mapped[float | None] = mapped_column(
-        Numeric(12, 6, asdecimal=False),
-        nullable=True,
     )
     repo_url: Mapped[str | None] = mapped_column(
         Text,

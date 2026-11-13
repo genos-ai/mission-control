@@ -19,7 +19,9 @@ async def create(
     description: str,
     gate_mode: str,
     brief: str | None = None,
-    budget: float | None = None,
+    budget_per_run: float | None = None,
+    budget_per_month: float | None = None,
+    budget_lifetime: float | None = None,
 ) -> None:
     """Create a new mission."""
     console = get_console()
@@ -36,8 +38,12 @@ async def create(
     }
     if brief:
         body["brief"] = brief
-    if budget is not None:
-        body["budget_ceiling_usd"] = budget
+    if budget_per_run is not None:
+        body["budget_per_run_usd"] = budget_per_run
+    if budget_per_month is not None:
+        body["budget_per_month_usd"] = budget_per_month
+    if budget_lifetime is not None:
+        body["budget_lifetime_usd"] = budget_lifetime
 
     mission = await api.post("/missions", body=body)
 
@@ -118,8 +124,11 @@ async def info(api: CliApiClient, mission_id: str) -> None:
         console.print(f"  Brief:       {mission['brief']}")
     console.print(f"  Owner:       {mission.get('owner_id', '')}")
     console.print(f"  Roster:      {mission.get('default_roster', 'default')}")
-    if mission.get("budget_ceiling_usd"):
-        console.print(f"  Budget:      ${mission['budget_ceiling_usd']:.2f}")
+    budget = await api.get(f"/missions/{mission_id}/budget")
+    console.print(
+        f"  Budget:      ${budget['month_spent_usd']:.2f} this month "
+        f"of ${budget['per_month_usd']:.2f}"
+    )
     if mission.get("repo_url"):
         console.print(f"  Repo:        {mission['repo_url']}")
 
@@ -184,14 +193,52 @@ async def set_gate(api: CliApiClient, mission_id: str, mode: str) -> None:
     console.print(f"[green]Gate mode set:[/green] {mode}")
 
 
-async def set_budget(api: CliApiClient, mission_id: str, amount: float) -> None:
-    """Set the budget ceiling for the current mission."""
+def _render_budget(budget: dict) -> None:
+    """Caps, spend and breach from GET or PUT /missions/{id}/budget."""
     console = get_console()
-    await api.patch(
-        f"/missions/{mission_id}/plan",
-        body={"budget_usd_ceiling": amount},
+    lifetime = budget.get("lifetime_usd")
+    table = build_table(title="Budget", columns=[("Cap", {}), ("Limit", {}), ("Spent", {})])
+    table.add_row(
+        "Per run",
+        f"${budget['per_run_usd']:.2f}",
+        f"${budget['active_run_spent_usd']:.2f} (active run)",
     )
-    console.print(f"[green]Budget set:[/green] ${amount:.2f}")
+    table.add_row(
+        "Per month",
+        f"${budget['per_month_usd']:.2f}",
+        f"${budget['month_spent_usd']:.2f} (this month, UTC)",
+    )
+    table.add_row(
+        "Lifetime",
+        f"${lifetime:.2f}" if lifetime is not None else "no limit",
+        f"${budget['lifetime_spent_usd']:.2f}",
+    )
+    console.print(table)
+    breach = budget.get("breach")
+    if breach:
+        console.print(f"[red]Cap breached:[/red] {breach}")
+
+
+async def budget(api: CliApiClient, mission_id: str) -> None:
+    """Show the current mission's budget caps, spend and breach."""
+    _render_budget(await api.get(f"/missions/{mission_id}/budget"))
+
+
+async def set_budget(
+    api: CliApiClient,
+    mission_id: str,
+    *,
+    per_run: float,
+    per_month: float,
+    lifetime: float | None,
+) -> None:
+    """Replace the current mission's budget caps; lifetime None removes the lifetime cap."""
+    result = await api.put(
+        f"/missions/{mission_id}/budget",
+        body={"per_run_usd": per_run, "per_month_usd": per_month, "lifetime_usd": lifetime},
+    )
+    get_console().print("[green]Budget caps set.[/green]")
+    _render_budget(result)
 
 
 # ── Artifacts ─────────────────────────────────────────────────────────

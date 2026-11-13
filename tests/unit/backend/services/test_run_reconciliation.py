@@ -88,7 +88,12 @@ async def _mission_plan(db: AsyncSession, owner_id: str) -> tuple[str, str]:
     )
     db.add(mission)
     await db.flush()
-    plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+    plan = MissionPlan(
+        mission_id=mission.id,
+        gate_mode=GateMode.MANUAL,
+        budget_per_run_usd=5.0,
+        budget_per_month_usd=100.0,
+    )
     db.add(plan)
     await db.flush()
     return mission.id, plan.id

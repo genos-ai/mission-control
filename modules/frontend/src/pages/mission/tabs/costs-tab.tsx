@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { DollarSign } from 'lucide-react'
-import { useMission, useMissionCosts } from '@/hooks/use-missions'
+import { useMissionCosts } from '@/hooks/use-missions'
+import { useMissionBudget } from '@/hooks/use-mission-budget'
 import { DocumentPage } from '@/components/layout/document-page'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Segmented } from '@/components/ui/segmented'
@@ -28,7 +29,7 @@ export default function CostsTab() {
   const { id } = useParams<{ id: string }>()
   const [range, setRange] = useState<Range>('all')
   const { data, isLoading } = useMissionCosts(id, range === 'all' ? undefined : range)
-  const { data: mission } = useMission(id)
+  const { data: budget } = useMissionBudget(id)
 
   return (
     <DocumentPage className="gap-4">
@@ -54,7 +55,7 @@ export default function CostsTab() {
         />
       ) : (
         <>
-          <CostSummary data={data} ceiling={mission?.budget_ceiling_usd} allTime={range === 'all'} />
+          <CostSummary data={data} ceiling={budget?.lifetime_usd ?? null} allTime={range === 'all'} />
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-4">
             <CostByAgentPanel agents={data.by_agent} />

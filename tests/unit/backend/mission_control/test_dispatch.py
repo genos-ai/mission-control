@@ -162,7 +162,15 @@ async def _seed_approved(factory, plan: TaskPlan) -> str:
                 owner_id=str(uuid4()),
             )
         )
-        session.add(MissionPlan(id=plan_id, mission_id=mission_id, gate_mode=GateMode.AUTONOMOUS))
+        session.add(
+            MissionPlan(
+                id=plan_id,
+                mission_id=mission_id,
+                gate_mode=GateMode.AUTONOMOUS,
+                budget_per_run_usd=5.0,
+                budget_per_month_usd=100.0,
+            )
+        )
         for task in plan.tasks:
             session.add(
                 Task(

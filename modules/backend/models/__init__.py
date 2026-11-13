@@ -12,7 +12,8 @@ from modules.backend.models.execution_record import (
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
 from modules.backend.models.llm_call import LlmCall
-from modules.backend.models.mission import Mission, MissionMember
+from modules.backend.models.llm_call_daily_aggregate import LlmCallDailyAggregate
+from modules.backend.models.mission import Mission, MissionMember, MissionPauseReason
 from modules.backend.models.mission_artifact import (
     VALID_ARTIFACT_TYPES,
     VALID_CONTENT_TYPES,
@@ -80,6 +81,7 @@ __all__ = [
     "LearningKind",
     "LearningStatus",
     "LlmCall",
+    "LlmCallDailyAggregate",
     "MilestoneSummary",
     "Mission",
     "MissionArtifact",
@@ -88,6 +90,7 @@ __all__ = [
     "MissionIntent",
     "MissionLearning",
     "MissionMember",
+    "MissionPauseReason",
     "MissionPlan",
     "MissionPlanStatus",
     "MissionRun",

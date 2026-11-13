@@ -42,7 +42,12 @@ async def test_patch_plan_gate_mode_viewer_forbidden(db_session, test_user):
     db_session.add(
         MissionMember(mission_id=mission.id, user_id=viewer.id, role=MissionMemberRole.VIEWER)
     )
-    plan = MissionPlan(mission_id=mission.id, gate_mode=GateMode.MANUAL)
+    plan = MissionPlan(
+        mission_id=mission.id,
+        gate_mode=GateMode.MANUAL,
+        budget_per_run_usd=5.0,
+        budget_per_month_usd=100.0,
+    )
     db_session.add(plan)
     await db_session.flush()
 

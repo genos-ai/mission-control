@@ -131,6 +131,7 @@ def _create_mock_app_config() -> Any:
     integration tests exercise the same attribute access paths as
     production code.
     """
+    from modules.backend.core.config import load_yaml_config
     from modules.backend.core.config_schema import (
         ApplicationSchema,
         CostSchema,
@@ -141,6 +142,7 @@ def _create_mock_app_config() -> Any:
         SecuritySchema,
         SessionsSchema,
     )
+    from modules.backend.core.config_schema_missions import MissionsSchema
 
     class TestAppConfig:
         """Test-specific AppConfig with real schema instances."""
@@ -246,6 +248,8 @@ def _create_mock_app_config() -> Any:
             )
             self.sessions = SessionsSchema()
             self.cost = CostSchema(emergency_downgrade_model="test-fixture:downgrade")
+            # The real missions.yaml: budget cap defaults and maxima (88.4.1).
+            self.missions = MissionsSchema(**load_yaml_config("missions.yaml"))
 
     return TestAppConfig()
 

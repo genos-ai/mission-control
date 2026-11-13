@@ -163,6 +163,7 @@ class MissionRunLifecycleMixin:
         context_version_start = await self._contexts.get_version(mission_id)
 
         run.gate_mode = gate_mode
+        run.budget_cap_usd = plan.budget_per_run_usd
         run.previous_run_id = previous_run_id
         run.context_version_start = context_version_start
         await self.transition(run_id, MissionRunStatus.RUNNING, None, None)

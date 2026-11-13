@@ -50,10 +50,23 @@ class MissionCreate(BaseModel):
         pattern=r"^[a-z][a-z0-9_-]*$",
         description="Default agent roster for this mission",
     )
-    budget_ceiling_usd: float | None = Field(
+    budget_per_run_usd: float | None = Field(
         None,
-        ge=0.01,
-        description="Mission-level spend cap",
+        gt=0,
+        description="Cap on one run's spend; missions.budgets.default_per_run_usd when omitted",
+    )
+    budget_per_month_usd: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Cap on spend per UTC calendar month; "
+            "missions.budgets.default_per_month_usd when omitted"
+        ),
+    )
+    budget_lifetime_usd: float | None = Field(
+        None,
+        gt=0,
+        description="Optional cap on lifetime spend; omitted means no lifetime cap",
     )
     repo_url: str | None = Field(
         None,
@@ -90,7 +103,6 @@ class MissionUpdate(BaseModel):
     brief: str | None = Field(None, max_length=10000)
     status: str | None = Field(None, pattern=r"^(active|paused|archived)$")
     default_roster: str | None = Field(None, pattern=r"^[a-z][a-z0-9_-]*$")
-    budget_ceiling_usd: float | None = None
     repo_url: str | None = None
     repo_root: str | None = None
     execution_environment: str | None = Field(
@@ -116,7 +128,6 @@ class MissionResponse(BaseModel):
     owner_id: str
     team_id: str | None
     default_roster: str
-    budget_ceiling_usd: float | None
     repo_url: str | None
     repo_root: str | None
     tier: str

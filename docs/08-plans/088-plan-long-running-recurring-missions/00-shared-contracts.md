@@ -96,7 +96,7 @@ Evolving it would rewrite the key, the target and most of the columns. That is a
 |---|---|---|
 | `GateMode` (`models/mission_plan.py`, replaces `VALID_GATE_MODES` at `:49-56`) | `INTERACTIVE`, `MANUAL`, `AI_ASSISTED`, `AUTONOMOUS` | 88.1.0 |
 | `MissionStatus` (`models/mission.py`, unchanged) | `ACTIVE`, `PAUSED`, `ARCHIVED` | exists |
-| `MissionPauseReason` (`models/mission.py`) | `USER`, `BUDGET_RUN_CAP`, `BUDGET_MONTHLY_CAP`, `BUDGET_LIFETIME_CAP`, `GATE_TIMEOUT` | 88.4.2 |
+| `MissionPauseReason` (`models/mission.py`) | `USER`, `BUDGET_RUN_CAP`, `BUDGET_MONTHLY_CAP`, `BUDGET_LIFETIME_CAP`, `GATE_TIMEOUT` | 88.4.1 (enum, used by `BudgetService.breach`); the `missions.paused_*` columns in 88.4.2 |
 | `MissionScheduleKind` (`models/mission_schedule.py`) | `OBJECTIVE`, `WORKFLOW_DEFINITION` | 88.1.3 |
 | `MissionScheduleStatus` | `ACTIVE`, `PAUSED`, `COMPLETED`, `ARCHIVED` | 88.1.3 |
 | `MissionScheduleCompletedReason` | `END_DATE_REACHED`, `MAX_RUNS_REACHED` | 88.1.3 |

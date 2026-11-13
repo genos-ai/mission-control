@@ -18,6 +18,7 @@ import {
   useLastSupervisorDecision,
   type MissionPlan,
 } from '@/hooks/use-mission-plan'
+import { useMissionBudget } from '@/hooks/use-mission-budget'
 import { fmtUsd } from '@/lib/format'
 import { planProgress } from '@/lib/plan-progress'
 import type { Tone } from '@/lib/status-tone'
@@ -57,8 +58,8 @@ export function PlanTopBar({
   )
   const approvedCount = approvedTasks.length
 
-  const hasBudget = plan.budget_usd_ceiling != null && plan.budget_usd_ceiling > 0
-  const budgetPct = hasBudget ? (plan.total_spent_usd / plan.budget_usd_ceiling!) * 100 : 0
+  const { data: budget } = useMissionBudget(missionId)
+  const budgetPct = budget ? (budget.month_spent_usd / budget.per_month_usd) * 100 : 0
   const budgetTone: Tone = budgetPct > 80 ? 'danger' : budgetPct > 50 ? 'warning' : 'brand'
 
   const { done, total } = planProgress(plan)
@@ -121,10 +122,10 @@ export function PlanTopBar({
           </div>
         )}
 
-        {hasBudget && (
-          <div className="flex items-center gap-2" title="Spent of the plan budget">
+        {budget && (
+          <div className="flex items-center gap-2" title="Spent this month of the monthly cap">
             <span className="font-mono text-xs text-muted-foreground">
-              {fmtUsd(plan.total_spent_usd)} / {fmtUsd(plan.budget_usd_ceiling!)}
+              {fmtUsd(budget.month_spent_usd)} / {fmtUsd(budget.per_month_usd)}
             </span>
             <Progress label="Budget used" value={budgetPct} tone={budgetTone} className="w-14" />
           </div>

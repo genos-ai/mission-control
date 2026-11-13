@@ -1,9 +1,8 @@
 """Tests for the MissionPlanService helpers the Plan 62 execution path used.
 
 run_objective itself was deleted in Plan 88 step 88.1.7 (runs start through
-MissionRunService). Covers the concurrency guard, approve_all_proposed and
-the plan budget inherited from the mission. Uses real db_session per
-project testing principles.
+MissionRunService). Covers the concurrency guard and approve_all_proposed.
+Uses real db_session per project testing principles.
 
 Plan 72 contract: tasks are first-class rows in the `tasks` table with
 native UUID ids, created via TaskRepository. plan_task_states and
@@ -36,12 +35,17 @@ async def mission_context(db_session: AsyncSession, test_user) -> dict:
         name=f"test-{uuid.uuid4().hex[:8]}",
         description="Test mission for run_objective",
         owner_id=test_user.id,
-        budget_ceiling_usd=10.0,
     )
     db_session.add(m)
     await db_session.flush()
     db_session.add(
-        MissionPlan(mission_id=m.id, gate_mode=GateMode.AUTONOMOUS, budget_usd_ceiling=10.0)
+        MissionPlan(
+            mission_id=m.id,
+            gate_mode=GateMode.AUTONOMOUS,
+            budget_per_run_usd=5.0,
+            budget_per_month_usd=100.0,
+            budget_lifetime_usd=10.0,
+        )
     )
     await db_session.flush()
     return {"mission_id": m.id, "user_id": test_user.id}
@@ -189,21 +193,3 @@ class TestApproveAllProposed:
         plan = await service.get_or_create_plan(mission_id)
         approved = await service.approve_all_proposed(plan.id, user_id)
         assert approved == []
-
-
-# ---------------------------------------------------------------------------
-# Plan budget
-# ---------------------------------------------------------------------------
-
-
-class TestPlanBudget:
-    @pytest.mark.asyncio
-    async def test_budget_inherited_from_mission(
-        self,
-        service: MissionPlanService,
-        mission_id: str,
-        db_session: AsyncSession,
-    ):
-        """Budget ceiling propagates from mission to plan."""
-        plan = await service.get_or_create_plan(mission_id)
-        assert plan.budget_usd_ceiling == 10.0  # inherited from fixture
