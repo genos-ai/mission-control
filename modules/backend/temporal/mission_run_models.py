@@ -189,6 +189,17 @@ class PauseForRunInput:
 
 
 @dataclass
+class RunBudgetCheck:
+    """check_run_budget result (88.4.6): BudgetService.check_run on the wire."""
+
+    run_spent_usd: float
+    month_spent_usd: float
+    lifetime_spent_usd: float
+    headroom_usd: float  # never negative; 0 means a cap is exhausted, never unlimited
+    breach: str | None  # a lowercase MissionPauseReason value (3.0.2)
+
+
+@dataclass
 class TasksApprovedSignal:
     task_ids: list[str]
 
@@ -416,7 +427,9 @@ class ExecuteTaskInput:
     task_id: str
     session_id: str
     execution_record_id: str
-    budget_headroom_usd: float | None  # None in Phases 2-3; 88.4.6 sets it under p88-budget-caps
+    # This task's share of the run's headroom under p88-budget-caps (88.4.6);
+    # None on the old branch. 0 means exhausted, never unlimited.
+    budget_headroom_usd: float | None
     heartbeat_interval_seconds: int
 
 

@@ -119,6 +119,17 @@ class MissionLifecycleChangedEvent(SessionEvent):
     actor_user_id: str | None
 
 
+class MissionRunBudgetBreachedEvent(SessionEvent):
+    """A run ended BUDGET_STOPPED; cap is the breached MissionPauseReason value (88.4.6)."""
+
+    event_type: str = "mission_run.budget_breached"
+    mission_id: str
+    mission_run_id: str | None
+    cap: str
+    spent_usd: float
+    cap_usd: float | None
+
+
 class NotificationDeliveryFailedEvent(SessionEvent):
     """Delivering a mission notification to one recipient failed; error is redacted."""
 

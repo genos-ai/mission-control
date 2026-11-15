@@ -21,6 +21,7 @@ from modules.backend.events.base import SessionEvent
 from modules.backend.events.mission_run_types import (
     ContextCompactedEvent,
     MissionLifecycleChangedEvent,
+    MissionRunBudgetBreachedEvent,
     MissionRunCreatedEvent,
     MissionRunDigestWrittenEvent,
     MissionRunOccurrenceRecordedEvent,
@@ -843,6 +844,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "mission_run.digest_written": MissionRunDigestWrittenEvent,
     "notification.delivery_failed": NotificationDeliveryFailedEvent,
     "mission.lifecycle_changed": MissionLifecycleChangedEvent,
+    "mission_run.budget_breached": MissionRunBudgetBreachedEvent,
 }
 
 

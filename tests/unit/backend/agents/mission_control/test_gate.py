@@ -8,7 +8,8 @@ auto-continue rules, and AI recommendation rendering.
 
 import json
 from dataclasses import asdict
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -38,6 +39,7 @@ from modules.backend.core.config_schema import (
     GatePointsSchema,
     GateSchema,
 )
+from modules.backend.core.exceptions import ProviderError
 from modules.backend.core.protocols import NoOpEventBus
 from modules.backend.schemas.task_plan import TaskPlan
 
@@ -298,8 +300,10 @@ class TestLlmGateReviewer:
         gate = LlmGateReviewer(model=AI.model, max_tokens=AI.max_tokens)
         output = MagicMock(action="continue", reason="ok", modified_instructions=None)
         gate._agent = MagicMock()
-        gate._agent.run = AsyncMock(return_value=MagicMock(output=output))
-        decision = await gate.review(GateContext(gate_type="pre_dispatch", mission_id="m-1"))
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1)
+        gate._agent.run = AsyncMock(return_value=MagicMock(output=output, usage=lambda: usage))
+        with patch(f"{LlmGateReviewer.__module__}.record_llm_call", AsyncMock()):
+            decision = await gate.review(GateContext(gate_type="pre_dispatch", mission_id="m-1"))
         assert decision.action == GateAction.CONTINUE
         sent = gate._agent.run.call_args.kwargs["model_settings"]
         assert sent == {"max_tokens": AI.max_tokens}
@@ -311,7 +315,7 @@ class TestLlmGateReviewer:
         gate = LlmGateReviewer(model="test", max_tokens=AI.max_tokens)
         # Force _get_agent to raise on review
         gate._agent = MagicMock()
-        gate._agent.run = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
+        gate._agent.run = AsyncMock(side_effect=ProviderError("LLM unavailable"))
         ctx = GateContext(
             gate_type="pre_dispatch",
             mission_id="m-1",

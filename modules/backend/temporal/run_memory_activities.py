@@ -7,7 +7,8 @@ only after the compaction commits.
 ``write_run_digest`` (88.3.7) writes the run's digest before
 ``finalise_mission_run``. Its policy key is ``write_digest``. The digest agent
 is imported here, not in services/run_memory.py, so the services layer never
-imports the agents layer (import-linter contract).
+imports the agents layer (import-linter contract). The activity also makes the
+budget-aware narrator choice (88.4.6).
 """
 
 import uuid
@@ -16,6 +17,7 @@ from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.exc import SQLAlchemyError
 from temporalio import activity
 
+from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.agents.system.digest.agent import generate_digest_narrative
 from modules.backend.core.config import get_app_config, get_redis_url
 from modules.backend.core.database import get_async_session
@@ -25,6 +27,7 @@ from modules.backend.events.mission_run_types import ContextCompactedEvent
 from modules.backend.events.types import SystemEvent
 from modules.backend.models.mission_run import MissionRunStatus, MissionRunStatusReason
 from modules.backend.models.mission_run_digest import DigestGenerator
+from modules.backend.services.budget import BudgetService
 from modules.backend.services.mission_context import MissionContextManager
 from modules.backend.services.mission_learning import MissionLearningExtractor
 from modules.backend.services.run_memory import RunMemoryService
@@ -88,18 +91,26 @@ async def compact_mission_context(input: CompactContextInput) -> CompactContextR
 async def write_run_digest(input: WriteDigestInput) -> DigestResult:
     """Write the run's digest, then refresh the mission's learnings.
 
-    The digest agent narrates unless ``force_deterministic``. Learning
+    The digest agent narrates only when ``force_deterministic`` is false,
+    no cap is breached and the run's headroom covers the digest agent's
+    max_budget_usd; otherwise the digest is DETERMINISTIC (88.4.6). Learning
     extraction runs in its own session after the digest commits; its failure
     is logged and does not fail the digest, because the nightly
     knowledge_extraction schedule repeats it.
     """
-    interval = get_app_config().temporal.mission_run.task_heartbeat_interval_seconds
-    narrator = None if input.force_deterministic else generate_digest_narrative
+    config = get_app_config()
+    interval = config.temporal.mission_run.task_heartbeat_interval_seconds
     redis = AsyncRedis.from_url(get_redis_url())
     try:
         bus = SessionEventBus(redis, mission_id=None)
         async with heartbeat_every(interval, phase="digest") as hb:
             async with get_async_session() as db:
+                narrator = None
+                if not input.force_deterministic:
+                    check = await BudgetService(db).check_run(input.mission_run_id)
+                    digest_agent = get_registry().get(config.missions.digest.agent_name)
+                    if check.breach is None and check.headroom_usd >= digest_agent.max_budget_usd:
+                        narrator = generate_digest_narrative
                 digest = await RunMemoryService(db, event_bus=bus).write_digest(
                     input.mission_run_id,
                     status=MissionRunStatus(input.status),

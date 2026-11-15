@@ -388,7 +388,7 @@ class MissionScheduleService(BaseService):
     async def claim_occurrence(self, schedule_id: str, scheduled_for: datetime) -> OccurrenceClaim:
         """Decide and record one scheduled occurrence (contract 3.3.2); commits."""
         return await claim_occurrence(
-            self._session, self._gateway, self._emit, schedule_id, scheduled_for
+            self._session, self._gateway, self._event_bus, self._emit, schedule_id, scheduled_for
         )
 
     # ── Helpers ──────────────────────────────────────────────────────────

@@ -5,6 +5,10 @@ schedule row locked FOR UPDATE, then commits and emits events. The
 list_matching_times calls run with the lock held: the one deliberate external
 call inside a transaction, bounded by the claim activity's timeout. Every row,
 whatever its outcome, consumes exactly one gap-free sequence number.
+
+A breached monthly or lifetime cap (88.4.6) skips the tick as
+BUDGET_CAP_REACHED and pauses the mission inside the claim transaction; the
+claim_occurrence activity syncs the mission's schedules after the commit.
 """
 
 import dataclasses
@@ -19,13 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import ConflictError, NotFoundError
 from modules.backend.core.logging import get_logger
+from modules.backend.core.protocols import EventBusProtocol
 from modules.backend.core.utils import utc_now
 from modules.backend.events.base import SessionEvent
 from modules.backend.events.mission_run_types import (
+    MissionLifecycleChangedEvent,
     MissionRunCreatedEvent,
     MissionRunOccurrenceRecordedEvent,
 )
-from modules.backend.models.mission import MissionStatus
+from modules.backend.models.mission import Mission, MissionPauseReason, MissionStatus
 from modules.backend.models.mission_run import (
     MissionRun,
     MissionRunStatus,
@@ -42,6 +48,7 @@ from modules.backend.repositories.mission_plan import MissionPlanRepository
 from modules.backend.repositories.mission_run import MissionRunRepository
 from modules.backend.repositories.mission_schedule import MissionScheduleRepository
 from modules.backend.schemas.mission_schedule import OccurrenceClaim
+from modules.backend.services.budget import BudgetService
 from modules.backend.temporal.config_snapshots import build_run_config_snapshot
 from modules.backend.temporal.mission_run_models import (
     MissionRunWorkflowInput,
@@ -57,6 +64,7 @@ _ONE_ACTIVE_CONSTRAINT = "uq_mission_runs_one_active"
 # NotificationKind values (contract 3.6.2); the enum arrives in 88.4.3.
 RUN_MISSED = "run_missed"
 RUN_SKIPPED = "run_skipped"
+BUDGET_PAUSED = "budget_paused"
 
 Emit = Callable[[str, SessionEvent], Awaitable[None]]
 
@@ -85,9 +93,16 @@ class _Recorded:
 class _Claim:
     """One claim transaction. Not reused across claims."""
 
-    def __init__(self, session: AsyncSession, gateway: TemporalScheduleGateway) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        gateway: TemporalScheduleGateway,
+        event_bus: EventBusProtocol,
+    ) -> None:
         self._session = session
         self._gateway = gateway
+        self._event_bus = event_bus
+        self._budget_breach: MissionPauseReason | None = None  # set by _decide
         self._schedules = MissionScheduleRepository(session)
         self._missions = MissionRepository(session)
         self._plans = MissionPlanRepository(session)
@@ -287,6 +302,8 @@ class _Claim:
                         **slot, scheduled_for=scheduled_for, status=tick_status, reason=tick_reason
                     )
                 )
+                if self._budget_breach is not None:
+                    events.append(await self._pause_for_budget(mission, self._budget_breach))
             if backfilled:
                 events.append(
                     MissionRunOccurrenceRecordedEvent(
@@ -345,6 +362,17 @@ class _Claim:
                     payload={"reason": this_tick.reason.value},
                 )
             )
+        if self._budget_breach is not None:
+            notifications.append(
+                NotificationRequest(
+                    kind=BUDGET_PAUSED,
+                    mission_id=mission_id,
+                    mission_run_id=None,
+                    gate_request_id=None,
+                    subject_id=subject_id,
+                    payload={"cap": self._budget_breach.value},
+                )
+            )
 
         claim = OccurrenceClaim(
             outcome="run" if this_tick is None else this_tick.status.value,
@@ -352,8 +380,35 @@ class _Claim:
             run_input=run_input,
             notifications=notifications,
             recorded=[r.row for r in recorded],
+            mission_paused=self._budget_breach is not None,
         )
         return claim, events
+
+    async def _pause_for_budget(
+        self, mission: Mission, breach: MissionPauseReason
+    ) -> MissionLifecycleChangedEvent:
+        """Pause the mission in the claim transaction; the event is emitted after commit."""
+        # Imported here: mission_lifecycle imports mission_schedule, which imports this module.
+        from modules.backend.services.mission_lifecycle import MissionLifecycleService
+
+        mission_id = mission.id
+        await MissionLifecycleService(self._session, self._event_bus)._apply_pause(
+            mission, breach, None
+        )
+        logger.info(
+            "Schedule claim paused the mission: budget cap reached",
+            extra={"mission_id": mission_id, "cap": breach.value},
+        )
+        return MissionLifecycleChangedEvent(
+            session_id=uuid.UUID(mission_id),
+            source=_SOURCE,
+            mission_id=mission_id,
+            mission_run_id=None,
+            from_status=MissionStatus.ACTIVE.value,
+            to_status=MissionStatus.PAUSED.value,
+            paused_reason=breach.value,
+            actor_user_id=None,
+        )
 
     async def _decide(
         self,
@@ -384,18 +439,23 @@ class _Claim:
             return MissionRunStatus.SKIPPED, MissionRunStatusReason.OVERLAP
         if max_runs is not None and executed >= max_runs:
             return MissionRunStatus.SKIPPED, MissionRunStatusReason.MAX_RUNS_REACHED
+        budget = await BudgetService(self._session).get_status(mission_id)
+        self._budget_breach = BudgetService.mission_cap_breach(budget)
+        if self._budget_breach is not None:
+            return MissionRunStatus.SKIPPED, MissionRunStatusReason.BUDGET_CAP_REACHED
         return None
 
 
 async def claim_occurrence(
     session: AsyncSession,
     gateway: TemporalScheduleGateway,
+    event_bus: EventBusProtocol,
     emit: Emit,
     schedule_id: str,
     scheduled_for: datetime,
 ) -> OccurrenceClaim:
     """Claim one occurrence of a schedule (contract 3.3.2); commits, then emits."""
-    claim, events = await _Claim(session, gateway).run(schedule_id, scheduled_for)
+    claim, events = await _Claim(session, gateway, event_bus).run(schedule_id, scheduled_for)
     await session.commit()
     for event in events:
         await emit(event.mission_id, event)

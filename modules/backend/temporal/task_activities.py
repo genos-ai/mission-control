@@ -54,6 +54,7 @@ async def _run_agent(input: ExecuteTaskInput, claim: TaskClaim) -> TaskResult:
                     extra_volumes=None,
                     mission_run_id=input.mission_run_id,
                     task_id=input.task_id,
+                    budget_headroom_usd=input.budget_headroom_usd,
                 )
             except ExecutionEnvironmentError as exc:  # 88.2.3a: fail the task, not the run
                 return failed_result(

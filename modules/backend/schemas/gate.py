@@ -46,6 +46,8 @@ class GateContext:
     # execution session. Optional to keep older callers compiling; should
     # be populated by every dispatcher.
     session_id: str | None = None
+    # The mission run the gate serves; tags the reviewer's ledger rows (88.4.6).
+    mission_run_id: str | None = None
     layer_index: int = 0
     total_layers: int = 0
 

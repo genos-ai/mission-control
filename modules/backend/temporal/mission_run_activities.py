@@ -1,4 +1,4 @@
-"""MissionRunWorkflow activities (Plan 88 steps 88.1.8 and 88.4.5, contract 3.3.5).
+"""MissionRunWorkflow activities (Plan 88 steps 88.1.8, 88.4.5 and 88.4.6, contract 3.3.5).
 
 Each activity opens its own DB session, builds a SessionEventBus and calls the
 matching MissionRunService method. String status fields arrive as lowercase
@@ -21,6 +21,7 @@ from modules.backend.temporal.mission_run_models import (
     PauseForRunInput,
     PlanRunInput,
     PlanRunResult,
+    RunBudgetCheck,
     RunStatusUpdate,
     RunTaskGraph,
 )
@@ -113,6 +114,23 @@ async def finalise_mission_run(input: FinaliseRunInput) -> FinaliseRunResult:
             director_objective_met=input.director_objective_met,
         )
     return result
+
+
+@activity.defn
+async def check_run_budget(mission_run_id: str) -> RunBudgetCheck:
+    """The run's spend and headroom under its run, monthly and lifetime caps (88.4.6)."""
+    from modules.backend.core.database import get_async_session
+    from modules.backend.services.budget import BudgetService
+
+    async with get_async_session() as db:
+        check = await BudgetService(db).check_run(mission_run_id)
+    return RunBudgetCheck(
+        run_spent_usd=check.run_spent_usd,
+        month_spent_usd=check.month_spent_usd,
+        lifetime_spent_usd=check.lifetime_spent_usd,
+        headroom_usd=check.headroom_usd,
+        breach=check.breach.value if check.breach is not None else None,
+    )
 
 
 @activity.defn

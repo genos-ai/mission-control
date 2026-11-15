@@ -29,6 +29,7 @@ REQUIRED = frozenset(
         "max_duration_stop",
         "p88-run-memory",  # 88.3.8: the patched branch; the seven above replay the old one
         "p88-lifecycle-signals",  # 88.4.5: pause, resume and the run-end notification
+        "p88-budget-caps",  # 88.4.6: headroom shares, a budget_exceeded task and the run-cap stop
     }
 )
 

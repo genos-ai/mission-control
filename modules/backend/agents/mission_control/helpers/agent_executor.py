@@ -33,7 +33,11 @@ from modules.backend.agents.mission_control.helpers.prompt_builder import (
 from modules.backend.agents.mission_control.models import EventBusProtocol, ExecuteAgentFn
 from modules.backend.agents.mission_control.registry import get_registry
 from modules.backend.core.config import find_project_root
-from modules.backend.core.exceptions import ExecutionEnvironmentError, ValidationError
+from modules.backend.core.exceptions import (
+    BudgetExceededError,
+    ExecutionEnvironmentError,
+    ValidationError,
+)
 from modules.backend.core.logging import get_logger
 from modules.backend.events.types import (
     AgentResponseChunkEvent,
@@ -58,6 +62,7 @@ def _make_agent_executor(
     current_user_id: str | None = None,
     mission_run_id: str | None = None,
     task_id: str | None = None,
+    budget_headroom_usd: float | None = None,
 ) -> ExecuteAgentFn:
     """Create the execute_agent_fn closure for the dispatch loop.
 
@@ -65,8 +70,16 @@ def _make_agent_executor(
     finalise; None when the dispatch is not part of a mission run.
     task_id tags them with the one plan task this executor runs; None when
     the executor serves a whole plan (in-process dispatch).
+    budget_headroom_usd is what this executor may spend (88.4.6): a call is
+    refused once the executor's spend reaches it, and a call that crosses it
+    raises after its ledger row is written, so the overshoot is at most one
+    LLM call. Zero means exhausted; None means no run budget applies.
     """
     cumulative_cost_usd = 0.0
+
+    def _check_headroom() -> None:
+        if budget_headroom_usd is not None and cumulative_cost_usd >= budget_headroom_usd:
+            raise BudgetExceededError(f"task headroom {budget_headroom_usd:.4f} exhausted")
 
     async def execute_agent(
         agent_name: str,
@@ -76,6 +89,7 @@ def _make_agent_executor(
     ) -> dict:
         """Execute a single agent with streaming event emission."""
         nonlocal cumulative_cost_usd
+        _check_headroom()
 
         registry = get_registry()
         agent_config = registry.get(agent_name)
@@ -132,6 +146,7 @@ def _make_agent_executor(
                 scope_write=agent_config.scope.write,
             )
             cumulative_cost_usd += result.get("_meta", {}).get("cost_usd", 0.0)
+            _check_headroom()
             return result
 
         # ── Existing PydanticAI path (unchanged) ──────────────────
@@ -405,6 +420,7 @@ def _make_agent_executor(
             source_event_type="agent.response.complete",
         )
 
+        _check_headroom()  # the ledger row is written; the overshoot is this one call
         return output_dict
 
     return execute_agent

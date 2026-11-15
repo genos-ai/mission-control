@@ -188,6 +188,7 @@ async def _do_evaluate_post_run(input: PostRunEvalInput) -> PostRunEvalResult:
                 gate_type="post_run",
                 mission_id=input.mission_id,
                 session_id=input.session_id,
+                mission_run_id=input.mission_run_id,
                 total_cost_usd=total_cost_usd,
                 budget_usd=budget_usd,
                 recent_run_outcomes=recent,

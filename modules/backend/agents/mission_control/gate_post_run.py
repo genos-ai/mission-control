@@ -33,11 +33,13 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
+from modules.backend.agents.mission_control.cost import compute_cost_usd
 from modules.backend.agents.mission_control.gate_models import (
     GateAction,
     GateContext,
     GateDecision,
 )
+from modules.backend.agents.mission_control.helpers.cost_recorder import record_llm_call
 from modules.backend.core.config import get_app_config
 from modules.backend.core.decision_reasoning import (
     decode_decision_reasoning,
@@ -397,102 +399,6 @@ class AutonomousPostRunReviewer:
             )
 
             result = await agent.run(prompt, deps=deps)
-            decision = result.output  # SupervisorDecision
-
-            # Usage tracking
-            usage = result.usage()
-            tokens_used = (usage.input_tokens or 0) + (usage.output_tokens or 0)
-            from modules.backend.agents.mission_control.cost import compute_cost_usd
-
-            cost_usd = compute_cost_usd(
-                usage.input_tokens or 0,
-                usage.output_tokens or 0,
-                model_name,
-            )
-
-            # Confidence override: < 0.6 → ESCALATE
-            if decision.confidence < 0.6:
-                logger.info(
-                    "Haiku confidence below threshold, overriding to ESCALATE",
-                    extra={
-                        "stated_decision": decision.decision,
-                        "confidence": decision.confidence,
-                    },
-                )
-                return self._decide(
-                    GateAction.ESCALATE,
-                    f"Haiku classified as {decision.decision} but confidence "
-                    f"({decision.confidence:.2f}) is below 0.6 threshold. "
-                    f"Reason: {decision.reason}",
-                    execution_record_id=execution_record_id,
-                    rule="8-low-confidence",
-                )
-
-            # Map the decision string to a GateAction.
-            action_map = {
-                "ADVANCE_REFINE": GateAction.ADVANCE_REFINE,
-                "PROPOSE_COMPLETE": GateAction.PROPOSE_COMPLETE,
-                "ESCALATE": GateAction.ESCALATE,
-            }
-            action = action_map.get(
-                decision.decision.upper(),
-                GateAction.ESCALATE,
-            )
-
-            model_metadata = {
-                "confidence": decision.confidence,
-                "tokens_used": tokens_used,
-                "cost_usd": cost_usd,
-            }
-            audit_reasoning = encode_decision_reasoning(
-                decision.reason,
-                {
-                    "action": action.value,
-                    "reviewer": f"ai:{model_name}",
-                    "rule": 8,
-                    "model_metadata": model_metadata,
-                    "iteration": context.supervisor_iteration_count,
-                },
-            )
-
-            gate_decision = GateDecision(
-                action=action,
-                reason=decision.reason,
-                reviewer=f"ai:{model_name}",
-                model_metadata=model_metadata,
-                rule=8,
-            )
-
-            # Write audit row
-            if execution_record_id:
-                try:
-                    self._write_audit_row(
-                        execution_record_id,
-                        action,
-                        audit_reasoning,
-                    )
-                except Exception:
-                    # best-effort — don't fail the decision if the audit write errors.
-                    logger.warning(
-                        "Failed to write Haiku audit row",
-                        extra={
-                            "execution_record_id": execution_record_id,
-                            "mission_id": context.mission_id,
-                        },
-                        exc_info=True,
-                    )
-
-            logger.info(
-                "Haiku classification complete",
-                extra={
-                    "action": action.value,
-                    "confidence": decision.confidence,
-                    "cost_usd": cost_usd,
-                    "execution_record_id": execution_record_id,
-                },
-            )
-            return gate_decision
-
         except Exception as exc:
             # falling back to the safe default (caller escalates to human
             # review when this returns None) — no event_bus reachable here.
@@ -502,6 +408,115 @@ class AutonomousPostRunReviewer:
                 exc_info=True,
             )
             return None
+
+        decision = result.output  # SupervisorDecision
+
+        # Usage tracking. The call is written to the ledger tagged with the run;
+        # a ledger failure propagates, because an unrecorded call bypasses the
+        # budget (88.4.6).
+        usage = result.usage()
+        tokens_used = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+        cost_usd = compute_cost_usd(
+            usage.input_tokens or 0,
+            usage.output_tokens or 0,
+            model_name,
+        )
+        await record_llm_call(
+            session_id=context.session_id,
+            mission_id=context.mission_id,
+            agent_name="gate.post_run",
+            agent_role="gate",
+            model=model_name,
+            usage=usage,
+            cost_usd=cost_usd,
+            latency_ms=0,
+            tool_count=0,
+            mission_run_id=context.mission_run_id,
+            task_id=None,
+        )
+
+        # Confidence override: < 0.6 → ESCALATE
+        if decision.confidence < 0.6:
+            logger.info(
+                "Haiku confidence below threshold, overriding to ESCALATE",
+                extra={
+                    "stated_decision": decision.decision,
+                    "confidence": decision.confidence,
+                },
+            )
+            return self._decide(
+                GateAction.ESCALATE,
+                f"Haiku classified as {decision.decision} but confidence "
+                f"({decision.confidence:.2f}) is below 0.6 threshold. "
+                f"Reason: {decision.reason}",
+                execution_record_id=execution_record_id,
+                rule="8-low-confidence",
+            )
+
+        # Map the decision string to a GateAction.
+        action_map = {
+            "ADVANCE_REFINE": GateAction.ADVANCE_REFINE,
+            "PROPOSE_COMPLETE": GateAction.PROPOSE_COMPLETE,
+            "ESCALATE": GateAction.ESCALATE,
+        }
+        action = action_map.get(
+            decision.decision.upper(),
+            GateAction.ESCALATE,
+        )
+
+        model_metadata = {
+            "confidence": decision.confidence,
+            "tokens_used": tokens_used,
+            "cost_usd": cost_usd,
+        }
+        audit_reasoning = encode_decision_reasoning(
+            decision.reason,
+            {
+                "action": action.value,
+                "reviewer": f"ai:{model_name}",
+                "rule": 8,
+                "model_metadata": model_metadata,
+                "iteration": context.supervisor_iteration_count,
+            },
+        )
+
+        gate_decision = GateDecision(
+            action=action,
+            reason=decision.reason,
+            reviewer=f"ai:{model_name}",
+            model_metadata=model_metadata,
+            rule=8,
+        )
+
+        # Write audit row
+        if execution_record_id:
+            try:
+                self._write_audit_row(
+                    execution_record_id,
+                    action,
+                    audit_reasoning,
+                )
+            except Exception:
+                # best-effort — don't fail the decision if the audit write errors.
+                logger.warning(
+                    "Failed to write Haiku audit row",
+                    extra={
+                        "execution_record_id": execution_record_id,
+                        "mission_id": context.mission_id,
+                    },
+                    exc_info=True,
+                )
+
+        logger.info(
+            "Haiku classification complete",
+            extra={
+                "action": action.value,
+                "confidence": decision.confidence,
+                "cost_usd": cost_usd,
+                "execution_record_id": execution_record_id,
+            },
+        )
+        return gate_decision
 
     def _check_budget_headroom(
         self,

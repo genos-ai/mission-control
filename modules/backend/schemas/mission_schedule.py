@@ -155,6 +155,8 @@ class OccurrenceClaim:
     row (the existing row for duplicate). run_input is set for a RUN, and for
     a duplicate whose row is still PENDING, so the tick can start it.
     recorded holds every SKIPPED or MISSED row this claim inserted.
+    mission_paused is True when a breached cap paused the mission (88.4.6):
+    the caller syncs the mission's schedules after the commit.
     """
 
     outcome: str
@@ -162,3 +164,4 @@ class OccurrenceClaim:
     run_input: MissionRunWorkflowInput | None
     notifications: list[NotificationRequest] = field(default_factory=list)
     recorded: list[MissionRun] = field(default_factory=list)
+    mission_paused: bool = False

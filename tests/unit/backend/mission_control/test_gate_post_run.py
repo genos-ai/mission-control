@@ -28,6 +28,16 @@ from modules.backend.models.mission_plan import GateMode
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _ledger(monkeypatch) -> AsyncMock:
+    """The Haiku classifier writes an llm_calls row (88.4.6); capture it instead."""
+    record = AsyncMock()
+    monkeypatch.setattr(
+        "modules.backend.agents.mission_control.gate_post_run.record_llm_call", record
+    )
+    return record
+
+
 def _context(
     *,
     budget_usd: float = 10.0,

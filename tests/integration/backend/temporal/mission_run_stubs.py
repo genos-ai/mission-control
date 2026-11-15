@@ -1,4 +1,4 @@
-"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 steps 88.2.6-88.4.5).
+"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 steps 88.2.6-88.4.6).
 
 Each stub is registered under the real activity name. Stubs read their script
 from the module-level ``SCRIPT`` and append ``(activity name, input)`` to the
@@ -26,9 +26,11 @@ from modules.backend.temporal.mission_run_models import (
     FinaliseRunInput,
     FinaliseRunResult,
     NotificationRequest,
+    PauseForRunInput,
     PlanRunInput,
     PlanRunResult,
     ResolveTaskInput,
+    RunBudgetCheck,
     RunStatusUpdate,
     RunTaskGraph,
     SupervisorFollowupInput,
@@ -77,6 +79,16 @@ def failed(
     )
 
 
+def budget(headroom_usd: float = 5.0, breach: str | None = None) -> RunBudgetCheck:
+    return RunBudgetCheck(
+        run_spent_usd=0.0,
+        month_spent_usd=0.0,
+        lifetime_spent_usd=0.0,
+        headroom_usd=headroom_usd,
+        breach=breach,
+    )
+
+
 def graph(*layers: list[str], proposed: int = 0) -> RunTaskGraph:
     approved = sum(len(layer) for layer in layers)
     return RunTaskGraph(layers=list(layers), proposed=proposed, approved=approved, running=0)
@@ -92,6 +104,7 @@ class Script:
     task_hook: Callable[[ExecuteTaskInput], Awaitable[None]] | None = None
     compaction_error: Exception | None = None
     notification: NotificationRequest | None = None  # what finalise returns (88.4.5)
+    budget_checks: list[RunBudgetCheck] = field(default_factory=lambda: [budget()])  # 88.4.6
     running: int = 0
     max_running: int = 0
     activity_timeouts: list[tuple[timedelta | None, timedelta | None]] = field(default_factory=list)
@@ -227,6 +240,17 @@ async def notify_stub(req: NotificationRequest) -> list[str]:
     return []
 
 
+@activity.defn(name="check_run_budget")
+async def budget_stub(mission_run_id: str) -> RunBudgetCheck:
+    CALLS.append(("check_run_budget", mission_run_id))
+    return _next(SCRIPT.budget_checks)
+
+
+@activity.defn(name="pause_mission_for_run")
+async def pause_stub(inp: PauseForRunInput) -> None:
+    CALLS.append(("pause_mission_for_run", inp))
+
+
 def non_retryable(message: str) -> ApplicationError:
     return ApplicationError(message, type="TaskInfraError", non_retryable=True)
 
@@ -247,4 +271,6 @@ ACTIVITIES = [
     finalise_stub,
     status_stub,
     notify_stub,
+    budget_stub,
+    pause_stub,
 ]

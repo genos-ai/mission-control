@@ -1,4 +1,4 @@
-"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6, 88.2.7, 88.3.8 and 88.4.5, contract 3.3.3).
+"""Mission Run Workflow (Plan 88 steps 88.1.8 to 88.4.6, contract 3.3.3).
 
 One durable workflow per MissionRun. It begins the run, plans it, then loops:
 fetch the run's task graph, run each approved task as its own
@@ -20,6 +20,13 @@ the in-flight tasks finish. The run-end notification is sent through _notify
 under the same patch; a notification failure never fails the run. The patch is
 evaluated once, as the first command of each run, so an execution that started
 before the patch replays on the old branch throughout.
+
+Budget caps (88.4.6, patch p88-budget-caps, evaluated once the same way):
+check_run_budget runs before planning and at every layer boundary. A breached
+cap ends the run BUDGET_STOPPED, pauses the mission and sends BUDGET_PAUSED.
+Each task of a chunk gets an equal share of the run's headroom, which its
+agent executor enforces; a task stopped by its share ends the run the same way.
+Zero headroom always stops; it never means unlimited.
 """
 
 import asyncio
@@ -39,8 +46,10 @@ with workflow.unsafe.imports_passed_through():
     from modules.backend.temporal.activity_options import activity_kwargs
     from modules.backend.temporal.mission_run_activities import (
         begin_mission_run,
+        check_run_budget,
         fetch_run_task_graph,
         finalise_mission_run,
+        pause_mission_for_run,
         plan_mission_run,
         set_mission_run_status,
     )
@@ -57,11 +66,13 @@ with workflow.unsafe.imports_passed_through():
         MissionRunWorkflowState,
         MissionRunWorkflowStatus,
         NotificationRequest,
+        PauseForRunInput,
         PauseRequest,
         PlanRunInput,
         RefinementOutcome,
         ResolveTaskInput,
         ResumeRequest,
+        RunBudgetCheck,
         RunStatusUpdate,
         RunTaskGraph,
         SupervisorFollowupInput,
@@ -108,8 +119,11 @@ ESCALATE_PROMPT = (
 
 
 # No digest-agent spend after a budget breach or a cancellation (contract 3.1.7).
-# budget_stopped has no Phase 3 caller; Phase 4 (88.4.6) produces it.
 _DETERMINISTIC_DIGEST_STATUSES = ("budget_stopped", "cancelled")
+# ExecuteTaskResult.failure_class of a task stopped by its budget share (3.8.3).
+_BUDGET_EXCEEDED = "budget_exceeded"
+# The stop reason when a task exhausted its share but the run is under every cap.
+_DEFAULT_BUDGET_BREACH = "budget_run_cap"
 
 
 def _cause_type(e: ActivityError) -> str:
@@ -154,6 +168,10 @@ class MissionRunWorkflow:
         self._wave_failures: list[TaskFailureDigest] = []
         self._wave_failures_truncated = 0
         self._lifecycle_signals = False  # set by run(): p88-lifecycle-signals (88.4.5)
+        self._budget_caps = False  # set by run(): p88-budget-caps (88.4.6)
+        # The run's headroom from the last budget point; recomputed before it is
+        # used, so it is not carried across continue-as-new.
+        self._headroom_usd: float | None = None
 
     @workflow.signal
     def tasks_approved(self, s: TasksApprovedSignal) -> None:
@@ -201,6 +219,7 @@ class MissionRunWorkflow:
     async def run(self, inp: MissionRunWorkflowInput) -> str:
         c = inp.config
         self._lifecycle_signals = workflow.patched("p88-lifecycle-signals")
+        self._budget_caps = workflow.patched("p88-budget-caps")
         try:
             if self._state is None:
                 try:
@@ -230,6 +249,9 @@ class MissionRunWorkflow:
                     decision=None,
                     last_can_iteration=0,
                 )
+                end = await self._budget_point()  # no planner spend after a breach
+                if end is not None:
+                    return end
                 try:
                     p = await _exec(
                         plan_mission_run,
@@ -282,14 +304,18 @@ class MissionRunWorkflow:
                 if end is not None:
                     return end
                 chunk = layer[start : start + cfg.max_parallel_tasks]
+                share = None if self._headroom_usd is None else self._headroom_usd / len(chunk)
                 outcomes = await asyncio.gather(
-                    *(self._run_task(t) for t in chunk), return_exceptions=True
+                    *(self._run_task(t, share) for t in chunk), return_exceptions=True
                 )
                 for outcome in outcomes:
                     if isinstance(outcome, BaseException) and (
                         not isinstance(outcome, ActivityError) or is_cancelled_exception(outcome)
                     ):
                         raise outcome
+                end = await self._budget_exceeded_stop(outcomes)
+                if end is not None:
+                    return end
                 failed = [o for o in outcomes if isinstance(o, ActivityError)]
                 if failed:
                     return await self._end_run("failed", "task_failures", str(failed[0])[:500])
@@ -314,10 +340,7 @@ class MissionRunWorkflow:
         return None
 
     async def _layer_boundary(self) -> str | None:
-        """Runs before each chunk: the pause point (88.4.5), then the duration check.
-
-        88.4.6 adds the budget point.
-        """
+        """Runs before each chunk: the pause point, the duration check, the budget point."""
         await self._pause_point()
         if self._duration_exhausted():
             return await self._end_run(
@@ -325,7 +348,59 @@ class MissionRunWorkflow:
                 "max_duration_exceeded",
                 "max_run_duration_seconds reached at a layer boundary",
             )
-        return None
+        return await self._budget_point()
+
+    async def _budget_point(self) -> str | None:
+        """Refresh the run's headroom; stop the run when a cap is breached (88.4.6)."""
+        if not self._budget_caps:
+            return None
+        inp = self._input
+        check: RunBudgetCheck = await _exec(
+            check_run_budget, inp.mission_run_id, inp.config.persistence
+        )
+        self._headroom_usd = check.headroom_usd
+        if check.breach is None:
+            return None
+        return await self._budget_stop(check.breach)
+
+    async def _budget_exceeded_stop(self, outcomes: list[Any]) -> str | None:
+        """Stop the run when a task of the chunk was stopped by its budget share.
+
+        Every future of the chunk has resolved, so no task is in flight. The
+        check reads failure_class, never failure_reason, which committed replay
+        histories redact (contracts 3.8.1 item 5).
+        """
+        if not self._budget_caps or not any(
+            isinstance(o, ExecuteTaskResult) and o.failure_class == _BUDGET_EXCEEDED
+            for o in outcomes
+        ):
+            return None
+        inp = self._input
+        check: RunBudgetCheck = await _exec(
+            check_run_budget, inp.mission_run_id, inp.config.persistence
+        )
+        return await self._budget_stop(check.breach or _DEFAULT_BUDGET_BREACH)
+
+    async def _budget_stop(self, breach: str) -> str:
+        """End the run BUDGET_STOPPED, pause the mission, then send BUDGET_PAUSED."""
+        inp = self._input
+        status = await self._end_run("budget_stopped", breach, None)
+        await _exec(
+            pause_mission_for_run,
+            PauseForRunInput(inp.mission_run_id, breach),
+            inp.config.persistence,
+        )
+        await self._notify(
+            NotificationRequest(
+                kind="budget_paused",
+                mission_id=inp.mission_id,
+                mission_run_id=inp.mission_run_id,
+                gate_request_id=None,
+                subject_id=inp.mission_run_id,
+                payload={"cap": breach},
+            )
+        )
+        return status
 
     async def _pause_point(self) -> None:
         """Hold the run PAUSED while a user pause stands; the pause is excluded from the duration.
@@ -353,7 +428,7 @@ class MissionRunWorkflow:
             inp.config.persistence,
         )
 
-    async def _run_task(self, task_id: str) -> ExecuteTaskResult:
+    async def _run_task(self, task_id: str, budget_headroom_usd: float | None) -> ExecuteTaskResult:
         cfg = self._input.config
         return await workflow.execute_activity(
             execute_plan_task,
@@ -362,7 +437,7 @@ class MissionRunWorkflow:
                 task_id=task_id,
                 session_id=self._state.session_id,
                 execution_record_id=self._state.execution_record_id,
-                budget_headroom_usd=None,
+                budget_headroom_usd=budget_headroom_usd,
                 heartbeat_interval_seconds=cfg.task_heartbeat_interval_seconds,
             ),
             cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
@@ -402,12 +477,18 @@ class MissionRunWorkflow:
                     "max_duration_exceeded",
                     "max_run_duration_seconds reached before a retry",
                 )
+            end = await self._budget_point()  # the retry runs on fresh headroom
+            if end is not None:
+                return end
             try:
-                result = await self._run_task(task_id)
+                result = await self._run_task(task_id, self._headroom_usd)
             except ActivityError as err:
                 if is_cancelled_exception(err):
                     raise
                 return await self._end_run("failed", "task_failures", str(err)[:500])
+            end = await self._budget_exceeded_stop([result])
+            if end is not None:
+                return end
             self._wave_results[task_id] = result
         if result.status == "completed" and await self._gate("post_task", task_id) == "abort":
             return await self._end_run(
@@ -663,7 +744,12 @@ class MissionRunWorkflow:
             FinaliseRunInput(inp.mission_run_id, status, reason, detail, director_objective_met),
             c.persistence,
         )
-        if self._lifecycle_signals and result.notification is not None:
+        # A budget stop sends BUDGET_PAUSED itself, after pausing the mission.
+        if (
+            self._lifecycle_signals
+            and result.notification is not None
+            and status != "budget_stopped"
+        ):
             await self._notify(result.notification)
         return status
 

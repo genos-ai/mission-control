@@ -21,5 +21,6 @@ PATCH_IDS: frozenset[str] = frozenset(
     {
         "p88-run-memory",  # 88.3.8: run-end compaction and digest before finalise
         "p88-lifecycle-signals",  # 88.4.5: pause/resume signals; run-end and tick notifications
+        "p88-budget-caps",  # 88.4.6: budget points, headroom shares and the budget stop
     }
 )

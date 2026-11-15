@@ -364,6 +364,7 @@ async def handle_mission(
         extra_volumes=extra_volumes,
         mission_run_id=mission_run_id,
         task_id=None,
+        budget_headroom_usd=None,
     )
 
     # Execute dispatch loop

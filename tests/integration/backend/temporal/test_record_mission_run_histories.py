@@ -249,3 +249,44 @@ async def test_p88_lifecycle_signals(env: WorkflowEnvironment):
         "send_mission_notification",
     ]
     assert stubs.calls("check_plan_active") == []
+
+
+async def test_p88_budget_caps(env: WorkflowEnvironment):
+    """The p88-budget-caps branch (88.4.6): a task exhausts its headroom share; run cap stop."""
+    stubs.SCRIPT.graphs = [graph(["a", "b"])]
+    stubs.SCRIPT.budget_checks = [
+        stubs.budget(),  # before planning
+        stubs.budget(headroom_usd=2.0),  # layer boundary: 1.0 per task
+        stubs.budget(headroom_usd=0.0, breach="budget_run_cap"),  # after the chunk
+    ]
+    stubs.SCRIPT.task_results = {
+        "a": [
+            failed("a", origin="control", failure_class="budget_exceeded", reason="budget_exceeded")
+        ]
+    }
+    stubs.SCRIPT.notification = NotificationRequest(
+        kind="budget_paused",
+        mission_id=str(uuid.uuid4()),
+        mission_run_id=str(uuid.uuid4()),
+        gate_request_id=None,
+        subject_id="run",
+        payload={},
+    )
+
+    async with _started(env) as handle:
+        assert await handle.result() == "budget_stopped"
+        await _write(env, "p88-budget-caps", handle.id, handle.result_run_id)
+
+    assert [i.budget_headroom_usd for i in stubs.calls("execute_plan_task")] == [1.0, 1.0]
+    assert [name for name, _ in stubs.CALLS][-4:] == [
+        "write_run_digest",
+        "finalise_mission_run",
+        "pause_mission_for_run",
+        "send_mission_notification",
+    ]
+    assert [(f.status, f.reason) for f in stubs.calls("finalise_mission_run")] == [
+        ("budget_stopped", "budget_run_cap")
+    ]
+    assert [n.payload for n in stubs.calls("send_mission_notification")] == [
+        {"cap": "budget_run_cap"}
+    ]

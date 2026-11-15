@@ -18,6 +18,7 @@ from modules.backend.core.exceptions import (
     RunStartRejectedError,
     ValidationError,
 )
+from modules.backend.events.mission_run_types import MissionRunBudgetBreachedEvent
 from modules.backend.models.execution_record import (
     DecisionType,
     ExecutionDecision,
@@ -937,6 +938,72 @@ async def test_approval_racing_finalise_starts_next_run(db_session_factory, gate
     assert following.sequence == run.sequence + 1
     assert following.status == MissionRunStatus.PENDING
     assert following.objective is None
+
+
+async def _ledger_row(factory: Factory, mission: Mission, cost: float, run_id: str | None) -> None:
+    async with factory() as session:
+        session.add(
+            LlmCall(
+                agent_name="test.agent",
+                agent_role="worker",
+                model="test-model",
+                provider="test",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=cost,
+                mission_id=mission.id,
+                mission_run_id=run_id,
+            )
+        )
+        await session.commit()
+
+
+async def test_finalise_budget_stopped_emits_breach_and_starts_no_run(
+    db_session_factory, gateway, owner
+) -> None:
+    """88.4.6: the run-cap figures come from the run; raced approvals start nothing."""
+    user, mission, plan = await owner()
+    await _set_gate_mode(db_session_factory, plan, "AUTONOMOUS")
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+    await _task(db_session_factory, plan, TaskStatus.APPROVED, run.id)
+    await _ledger_row(db_session_factory, mission, 5.5, run.id)
+    bus = RecordingBus()
+
+    async with db_session_factory() as session:
+        result = await MissionRunService(session, bus).finalise(
+            run.id, MissionRunStatus.BUDGET_STOPPED, MissionRunStatusReason.BUDGET_RUN_CAP, None
+        )
+
+    (event,) = [e for e in bus.events if isinstance(e, MissionRunBudgetBreachedEvent)]
+    assert (event.cap, event.spent_usd, event.cap_usd) == ("budget_run_cap", 5.5, 5.0)
+    assert event.mission_run_id == run.id
+    assert result.notification.kind == "budget_paused"
+    assert gateway.start_mission_run.await_count == 1  # only the run itself
+
+
+async def test_finalise_budget_stopped_monthly_reports_month_spend(
+    db_session_factory, gateway, owner
+) -> None:
+    user, mission, _ = await owner()
+    run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
+    await _ledger_row(db_session_factory, mission, 99.0, None)
+    await _ledger_row(db_session_factory, mission, 1.5, run.id)
+    bus = RecordingBus()
+
+    async with db_session_factory() as session:
+        await MissionRunService(session, bus).finalise(
+            run.id,
+            MissionRunStatus.BUDGET_STOPPED,
+            MissionRunStatusReason.BUDGET_MONTHLY_CAP,
+            None,
+        )
+
+    (event,) = [e for e in bus.events if isinstance(e, MissionRunBudgetBreachedEvent)]
+    assert event.cap == "budget_monthly_cap"
+    assert event.spent_usd == pytest.approx(100.5)
+    assert event.cap_usd == 100.0
 
 
 # ── on_tasks_approved (88.1.9) ────────────────────────────────────────────

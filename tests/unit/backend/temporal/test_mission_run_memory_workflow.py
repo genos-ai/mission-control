@@ -39,6 +39,7 @@ with workflow.unsafe.imports_passed_through():
         PlanRunInput,
         PlanRunResult,
         RetrySnapshot,
+        RunBudgetCheck,
         RunConfigSnapshot,
         RunTaskGraph,
         SupervisorFollowupInput,
@@ -159,7 +160,20 @@ async def finalise_fake(inp: FinaliseRunInput) -> FinaliseRunResult:
     return FinaliseRunResult(cost_usd=0.0, notification=None)
 
 
+@activity.defn(name="check_run_budget")
+async def budget_fake(mission_run_id: str) -> RunBudgetCheck:
+    """Ample headroom and no breach: the p88-budget-caps branch runs unchanged (88.4.6)."""
+    return RunBudgetCheck(
+        run_spent_usd=0.0,
+        month_spent_usd=0.0,
+        lifetime_spent_usd=0.0,
+        headroom_usd=5.0,
+        breach=None,
+    )
+
+
 _ACTIVITIES = [
+    budget_fake,
     begin_fake,
     plan_fake,
     graph_fake,

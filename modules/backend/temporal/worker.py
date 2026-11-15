@@ -49,6 +49,7 @@ from modules.backend.temporal.maintenance_workflow import (
 )
 from modules.backend.temporal.mission_run_activities import (
     begin_mission_run,
+    check_run_budget,
     fetch_run_task_graph,
     finalise_mission_run,
     pause_mission_for_run,
@@ -146,6 +147,7 @@ async def start_worker() -> None:
             set_mission_run_status,
             finalise_mission_run,
             pause_mission_for_run,  # 88.4.5; called from 88.4.6 and 88.4.8
+            check_run_budget,  # 88.4.6
             # Run memory (Plan 88 steps 88.3.3, 88.3.7)
             compact_mission_context,
             write_run_digest,

@@ -9,6 +9,8 @@ repositories, _plan_svc, _event_bus, transition, start_run, _is_platform_user
 and _contexts that MissionRunService defines.
 """
 
+import uuid
+
 from modules.backend.core.exceptions import (
     ConflictError,
     MissionRunStateError,
@@ -19,6 +21,7 @@ from modules.backend.core.exceptions import (
 from modules.backend.core.failure_classification import get_failure_classifier
 from modules.backend.core.redaction import redact_secrets
 from modules.backend.core.utils import utc_now
+from modules.backend.events.mission_run_types import MissionRunBudgetBreachedEvent
 from modules.backend.models.execution_record import ExecutionRecordStatus
 from modules.backend.models.mission import MissionStatus
 from modules.backend.models.mission_plan import GateMode
@@ -52,6 +55,7 @@ from modules.backend.temporal.mission_run_models import (
 )
 from modules.backend.temporal.workflow_ids import mission_run_workflow_id
 
+_SOURCE = "mission_run_service"
 _RUNNABLE_GATE_MODES = frozenset({GateMode.MANUAL, GateMode.AI_ASSISTED, GateMode.AUTONOMOUS})
 _OWNER_NOT_USER = "owner not a platform user"
 _ORPHAN_REASONS = frozenset(
@@ -350,6 +354,9 @@ class MissionRunLifecycleMixin:
         plan_id = plan.id
         gate_mode = GateMode(plan.gate_mode)
         sequence = run.sequence
+        run_cap_usd = (
+            run.budget_cap_usd if run.budget_cap_usd is not None else plan.budget_per_run_usd
+        )
 
         reason = run.end_reason(status, reason)
 
@@ -387,7 +394,11 @@ class MissionRunLifecycleMixin:
             await self._record_director_objective_met(run, record.id, director_objective_met)
         await self.transition(run_id, status, reason, detail)
 
-        await self._start_for_raced_approvals(mission_id, plan_id, gate_mode, owner_id)
+        if status == MissionRunStatus.BUDGET_STOPPED:
+            # No follow-on run: the workflow pauses the mission next.
+            await self._emit_budget_breached(mission_id, run_id, reason, cost, run_cap_usd)
+        else:
+            await self._start_for_raced_approvals(mission_id, plan_id, gate_mode, owner_id)
 
         kind = _notification_kind(status, reason)
         notification = None
@@ -410,6 +421,38 @@ class MissionRunLifecycleMixin:
                 payload=payload,
             )
         return FinaliseRunResult(cost_usd=cost, notification=notification)
+
+    async def _emit_budget_breached(
+        self,
+        mission_id: str,
+        run_id: str,
+        reason: MissionRunStatusReason | None,
+        run_spent_usd: float,
+        run_cap_usd: float,
+    ) -> None:
+        """MissionRunBudgetBreachedEvent with the spend and cap that match the reason."""
+        if reason == MissionRunStatusReason.BUDGET_RUN_CAP:
+            spent, cap = run_spent_usd, run_cap_usd
+        elif reason == MissionRunStatusReason.BUDGET_MONTHLY_CAP:
+            budget = await BudgetService(self._session).get_status(mission_id)
+            spent, cap = budget.month_spent_usd, budget.per_month_usd
+        elif reason == MissionRunStatusReason.BUDGET_LIFETIME_CAP:
+            budget = await BudgetService(self._session).get_status(mission_id)
+            spent, cap = budget.lifetime_spent_usd, budget.lifetime_usd
+        else:
+            return  # BUDGET_STOPPED always carries a cap reason (contract 3.2.1)
+        await self._emit(
+            mission_id,
+            MissionRunBudgetBreachedEvent(
+                session_id=uuid.UUID(mission_id),
+                source=_SOURCE,
+                mission_id=mission_id,
+                mission_run_id=run_id,
+                cap=reason.value,
+                spent_usd=spent,
+                cap_usd=cap,
+            ),
+        )
 
     async def _digest_payload(self, mission_id: str, run_id: str) -> dict:
         """The digest's generator and summary for the run-finished notification (3.1.7).

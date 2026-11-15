@@ -21,6 +21,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import ValidationError as PydanticValidationError
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
+
+from modules.backend.agents.mission_control.cost import compute_cost_usd
+
 # Re-export models for callers that import from gate directly
 from modules.backend.agents.mission_control.gate_models import (  # noqa: F401
     GateAction,
@@ -34,6 +39,8 @@ from modules.backend.agents.mission_control.gate_prompt import (
     _build_gate_prompt,
     _parse_action,
 )
+from modules.backend.agents.mission_control.helpers.cost_recorder import record_llm_call
+from modules.backend.core.exceptions import ProviderError
 from modules.backend.core.logging import get_logger
 from modules.backend.services.mission_plan import GateMode
 
@@ -91,7 +98,12 @@ class LlmGateReviewer:
         return self._agent
 
     async def review(self, context: GateContext) -> GateDecision:
-        """Analyze gate context and return a structured decision."""
+        """Analyze gate context and return a structured decision.
+
+        A model or provider failure is an ABORT (fail closed). The call is
+        written to the LLM ledger, tagged with the gate's run; a ledger
+        failure propagates, because an unrecorded call bypasses the budget.
+        """
         agent = self._get_agent()
         user_prompt = _build_gate_prompt(context)
 
@@ -100,17 +112,15 @@ class LlmGateReviewer:
                 user_prompt,
                 model_settings={"max_tokens": self.max_tokens},
             )
-            output = result.output
-            action = _parse_action(output.action)
-            return GateDecision(
-                action=action,
-                reason=output.reason or None,
-                modified_instructions=output.modified_instructions,
-                reviewer=f"ai:{self.model_name}",
-            )
-        except Exception:
+        except (
+            ProviderError,
+            ModelHTTPError,
+            UnexpectedModelBehavior,
+            PydanticValidationError,
+        ):
             logger.error(
                 "LLM gate review failed, aborting for safety",
+                extra={"mission_id": context.mission_id},
                 exc_info=True,
             )
             return GateDecision(
@@ -118,6 +128,29 @@ class LlmGateReviewer:
                 reason="LLM review failed — aborting for safety",
                 reviewer=f"ai:{self.model_name}:fallback",
             )
+        usage = result.usage()
+        await record_llm_call(
+            session_id=context.session_id,
+            mission_id=context.mission_id,
+            agent_name="gate.reviewer",
+            agent_role="gate",
+            model=self.model_name,
+            usage=usage,
+            cost_usd=compute_cost_usd(
+                usage.input_tokens or 0, usage.output_tokens or 0, self.model_name
+            ),
+            latency_ms=0,
+            tool_count=0,
+            mission_run_id=context.mission_run_id,
+            task_id=None,
+        )
+        output = result.output
+        return GateDecision(
+            action=_parse_action(output.action),
+            reason=output.reason or None,
+            modified_instructions=output.modified_instructions,
+            reviewer=f"ai:{self.model_name}",
+        )
 
 
 class ConfigurableGate:
@@ -272,7 +305,11 @@ class ConfigurableGate:
                 )
             return await self._get_llm().review(context)
 
-        logger.error("Unknown gate mode %r: aborting (fail closed)", effective_mode)
+        logger.error(
+            "Unknown gate mode %r: aborting (fail closed)",
+            effective_mode,
+            extra={"mission_id": context.mission_id},
+        )
         return GateDecision(
             action=GateAction.ABORT,
             reason=f"unknown gate mode {effective_mode!r}",

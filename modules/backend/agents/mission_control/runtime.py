@@ -104,11 +104,14 @@ async def provision_dispatch_runtime(
     extra_volumes: list[dict[str, str]] | None,
     mission_run_id: str | None,
     task_id: str | None,
+    budget_headroom_usd: float | None,
 ) -> DispatchRuntime:
     """Provision the execution environment and executor on top of ``services``.
 
     ``mission_run_id`` and ``task_id`` tag every LLM ledger row the executor
     writes; ``task_id`` is None when the runtime serves a whole plan.
+    ``budget_headroom_usd`` caps what the executor may spend (88.4.6); None
+    when no run budget applies.
     """
     env_handle = await _provision_environment(
         db_session=db_session,
@@ -127,6 +130,7 @@ async def provision_dispatch_runtime(
         current_user_id=None,  # Plan 55: resolved in Phase B
         mission_run_id=mission_run_id,
         task_id=task_id,
+        budget_headroom_usd=budget_headroom_usd,
     )
 
     return DispatchRuntime(
@@ -151,6 +155,7 @@ async def build_dispatch_runtime(
     extra_volumes: list[dict[str, str]] | None,
     mission_run_id: str | None,
     task_id: str | None,
+    budget_headroom_usd: float | None,
 ) -> DispatchRuntime:
     """Build the runtime for one dispatch of a mission's tasks: both phases in one call."""
     services = await build_context_services(db_session=db_session, mission_id=mission_id)
@@ -166,6 +171,7 @@ async def build_dispatch_runtime(
         extra_volumes=extra_volumes,
         mission_run_id=mission_run_id,
         task_id=task_id,
+        budget_headroom_usd=budget_headroom_usd,
     )
 
 

@@ -78,6 +78,7 @@ async def _build(execution_mode: str, mission_repo_root: str | None, event_bus=N
             extra_volumes=None,
             mission_run_id=None,
             task_id=None,
+            budget_headroom_usd=None,
         )
 
 

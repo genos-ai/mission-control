@@ -47,13 +47,19 @@ async def schedule_service() -> AsyncIterator[tuple["MissionScheduleService", "A
 
 @activity.defn
 async def claim_occurrence(input: ClaimOccurrenceInput) -> ClaimOccurrenceResult:
-    """Claim the occurrence, commit, then delete the Temporal schedule if it completed."""
+    """Claim the occurrence and commit.
+
+    Then delete the Temporal schedule if it completed, or pause the mission's
+    Temporal schedules if a breached budget cap paused the mission (88.4.6).
+    """
     from modules.backend.models.mission_schedule import MissionScheduleStatus
 
     async with schedule_service() as (svc, db):
         claim = await svc.claim_occurrence(input.mission_schedule_id, input.scheduled_for)
         await db.commit()
         run = claim.run
+        if claim.mission_paused and run is not None:
+            await svc.sync_mission(run.mission_id)
         if claim.outcome == "run" and run is not None:
             schedule = await svc.get_schedule(run.mission_id, input.mission_schedule_id)
             if schedule.status == MissionScheduleStatus.COMPLETED:

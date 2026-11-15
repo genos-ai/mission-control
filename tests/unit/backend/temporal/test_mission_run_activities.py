@@ -80,3 +80,38 @@ async def test_begin_mission_run_keeps_unbound_bus():
     assert result == "begun"
     m.repo_cls.return_value.get_by_id.assert_not_called()
     m.bus_cls.assert_called_once_with(m.redis, mission_id=None)
+
+
+@pytest.mark.asyncio
+async def test_check_run_budget_sends_lowercase_breach():
+    """88.4.6: the wire DTO carries the lowercase MissionPauseReason value (3.0.2)."""
+    from contextlib import asynccontextmanager
+
+    from modules.backend.models.mission import MissionPauseReason
+    from modules.backend.schemas.budget import BudgetCheckResult
+    from modules.backend.temporal.mission_run_activities import check_run_budget
+
+    @asynccontextmanager
+    async def _session():
+        yield SimpleNamespace()
+
+    check = BudgetCheckResult(
+        run_spent_usd=5.0,
+        month_spent_usd=6.0,
+        lifetime_spent_usd=7.0,
+        headroom_usd=0.0,
+        breach=MissionPauseReason.BUDGET_RUN_CAP,
+    )
+    with (
+        patch("modules.backend.core.database.get_async_session", _session),
+        patch("modules.backend.services.budget.BudgetService") as budget,
+    ):
+        budget.return_value.check_run = AsyncMock(return_value=check)
+        result = await ActivityEnvironment().run(check_run_budget, RUN_ID)
+
+    budget.return_value.check_run.assert_awaited_once_with(RUN_ID)
+    assert (result.run_spent_usd, result.headroom_usd, result.breach) == (
+        5.0,
+        0.0,
+        "budget_run_cap",
+    )
