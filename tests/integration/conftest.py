@@ -139,6 +139,7 @@ def _create_mock_app_config() -> Any:
         FeaturesSchema,
         GatewaySchema,
         LoggingSchema,
+        NotificationsSchema,
         SecuritySchema,
         SessionsSchema,
     )
@@ -250,6 +251,8 @@ def _create_mock_app_config() -> Any:
             self.cost = CostSchema(emergency_downgrade_model="test-fixture:downgrade")
             # The real missions.yaml: budget cap defaults and maxima (88.4.1).
             self.missions = MissionsSchema(**load_yaml_config("missions.yaml"))
+            # The real notifications.yaml: recipient default kinds (88.4.4).
+            self.notifications = NotificationsSchema(**load_yaml_config("notifications.yaml"))
 
     return TestAppConfig()
 

@@ -525,7 +525,6 @@ def check_logger_error_needs_mission_id(path: Path, rel: str) -> list[Violation]
             # Infrastructure without mission context:
             "container_backend",
             "gate_prompt",
-            "run_notifier",
             "mission_plan_daemon",
             "workshop.py",
         )
@@ -791,7 +790,6 @@ def check_silent_error_swallow(path: Path, rel: str) -> list[Violation]:
             "code_map",
             "config_schema",
             "bootstrap",
-            "run_notifier",
             "synthesis.py",
             "knowledge.py",
         )

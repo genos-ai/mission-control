@@ -484,15 +484,34 @@ NotificationKindValue = Literal[
 ]
 
 
-class NotificationsSchema(_StrictBase):
-    """Run notification configuration."""
+class TelegramChannelSchema(_StrictBase):
+    """Telegram delivery of mission notifications."""
 
-    enabled: bool = True
-    budget_warning_threshold_pct: float = 80.0
-    notify_on_completion: bool = True
-    notify_on_failure: bool = True
-    notify_channels: list[str] = Field(default_factory=lambda: ["telegram"])
+    enabled: bool = Field(...)
+    inbound_approvals_enabled: bool = Field(...)
+
+
+class NotificationChannelsSchema(_StrictBase):
+    """Per-channel notification settings."""
+
+    telegram: TelegramChannelSchema
+
+
+class ActionTokensSchema(_StrictBase):
+    """Lifetimes of single-use action tokens."""
+
+    gate_decision_ttl_seconds: int = Field(..., ge=60)
+    channel_link_ttl_seconds: int = Field(..., ge=60)
+
+
+class NotificationsSchema(_StrictBase):
+    """Mission notification configuration (Plan 88, contract 3.4.6)."""
+
+    enabled: bool = Field(...)
+    channels: NotificationChannelsSchema
     default_kinds: list[NotificationKindValue] = Field(..., min_length=1)
+    action_tokens: ActionTokensSchema
+    message_max_chars: int = Field(..., ge=500, le=4096)
 
 
 # =============================================================================

@@ -34,8 +34,9 @@ async def execute_notification_step(
     completed_outcomes: dict[str, dict],
 ) -> tuple[VirtualExecution, dict]:
     """Send a notification via the configured channel."""
+    from modules.backend.core.database import get_async_session
     from modules.backend.services.condition_evaluator import resolve_template
-    from modules.backend.services.run_notifier import _dispatch_to_channels
+    from modules.backend.services.notification import NotificationService
 
     config = step.notification_config
     channel = config.channel if config else "sse"
@@ -44,23 +45,11 @@ async def execute_notification_step(
     message = resolve_template(template, completed_outcomes, run.context)
     title = f"Workflow notification: {step.id}"
 
-    try:
-        await _dispatch_to_channels(
-            [channel],
-            title,
-            message,
-            "info",
-            {"mission_id": run.mission_id, "run_id": run.id},
-        )
-        success = True
-    except Exception:
-        # Catch-all justified: wraps an external notification dispatch
-        # whose failure modes are unbounded (network, auth, service
-        # down). best-effort — the step continues with success=False,
-        # which is reported via the unconditional
-        # WorkflowNotificationSentEvent below.
-        logger.warning("Notification step failed", extra={"step_id": step.id}, exc_info=True)
-        success = False
+    # send_ad_hoc never raises: delivery failures are logged, redacted, per recipient.
+    success = run.mission_id is not None
+    if success:
+        async with get_async_session() as db:
+            await NotificationService(db).send_ad_hoc(run.mission_id, title, message, "info")
 
     logger.info(
         "Notification sent", extra={"step_id": step.id, "channel": channel, "success": success}

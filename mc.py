@@ -38,6 +38,7 @@ from modules.clients.cli.mc_groups.intent import intent  # noqa: E402
 from modules.clients.cli.mc_groups.knowledge import knowledge  # noqa: E402
 from modules.clients.cli.mc_groups.learnings import learnings  # noqa: E402
 from modules.clients.cli.mc_groups.mission import mission  # noqa: E402
+from modules.clients.cli.mc_groups.notify import notify  # noqa: E402
 from modules.clients.cli.mc_groups.plan import plan  # noqa: E402
 from modules.clients.cli.mc_groups.runs import runs  # noqa: E402
 from modules.clients.cli.mc_groups.schedule import schedule  # noqa: E402
@@ -246,6 +247,7 @@ def retry(ctx, n):
 mc.add_command(plan)
 mc.add_command(gate)
 mc.add_command(schedule)
+mc.add_command(notify)
 mc.add_command(status)
 mc.add_command(history)
 mc.add_command(artifacts)

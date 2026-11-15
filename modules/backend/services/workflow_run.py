@@ -30,6 +30,7 @@ from modules.backend.core.failure_classification import (
     get_failure_classifier,
 )
 from modules.backend.core.logging import get_logger
+from modules.backend.core.redaction import redact_secrets
 from modules.backend.core.utils import utc_now
 from modules.backend.models.base import SYSTEM_CLI_ID
 from modules.backend.models.human_input_request import HumanInputRequest, HumanInputRequestStatus
@@ -754,42 +755,33 @@ class WorkflowRunService(WorkflowRunWavesMixin, BaseService):
             raise ConflictError(f"Request is not pending (status: {req.status})")
         return req
 
-    @staticmethod
-    async def _notify_run_outcome(run: "WorkflowRun", step_count: int) -> None:
-        """Send notifications based on run outcome. Best-effort."""
-        try:
-            from modules.backend.services.run_notifier import RunNotifierService
+    async def _notify_run_outcome(self, run: "WorkflowRun", step_count: int) -> None:
+        """Tell the mission's recipients a manual workflow run finished.
 
-            status = run.status if isinstance(run.status, str) else run.status.value
+        send_ad_hoc never raises. Budget warnings are dropped (Plan 88 step
+        88.4.4); mission caps are enforced by BudgetService.
+        """
+        from modules.backend.services.notification import NotificationService
 
-            if status == WorkflowRunState.COMPLETED.value:
-                await RunNotifierService.notify_run_completed(
-                    run_id=run.id,
-                    workflow_name=run.workflow_name,
-                    total_cost_usd=run.total_cost_usd,
-                    step_count=step_count,
-                    mission_id=run.mission_id,
-                )
-            elif status == WorkflowRunState.FAILED.value:
-                error_msg = ""
-                if run.error_data and isinstance(run.error_data, dict):
-                    error_msg = run.error_data.get("message", "Unknown error")
-                await RunNotifierService.notify_run_failed(
-                    run_id=run.id,
-                    workflow_name=run.workflow_name,
-                    error=error_msg,
-                    total_cost_usd=run.total_cost_usd,
-                    mission_id=run.mission_id,
-                )
-
-            if run.budget_usd and run.budget_usd > 0:
-                pct = (run.total_cost_usd / run.budget_usd) * 100
-                await RunNotifierService.notify_budget_warning(
-                    run_id=run.id,
-                    workflow_name=run.workflow_name,
-                    cost_usd=run.total_cost_usd,
-                    budget_usd=run.budget_usd,
-                    pct_used=pct,
-                )
-        except Exception:
-            logger.debug("Run notification failed", exc_info=True)
+        if run.mission_id is None:
+            return
+        status = run.status if isinstance(run.status, str) else run.status.value
+        if status == WorkflowRunState.COMPLETED.value:
+            title, level = "Workflow completed", "success"
+            body = (
+                f"Workflow {run.workflow_name} completed successfully.\n"
+                f"Steps: {step_count} | Cost: ${run.total_cost_usd:.4f}"
+            )
+        elif status == WorkflowRunState.FAILED.value:
+            error_msg = ""
+            if run.error_data and isinstance(run.error_data, dict):
+                error_msg = str(run.error_data.get("message", "Unknown error"))
+            title, level = "Workflow failed", "error"
+            body = (
+                f"Workflow {run.workflow_name} failed.\n"
+                f"Error: {redact_secrets(error_msg)[:500]}\n"
+                f"Cost incurred: ${run.total_cost_usd:.4f}"
+            )
+        else:
+            return
+        await NotificationService(self._session).send_ad_hoc(run.mission_id, title, body, level)

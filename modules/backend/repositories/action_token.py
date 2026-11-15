@@ -51,3 +51,16 @@ class ActionTokenRepository(BaseRepository[ActionToken]):
         )
         result = await self.session.execute(stmt)
         return result.rowcount
+
+    async def set_message_ref(self, token_hashes: list[str], message_ref: str) -> int:
+        """Store the channel message that carries these tokens; return the row count."""
+        if not token_hashes:
+            return 0
+        stmt = (
+            update(ActionToken)
+            .where(ActionToken.token_hash.in_(token_hashes))
+            .values(channel_message_ref=message_ref)
+            .execution_options(synchronize_session=False)
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount

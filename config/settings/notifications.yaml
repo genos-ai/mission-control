@@ -1,22 +1,30 @@
 # =============================================================================
-# Run Notification Configuration
+# Mission Notification Configuration (Plan 88 step 88.4.4, contract 3.4.4)
 # =============================================================================
-# Controls notifications for workflow run completion, failure, and budget alerts.
+# Per-mission notifications, delivered to each recipient's confirmed channel
+# identity. Recipients live in mission_notification_recipients.
 #
 # Available options:
-#   enabled                       - Master toggle for run notifications (boolean)
-#   budget_warning_threshold_pct  - Budget usage % that triggers a warning (float)
-#   notify_on_completion          - Send notification when a workflow run completes (boolean)
-#   notify_on_failure             - Send notification when a workflow run fails (boolean)
-#   notify_channels               - Channels to send notifications to (list of strings)
-#   default_kinds                 - NotificationKind values a new mission's owner
-#                                   recipient subscribes to (list, lowercase)
+#   enabled                                  - Master toggle for mission notifications (boolean)
+#   channels.telegram.enabled                - Deliver notifications on Telegram (boolean)
+#   channels.telegram.inbound_approvals_enabled
+#                                            - Add Approve / Reject buttons to gate notifications
+#                                              (boolean; P8: off by default)
+#   default_kinds                            - NotificationKind values a new recipient subscribes
+#                                              to (list, lowercase)
+#   action_tokens.gate_decision_ttl_seconds  - Lifetime of a gate Approve / Reject button (int, >= 60)
+#   action_tokens.channel_link_ttl_seconds   - Lifetime of a channel link code (int, >= 60)
+#   message_max_chars                        - Notification text is truncated to this length
+#                                              (int, 500-4096)
 # =============================================================================
 
 enabled: true
-budget_warning_threshold_pct: 80.0
-notify_on_completion: true
-notify_on_failure: true
-notify_channels:
-  - telegram
+channels:
+  telegram:
+    enabled: true
+    inbound_approvals_enabled: false     # P8: off by default; the acceptance environment sets true
 default_kinds: [run_succeeded, run_failed, gate_waiting, gate_escalated, gate_timeout_paused, budget_paused, run_skipped, run_missed]
+action_tokens:
+  gate_decision_ttl_seconds: 604800      # 7 days; validator: >= gate.durable.pause_after_seconds (88.4.8)
+  channel_link_ttl_seconds: 600
+message_max_chars: 3500

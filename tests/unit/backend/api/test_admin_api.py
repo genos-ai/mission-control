@@ -249,9 +249,8 @@ class TestSystemOps:
         cfg.sessions.default_cost_budget_usd = 5.0
         cfg.sessions.max_cost_budget_usd = 50.0
         cfg.notifications.enabled = True
-        cfg.notifications.notify_on_completion = True
-        cfg.notifications.notify_on_failure = True
-        cfg.notifications.budget_warning_threshold_pct = 80.0
+        cfg.notifications.channels.telegram.enabled = True
+        cfg.notifications.channels.telegram.inbound_approvals_enabled = False
         cfg.features.gateway_enabled = False
         cfg.features.agent_coordinator_enabled = True
         cfg.features.mcp_enabled = False

@@ -87,30 +87,16 @@ async def notify_human_input_needed(input: HumanInputWorkflowInput) -> None:
     finally:
         await redis.aclose()
 
-    # Dispatch notification to channel (Telegram/SSE)
-    try:
-        from modules.backend.services.run_notifier import _dispatch_to_channels
+    # Notify the mission's recipients (SSE and Telegram). send_ad_hoc never raises.
+    from modules.backend.services.notification import NotificationService
 
-        title = f"Human input needed: {input.step_id}"
-        choices_str = f"\n\nChoices: {', '.join(input.choices)}" if input.choices else ""
-        body = f"{input.prompt_message}{choices_str}"
-        await _dispatch_to_channels(
-            [input.channel],
-            title,
-            body,
+    choices_str = f"\n\nChoices: {', '.join(input.choices)}" if input.choices else ""
+    async with get_async_session() as db:
+        await NotificationService(db).send_ad_hoc(
+            input.mission_id,
+            f"Human input needed: {input.step_id}",
+            f"{input.prompt_message}{choices_str}",
             "warning",
-            {"mission_id": input.mission_id, "request_id": input.request_id},
-        )
-    except Exception:
-        # Catch-all justified: wraps an external notification dispatch
-        # (Telegram/SSE) whose failure modes are unbounded (network, auth,
-        # service down). best-effort — the mission event
-        # (WorkflowHumanInputRequestedEvent) was already published above;
-        # this only covers the secondary notification channel.
-        activity.logger.warning(
-            "Failed to dispatch notification for human input",
-            extra={"request_id": input.request_id, "mission_id": input.mission_id},
-            exc_info=True,
         )
 
 

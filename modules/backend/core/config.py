@@ -157,7 +157,7 @@ class AppConfig:
         self._workflows = _load_validated_optional(WorkflowsSchema, "workflows.yaml")
         self._missions = _load_validated_optional(MissionsSchema, "missions.yaml")
         self._gate = _load_validated(GateSchema, "gate.yaml")
-        self._notifications = _load_validated_optional(NotificationsSchema, "notifications.yaml")
+        self._notifications = _load_validated(NotificationsSchema, "notifications.yaml")
         self._providers = _load_validated(ProvidersSchema, "providers.yaml")
         self._models = _load_validated(ModelsSchema, "models.yaml")
         self._cost = _load_validated(CostSchema, "cost.yaml")
@@ -370,9 +370,10 @@ def get_sanitized_config_view() -> dict:
         },
         "notifications": {
             "enabled": config.notifications.enabled,
-            "notify_on_completion": config.notifications.notify_on_completion,
-            "notify_on_failure": config.notifications.notify_on_failure,
-            "budget_warning_threshold_pct": config.notifications.budget_warning_threshold_pct,
+            "telegram_enabled": config.notifications.channels.telegram.enabled,
+            "inbound_approvals_enabled": (
+                config.notifications.channels.telegram.inbound_approvals_enabled
+            ),
         },
         "features": {
             "gateway_enabled": config.features.gateway_enabled,

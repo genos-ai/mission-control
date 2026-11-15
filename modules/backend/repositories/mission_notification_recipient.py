@@ -11,6 +11,7 @@ from modules.backend.models.notification import (
     MissionNotificationRecipient,
     NotificationKind,
 )
+from modules.backend.models.user_channel_identity import ChannelKind
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -42,3 +43,15 @@ class MissionNotificationRecipientRepository(BaseRepository[MissionNotificationR
             MissionNotificationRecipient.mission_id == mission_id,
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def list_by_mission(
+        self, mission_id: str, channel: ChannelKind | None = None
+    ) -> list[MissionNotificationRecipient]:
+        """Every recipient of the mission, optionally on one channel, oldest first."""
+        stmt = select(MissionNotificationRecipient).where(
+            MissionNotificationRecipient.mission_id == mission_id
+        )
+        if channel is not None:
+            stmt = stmt.where(MissionNotificationRecipient.channel == channel)
+        stmt = stmt.order_by(MissionNotificationRecipient.created_at)
+        return list((await self.session.execute(stmt)).scalars().all())

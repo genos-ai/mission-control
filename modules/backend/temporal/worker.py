@@ -60,6 +60,7 @@ from modules.backend.temporal.mission_schedule_activities import (
     schedule_service,
 )
 from modules.backend.temporal.mission_schedule_tick_workflow import MissionScheduleTickWorkflow
+from modules.backend.temporal.notification_activities import send_mission_notification
 from modules.backend.temporal.plan_refine_activities import execute_plan_refine
 from modules.backend.temporal.plan_refine_workflow import PlanRefineWorkflow
 from modules.backend.temporal.reconciler_activities import (
@@ -146,6 +147,8 @@ async def start_worker() -> None:
             # Run memory (Plan 88 steps 88.3.3, 88.3.7)
             compact_mission_context,
             write_run_digest,
+            # Mission notifications (Plan 88 step 88.4.4)
+            send_mission_notification,
             # Per-task execution (Plan 88 step 88.2.4)
             execute_plan_task,
             resolve_failed_task,

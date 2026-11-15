@@ -107,6 +107,18 @@ class MissionRunDigestWrittenEvent(SessionEvent):
     generator: str
 
 
+class NotificationDeliveryFailedEvent(SessionEvent):
+    """Delivering a mission notification to one recipient failed; error is redacted."""
+
+    event_type: str = "notification.delivery_failed"
+    mission_id: str
+    mission_run_id: str | None
+    delivery_id: str
+    kind: str
+    channel: str
+    error: str
+
+
 def task_failed_event(
     result: TaskResult, *, mission_id: str, mission_run_id: str, session_id: str
 ) -> TaskFailedEvent:

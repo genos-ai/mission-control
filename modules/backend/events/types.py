@@ -26,6 +26,7 @@ from modules.backend.events.mission_run_types import (
     MissionRunStatusChangedEvent,
     MissionScheduleChangedEvent,
     MissionScheduleSyncFailedEvent,
+    NotificationDeliveryFailedEvent,
     TaskFailedEvent,
 )
 
@@ -839,6 +840,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "task.failed": TaskFailedEvent,
     "context.compacted": ContextCompactedEvent,
     "mission_run.digest_written": MissionRunDigestWrittenEvent,
+    "notification.delivery_failed": NotificationDeliveryFailedEvent,
 }
 
 

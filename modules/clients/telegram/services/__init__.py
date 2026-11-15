@@ -1,19 +1,6 @@
 """
 Telegram Bot Services.
 
-Services for sending notifications and alerts via Telegram.
+Mission notifications are delivered by the backend NotificationService
+through gateway/adapters/telegram.py (Plan 88 step 88.4.4).
 """
-
-from modules.clients.telegram.services.notifications import (
-    NotificationService,
-    get_notification_service,
-    send_alert,
-    send_notification,
-)
-
-__all__ = [
-    "NotificationService",
-    "get_notification_service",
-    "send_alert",
-    "send_notification",
-]
