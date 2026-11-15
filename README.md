@@ -1,193 +1,70 @@
 # Mission Control
 
-AI-first autonomous agent platform. FastAPI backend, PydanticAI agents, PostgreSQL, Redis, FastStream, Temporal.
+**Give an AI team a goal on Monday. Read the result on Friday.**
 
-## Architecture
+Mission Control is an autonomous agent platform for work that takes days, weeks or months. You state the objective and set the budget. It plans the work, assigns specialist agents, checks every output, remembers what it learned, and comes back to you only when it needs a decision.
 
-- **Backend**: Python 3.14+ with FastAPI
-- **Frontend**: React with Vite, TypeScript, Tailwind CSS
-- **Database**: PostgreSQL with SQLAlchemy (async)
-- **Cache/Queue**: Redis with Taskiq
+Most agent frameworks answer "can a model do this task?" This one answers the question that decides whether you can trust it: **what happens at hour 40, after a crash, over budget, with nobody watching?**
 
-See [Architecture Standards](docs/10-reference-architecture/00-overview.md) for complete documentation.
+---
 
-## Project Structure
+## 1.0 What you get
 
-```
-.
-├── config/                 # Configuration (secrets in .env, settings in YAML)
-│   ├── .env.example       # Environment variables template
-│   ├── agents/            # Per-agent YAML (seed data for the agent catalog)
-│   ├── prompts/           # Layered system prompts
-│   ├── settings/          # YAML application settings
-│   └── workflow_templates/
-├── docs/                   # Documentation
-├── modules/
-│   ├── backend/           # FastAPI backend
-│   │   ├── agents/        # AI agent system (mission control, planning, QA, health)
-│   │   ├── api/           # HTTP endpoints
-│   │   ├── core/          # Configuration, logging, protocols
-│   │   ├── events/        # Event bus and typed event definitions
-│   │   ├── gateway/       # Channel adapter registry and security
-│   │   ├── migrations/    # Alembic migrations
-│   │   ├── models/        # Database models
-│   │   ├── repositories/  # Data access layer
-│   │   ├── schemas/       # Pydantic schemas
-│   │   ├── services/      # Business logic (PQI, code map, context assembly)
-│   │   ├── tasks/         # Background tasks
-│   │   ├── temporal/      # Workflows, activities and worker
-│   │   └── tools/         # Shared agent tool implementations
-│   ├── clients/           # Thin presentation layers — no business logic
-│   │   ├── cli/           # CLI command implementations and report.py primitives
-│   │   ├── common/        # Shared client helpers
-│   │   ├── service_manager/
-│   │   ├── telegram/      # Telegram bot (aiogram v3)
-│   │   └── tui/           # Terminal UI (Textual-based)
-│   └── frontend/          # React frontend
-│       └── src/
-├── tests/                  # Test suite (unit, integration, e2e)
-├── scripts/                # Utility scripts (code map, PQI, execution trace)
-└── var/                    # Runtime data (logs, cache, tmp) — not tracked
-```
+**Work that outlasts the session.** A mission holds its goal, team, plan, history and cost for as long as it runs. Schedule it (every Monday at 06:00 for six months, say) and each run opens with a digest of the last one. The platform builds on its own earlier work instead of starting cold.
 
-## Quick Start
+**Runs that survive failure.** Missions execute as Temporal workflows. Each task heartbeats, retries never repeat or re-bill finished work, and recorded run histories are replayed in CI so a code change cannot break a run in flight. Killing a worker mid-run is a drill, not an outage.
 
-### Prerequisites
+**Output that has been checked by someone else.** No agent grades its own work. Every result passes a structural check, a deterministic check and an independent AI evaluator. The supervisor that decides what happens next is mostly plain Python rules, so most decisions are repeatable.
 
-- Python 3.14+
-- Node.js 20+
-- PostgreSQL 16+
-- Redis 7+
-- Temporal CLI (`brew install temporal`) — `services.py` launches the dev server
-- Docker — required by the preflight checks and container-backed agents
+**Autonomy you set, not autonomy you hope for.** Run fully autonomous, or require a human at every decision point. Human approvals wait durably, escalate after 4 hours and pause the mission after 24, rather than failing. Approve from the web, the CLI or Telegram; every approval is tied to a verified identity and logged the same way.
 
-### Install
+**Spend with a ceiling.** One ledger enforces caps per run, per month and per mission lifetime. Breach one and the run stops cleanly, the schedule pauses and the owner is told.
 
-Using **uv** (recommended for web apps - see [environment management](docs/10-reference-architecture/12-core-development-workflow.md#python-environment-management)):
+**A blast radius you can defend.** Agents that write run in isolated containers. If a container cannot start, the task fails. It never falls back to the host.
 
-```bash
-# Install uv (one-time)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+**Failures that explain themselves.** Every failed task records its origin, class and evidence, assigned by deterministic rules rather than by a model. You see why it failed without reading a transcript.
 
-# Create environment and install
-uv venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt
+---
 
-# Frontend dependencies
-(cd modules/frontend && npm install)
+## 2.0 Evidence, not assertion
 
-# Configure environment
-cp config/.env.example config/.env
-# Edit config/.env with your settings
-```
+The Think Tank workflow (four debaters with deliberately different reasoning styles, an independent critic, and a schema that forces disagreement to survive) was tested against a single extended-thinking model call on three contested questions. The first, more elaborate design lost and was shelved. The simplified successor won on all nine rubric dimensions.
 
-### Start everything
+The limits: one run per system per question, and cost was not measured. We record that next to the result.
 
-`services.py` is the canonical dev launcher. One command runs preflight checks
-(PostgreSQL, Redis, Docker, ports), applies Alembic migrations, seeds dev users
-and the agent catalog, and starts the Temporal dev server, the backend, the
-Temporal worker, and the frontend:
+---
 
-```bash
-python services.py start
+## 3.0 Built to be built on
 
-# Related:
-python services.py check    # preflight checks only
-python services.py status   # what's running
-python services.py stop     # stop services
+- **One brain, many front ends.** CLI, terminal UI, Telegram and web app hold no business logic. They call the same services, so behaviour never diverges between them.
+- **Rules enforced by machine.** 68 architecture rules are checked by script, not by review.
+- **Agents that know the codebase.** A generated code map (tree-sitter and PageRank) and a 0 to 100 quality index give coding agents structure up front instead of costly exploration.
+- **Self-describing interfaces.** `python mc.py tree` lists every command from the live parser. Nothing to go stale.
+- **Any model, any provider.** Anthropic, OpenAI, Azure AI Foundry, GitHub Copilot SDK and Claude Code, selected in configuration. A missing setting stops startup; nothing falls back silently.
+- **Closed by default.** Empty allowlists deny everyone. New channels ship disabled.
 
-# Act on individual services (api, worker, frontend, temporal):
-python services.py restart api worker   # restart only the API and the worker
-python services.py restart worker       # e.g. after editing a workflow or activity
-python services.py stop frontend
-```
+The agent catalogue holds 31 agents across research, deliberation, security assessment, software quality and platform health. About 112,000 lines of code, over 3,000 tests, 161 documents.
 
-Named services run detached and skip preflight, migrations and seeding. They
-are refused when the stack was started in a foreground terminal (no `--daemon`),
-because that session shuts everything down as soon as one service exits; in
-that case the API already reloads on code changes. Run `python services.py tree`
-for every command and flag.
+---
 
-### First mission (prove the install works)
+## 4.0 Where it stands
 
-```bash
-# Log in with a seeded dev user (admin@missioncontrol.dev, password: DEV_ADMIN_PASSWORD in config/.env).
-# Dev users have well-known passwords, so they are only created when the environment
-# (config/settings/application.yaml) is development or test; elsewhere seeding is refused.
-python mc.py login --email admin@missioncontrol.dev
+| Area | State |
+|------|-------|
+| Planning, dispatch, verification, supervision | Working |
+| Think Tank, deep research, architecture review, web app security assessment | Working; security covers static analysis only |
+| Recurring missions: schedules, durable execution, memory between runs | Built and checked live |
+| Durable gates, budget caps, lifecycle control, Telegram approval | In progress |
+| 7-day and 4-week unattended acceptance runs | Not yet run. Until they pass, long-run endurance is a design goal, not a result |
+| Self-improving agent loop experiment | Proposed |
 
-# Create a mission (becomes the active mission)
-python mc.py mission create --name "First mission" --description "Smoke test"
+---
 
-# Run an objective against it
-python mc.py run --objective "run a system health check" --budget 1.00
-```
+## 5.0 Next
 
-See [USAGE.md](USAGE.md) for the full CLI reference (`python mc.py tree` and
-`python admin.py tree` list every command).
+- **Run it:** [INSTALL.md](INSTALL.md)
+- **Use it:** [USAGE.md](USAGE.md)
+- **Understand it:** [vision](docs/01-overview/001-vision.md), [why the mission is the primitive](docs/02-architecture/005-adr-mission-primitive-no-projects-playbooks.md), [principles](docs/03-principles/01-project-principles.md), [reference architecture](docs/10-reference-architecture/00-overview.md)
+- **Known gaps:** [TODO.md](TODO.md)
 
-**Production / non-dev setups:** skip dev seeding and create the first admin
-explicitly with `python admin.py admin bootstrap-user --email you@example.com --name "You"`.
-
-### Manual startup (advanced)
-
-Running the backend directly skips migrations, seeding, Temporal, and the worker
-— missions will not execute until those are provided some other way:
-
-```bash
-uvicorn modules.backend.main:app --reload --port 8000
-```
-
-### Access Points
-
-| Service | URL |
-|---------|-----|
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| Frontend | http://localhost:5173 |
-| Temporal UI | http://localhost:8233 |
-
-## Development
-
-### Code Quality
-
-```bash
-# Format
-black modules/backend tests
-isort modules/backend tests
-
-# Lint
-flake8 modules/backend tests
-
-# Type check
-mypy modules/backend
-```
-
-### Testing
-
-```bash
-# Run all tests
-pytest
-
-# With coverage
-pytest --cov=modules/backend
-
-# Specific markers
-pytest -m unit
-pytest -m integration
-```
-
-## Architecture Standards
-
-This project follows documented architecture standards:
-
-- [Core Principles](docs/10-reference-architecture/01-core-principles.md)
-- [Backend Architecture](docs/10-reference-architecture/03-core-backend-architecture.md)
-- [Python Coding Standards](docs/10-reference-architecture/08-core-python-coding-standards.md)
-- [Frontend Architecture](docs/10-reference-architecture/22-opt-frontend-architecture.md)
-- [TypeScript Standards](docs/10-reference-architecture/23-opt-typescript-coding-standards.md)
-
-## License
-
-[Add license here]
+Licence: to be confirmed.
