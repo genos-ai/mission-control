@@ -72,6 +72,29 @@ def _recurrence() -> RecurrenceSchema:
     return get_app_config().missions.recurrence
 
 
+def _expired(schedule: MissionSchedule, now: datetime) -> bool:
+    """ACTIVE or PAUSED with ends_at in the past (contract 3.2.3, END_DATE_REACHED)."""
+    return (
+        schedule.status in (MissionScheduleStatus.ACTIVE, MissionScheduleStatus.PAUSED)
+        and schedule.ends_at is not None
+        and schedule.ends_at < now
+    )
+
+
+def _relieved(schedule: MissionSchedule, present: set[str]) -> bool:
+    """Whether an update lifts what completed the schedule (contract 3.2.3, COMPLETED to ACTIVE).
+
+    The update must touch max_runs or ends_at, and afterwards both limits must
+    leave room: raising max_runs on a schedule whose end date has passed would
+    only complete it again on the next reconcile.
+    """
+    if not present & {"max_runs", "ends_at"}:
+        return False
+    runs_left = schedule.max_runs is None or schedule.max_runs > schedule.executed_run_count
+    in_window = schedule.ends_at is None or schedule.ends_at > utc_now()
+    return runs_left and in_window
+
+
 class MissionScheduleService(BaseService):
     """Create, change and mirror mission schedules; claim their occurrences."""
 
@@ -214,12 +237,11 @@ class MissionScheduleService(BaseService):
             setattr(schedule, name, value)
 
         from_status = schedule.status
-        if from_status == MissionScheduleStatus.COMPLETED and present & {"max_runs", "ends_at"}:
-            runs_left = schedule.max_runs is None or schedule.max_runs > schedule.executed_run_count
-            in_window = schedule.ends_at is None or schedule.ends_at > utc_now()
-            if runs_left and in_window:
-                schedule.status = MissionScheduleStatus.ACTIVE
-                schedule.completed_reason = None
+        if from_status == MissionScheduleStatus.COMPLETED and _relieved(schedule, present):
+            schedule.status = MissionScheduleStatus.ACTIVE
+            schedule.completed_reason = None
+            # the completed period is never backfilled as MISSED, as on resume
+            schedule.last_claimed_scheduled_for = utc_now()
         to_status = schedule.status
         await self._session.commit()
         self._log_operation(
@@ -357,20 +379,19 @@ class MissionScheduleService(BaseService):
         now = utc_now()
         rows = await self._schedule_repo.list_syncable()
         for schedule in rows:
+            # refresh: the identity map may hold rows another transaction has changed.
             await self._session.refresh(schedule)
-            if (
-                schedule.ends_at is not None
-                and schedule.ends_at < now
-                and schedule.status in (MissionScheduleStatus.ACTIVE, MissionScheduleStatus.PAUSED)
-            ):
-                schedule.status = MissionScheduleStatus.COMPLETED
-                schedule.completed_reason = MissionScheduleCompletedReason.END_DATE_REACHED
-                stats.completed += 1
         ids = [s.id for s in rows]
+        expired = [s.id for s in rows if _expired(s, now)]
         await self._session.commit()
 
+        completed: set[str] = set()
+        for schedule_id in expired:
+            if await self._complete_end_date(schedule_id, now, stats):
+                completed.add(schedule_id)
         for schedule_id in ids:
-            self._count(stats, await self.sync_to_temporal(schedule_id))
+            if schedule_id not in completed:
+                self._count(stats, await self.sync_to_temporal(schedule_id))
 
         known = await self._schedule_repo.list_temporal_schedule_ids()
         await self._session.commit()
@@ -382,6 +403,40 @@ class MissionScheduleService(BaseService):
                     "Deleted orphan mission schedule", extra={"temporal_schedule_id": temporal_id}
                 )
         return stats
+
+    async def _complete_end_date(
+        self, schedule_id: str, now: datetime, stats: ScheduleSyncStats
+    ) -> bool:
+        """ACTIVE or PAUSED past ends_at to COMPLETED/END_DATE_REACHED; commit, delete, emit.
+
+        The row is re-read under lock so a concurrent claim or update decides
+        first; False when the row no longer qualifies.
+        """
+        schedule = await self._schedule_repo.lock(schedule_id)
+        if schedule is None or not _expired(schedule, now):
+            await self._session.commit()
+            return False
+        mission_id = schedule.mission_id
+        from_status = schedule.status
+        schedule.status = MissionScheduleStatus.COMPLETED
+        schedule.completed_reason = MissionScheduleCompletedReason.END_DATE_REACHED
+        await self._session.commit()
+        stats.completed += 1
+        self._log_operation(
+            "Mission schedule completed: end date reached",
+            mission_id=mission_id,
+            schedule_id=schedule_id,
+        )
+        # COMPLETED is an absent status: sync_to_temporal deletes the Temporal schedule.
+        self._count(stats, await self.sync_to_temporal(schedule_id))
+        await self._emit_changed(
+            mission_id,
+            schedule_id,
+            from_status,
+            MissionScheduleStatus.COMPLETED,
+            MissionScheduleCompletedReason.END_DATE_REACHED,
+        )
+        return True
 
     # ── Claim ────────────────────────────────────────────────────────────
 
@@ -447,6 +502,7 @@ class MissionScheduleService(BaseService):
         schedule_id: str,
         from_status: MissionScheduleStatus | None,
         to_status: MissionScheduleStatus,
+        completed_reason: MissionScheduleCompletedReason | None = None,
     ) -> None:
         await self._emit(
             mission_id,
@@ -458,7 +514,7 @@ class MissionScheduleService(BaseService):
                 schedule_id=schedule_id,
                 from_status=from_status.value if from_status else None,
                 to_status=to_status.value,
-                completed_reason=None,
+                completed_reason=completed_reason.value if completed_reason else None,
             ),
         )
 

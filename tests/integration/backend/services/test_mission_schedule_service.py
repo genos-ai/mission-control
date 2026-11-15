@@ -19,7 +19,10 @@ from modules.backend.core.config import get_app_config
 from modules.backend.core.exceptions import NotFoundError, ValidationError
 from modules.backend.core.utils import utc_now
 from modules.backend.events.base import SessionEvent
-from modules.backend.events.mission_run_types import MissionScheduleSyncFailedEvent
+from modules.backend.events.mission_run_types import (
+    MissionScheduleChangedEvent,
+    MissionScheduleSyncFailedEvent,
+)
 from modules.backend.models.mission import Mission, MissionPauseReason, MissionStatus
 from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.models.mission_schedule import (
@@ -338,7 +341,7 @@ async def test_resume_resets_watermark(service, committed_owner, db_session_fact
 
 
 async def test_sync_all_completes_end_date_and_deletes_orphans(
-    service, gateway, committed_owner, db_session_factory
+    service, gateway, bus, committed_owner, db_session_factory
 ) -> None:
     user, mission, _plan = await committed_owner()
     ending = await service.create_schedule(
@@ -363,3 +366,38 @@ async def test_sync_all_completes_end_date_and_deletes_orphans(
     assert stats.deleted_orphans >= 2
     assert kept.temporal_schedule_id in gateway.schedules
     assert kept.temporal_schedule_id not in gateway.deleted
+    assert gateway.deleted.count(ending.temporal_schedule_id) == 1
+    completed = [
+        e
+        for e in bus.events
+        if isinstance(e, MissionScheduleChangedEvent) and e.schedule_id == ending.id
+    ]
+    assert [(e.from_status, e.to_status, e.completed_reason) for e in completed][-1] == (
+        "active",
+        "completed",
+        "end_date_reached",
+    )
+
+
+async def test_reactivation_resets_watermark(service, committed_owner, db_session_factory) -> None:
+    user, mission, _plan = await committed_owner()
+    schedule = await service.create_schedule(mission.id, _objective(max_runs=2), user.id)
+    stale = utc_now() - timedelta(days=30)
+    await _set(
+        db_session_factory,
+        MissionSchedule,
+        schedule.id,
+        status=MissionScheduleStatus.COMPLETED,
+        completed_reason=MissionScheduleCompletedReason.MAX_RUNS_REACHED,
+        executed_run_count=2,
+        last_claimed_scheduled_for=stale,
+    )
+
+    await service.update_schedule(
+        mission.id, schedule.id, MissionScheduleUpdate(max_runs=4), user.id
+    )
+
+    stored = await _load(db_session_factory, schedule.id)
+    assert stored.status == MissionScheduleStatus.ACTIVE
+    assert stored.completed_reason is None
+    assert stored.last_claimed_scheduled_for > stale
