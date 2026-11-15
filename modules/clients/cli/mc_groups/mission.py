@@ -164,6 +164,34 @@ def mission_set_budget(ctx, per_run, per_month, lifetime, no_lifetime):
     asyncio.run(_run())
 
 
+@mission.command("pause")
+@click.pass_obj
+def mission_pause(ctx):
+    """Pause the current mission; a running run pauses at its next layer boundary."""
+    from modules.clients.cli.mc_mission import pause
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await pause(api, mid)
+
+    asyncio.run(_run())
+
+
+@mission.command("resume")
+@click.pass_obj
+def mission_resume(ctx):
+    """Resume the current mission."""
+    from modules.clients.cli.mc_mission import resume
+
+    async def _run():
+        async with api_client() as api:
+            mid = await require_mission(api)
+            await resume(api, mid)
+
+    asyncio.run(_run())
+
+
 @mission.command("archive")
 @click.pass_obj
 def mission_archive(ctx):
@@ -202,7 +230,7 @@ def mission_delete(ctx, confirm):
 @mission.command("unarchive")
 @click.option("--name", "name_or_id", required=True, help="Mission name or ID.")
 def mission_unarchive(name_or_id):
-    """Restore an archived mission to active status."""
+    """Restore an archived mission as paused; resume it to run again."""
     from modules.clients.cli.mc_mission import unarchive
 
     async def _run():

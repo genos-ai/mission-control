@@ -107,6 +107,18 @@ class MissionRunDigestWrittenEvent(SessionEvent):
     generator: str
 
 
+class MissionLifecycleChangedEvent(SessionEvent):
+    """A mission moved between ACTIVE, PAUSED and ARCHIVED (88.4.5)."""
+
+    event_type: str = "mission.lifecycle_changed"
+    mission_id: str
+    mission_run_id: str | None
+    from_status: str
+    to_status: str
+    paused_reason: str | None
+    actor_user_id: str | None
+
+
 class NotificationDeliveryFailedEvent(SessionEvent):
     """Delivering a mission notification to one recipient failed; error is redacted."""
 

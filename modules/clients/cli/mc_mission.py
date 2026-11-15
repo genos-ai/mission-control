@@ -150,18 +150,27 @@ async def info(api: CliApiClient, mission_id: str) -> None:
             console.print(f"  [dim yellow]Could not load team: {exc.message}[/dim yellow]")
 
 
+async def pause(api: CliApiClient, mission_id: str) -> None:
+    """Pause the current mission; a running run pauses at its next layer boundary."""
+    mission = await api.post(f"/missions/{mission_id}/pause")
+    get_console().print(f"[yellow]Paused:[/yellow] {mission.get('name', mission_id)}")
+
+
+async def resume(api: CliApiClient, mission_id: str) -> None:
+    """Resume the current mission."""
+    mission = await api.post(f"/missions/{mission_id}/resume")
+    get_console().print(f"[green]Resumed:[/green] {mission.get('name', mission_id)}")
+
+
 async def archive(api: CliApiClient, mission_id: str) -> None:
     """Archive the current mission."""
     console = get_console()
-    mission = await api.patch(
-        f"/missions/{mission_id}",
-        body={"status": "archived"},
-    )
+    mission = await api.post(f"/missions/{mission_id}/archive")
     console.print(f"[yellow]Archived:[/yellow] {mission.get('name', mission_id)}")
 
 
 async def unarchive(api: CliApiClient, name_or_id: str) -> None:
-    """Restore an archived mission to active status."""
+    """Restore an archived mission as paused; its schedules stay archived."""
     console = get_console()
 
     mission = await resolve_mission(api, name_or_id, include_archived=True)
@@ -169,11 +178,8 @@ async def unarchive(api: CliApiClient, name_or_id: str) -> None:
         console.print(f"[red]Mission not found: {name_or_id}[/red]")
         sys.exit(1)
 
-    await api.patch(
-        f"/missions/{mission['id']}",
-        body={"status": "active"},
-    )
-    console.print(f"[green]Unarchived:[/green] {mission['name']}")
+    await api.post(f"/missions/{mission['id']}/unarchive")
+    console.print(f"[green]Unarchived (paused):[/green] {mission['name']}")
 
 
 async def delete(api: CliApiClient, mission_id: str) -> None:

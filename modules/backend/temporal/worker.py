@@ -51,6 +51,7 @@ from modules.backend.temporal.mission_run_activities import (
     begin_mission_run,
     fetch_run_task_graph,
     finalise_mission_run,
+    pause_mission_for_run,
     plan_mission_run,
     set_mission_run_status,
 )
@@ -144,6 +145,7 @@ async def start_worker() -> None:
             fetch_run_task_graph,
             set_mission_run_status,
             finalise_mission_run,
+            pause_mission_for_run,  # 88.4.5; called from 88.4.6 and 88.4.8
             # Run memory (Plan 88 steps 88.3.3, 88.3.7)
             compact_mission_context,
             write_run_digest,
@@ -158,7 +160,7 @@ async def start_worker() -> None:
             evaluate_post_run,
             approve_run_proposed_tasks,
             start_director_turn,
-            check_plan_active,
+            check_plan_active,  # old branch of p88-lifecycle-signals only (88.4.5)
             fire_supervisor_followups,
             # Plan endpoints (async-only)
             execute_plan_refine,

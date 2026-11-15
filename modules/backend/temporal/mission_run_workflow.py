@@ -1,4 +1,4 @@
-"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6, 88.2.7 and 88.3.8, contract 3.3.3).
+"""Mission Run Workflow (Plan 88 steps 88.1.8, 88.2.6, 88.2.7, 88.3.8 and 88.4.5, contract 3.3.3).
 
 One durable workflow per MissionRun. It begins the run, plans it, then loops:
 fetch the run's task graph, run each approved task as its own
@@ -13,6 +13,13 @@ max_run_duration_seconds of active time; human approval waits are excluded.
 A supervisor WAIT is a durable wait_condition, not a timer, and costs nothing.
 History is bounded by continue-as-new at the loop top, carrying
 MissionRunWorkflowState and the unchanged config snapshot.
+
+Pause and resume arrive as the request_pause and resume signals (88.4.5,
+patch p88-lifecycle-signals): the run pauses at its next layer boundary, after
+the in-flight tasks finish. The run-end notification is sent through _notify
+under the same patch; a notification failure never fails the run. The patch is
+evaluated once, as the first command of each run, so an execution that started
+before the patch replays on the old branch throughout.
 """
 
 import asyncio
@@ -35,6 +42,7 @@ with workflow.unsafe.imports_passed_through():
         fetch_run_task_graph,
         finalise_mission_run,
         plan_mission_run,
+        set_mission_run_status,
     )
     from modules.backend.temporal.mission_run_models import (
         ActivityPolicySnapshot,
@@ -48,9 +56,13 @@ with workflow.unsafe.imports_passed_through():
         MissionRunWorkflowInput,
         MissionRunWorkflowState,
         MissionRunWorkflowStatus,
+        NotificationRequest,
+        PauseRequest,
         PlanRunInput,
         RefinementOutcome,
         ResolveTaskInput,
+        ResumeRequest,
+        RunStatusUpdate,
         RunTaskGraph,
         SupervisorFollowupInput,
         TaskFailureDigest,
@@ -58,6 +70,7 @@ with workflow.unsafe.imports_passed_through():
         WriteDigestInput,
         digest_failures,
     )
+    from modules.backend.temporal.notification_activities import send_mission_notification
     from modules.backend.temporal.run_memory_activities import (
         compact_mission_context,
         write_run_digest,
@@ -140,10 +153,23 @@ class MissionRunWorkflow:
         self._wave_failure_reason: str | None = None
         self._wave_failures: list[TaskFailureDigest] = []
         self._wave_failures_truncated = 0
+        self._lifecycle_signals = False  # set by run(): p88-lifecycle-signals (88.4.5)
 
     @workflow.signal
     def tasks_approved(self, s: TasksApprovedSignal) -> None:
         self._approved_seq += 1
+
+    @workflow.signal
+    def request_pause(self, req: PauseRequest) -> None:
+        """Pause at the next layer boundary, after the in-flight tasks finish (88.4.5)."""
+        self._pause_requested = True
+
+    @workflow.signal
+    def resume(self, req: ResumeRequest) -> None:
+        """Clear a pending pause; release a pause that no open gate holds (88.4.5)."""
+        self._pause_requested = False
+        if self._state is None or self._state.pending_gate is None:
+            self._paused = False
 
     @workflow.signal
     def refinement_complete(self, outcome: RefinementOutcome | None = None) -> None:
@@ -174,6 +200,7 @@ class MissionRunWorkflow:
     @workflow.run
     async def run(self, inp: MissionRunWorkflowInput) -> str:
         c = inp.config
+        self._lifecycle_signals = workflow.patched("p88-lifecycle-signals")
         try:
             if self._state is None:
                 try:
@@ -287,7 +314,11 @@ class MissionRunWorkflow:
         return None
 
     async def _layer_boundary(self) -> str | None:
-        """Runs before each chunk; 88.4.5 and 88.4.6 add the pause and budget points."""
+        """Runs before each chunk: the pause point (88.4.5), then the duration check.
+
+        88.4.6 adds the budget point.
+        """
+        await self._pause_point()
         if self._duration_exhausted():
             return await self._end_run(
                 "failed",
@@ -295,6 +326,32 @@ class MissionRunWorkflow:
                 "max_run_duration_seconds reached at a layer boundary",
             )
         return None
+
+    async def _pause_point(self) -> None:
+        """Hold the run PAUSED while a user pause stands; the pause is excluded from the duration.
+
+        A layer boundary is reached only after the previous chunk's tasks
+        resolved, so no task is in flight while the run is paused.
+        """
+        if not self._lifecycle_signals or not self._pause_requested:
+            return
+        inp = self._input
+        await _exec(
+            set_mission_run_status,
+            RunStatusUpdate(inp.mission_run_id, "paused", "user_pause", None),
+            inp.config.persistence,
+        )
+        self._paused = True
+        self._phase = "paused"
+        paused_at = workflow.now()
+        await workflow.wait_condition(lambda: not self._paused)
+        self._state.excluded_wait_seconds += int((workflow.now() - paused_at).total_seconds())
+        self._phase = "executing"
+        await _exec(
+            set_mission_run_status,
+            RunStatusUpdate(inp.mission_run_id, "running", None, None),
+            inp.config.persistence,
+        )
 
     async def _run_task(self, task_id: str) -> ExecuteTaskResult:
         cfg = self._input.config
@@ -406,8 +463,11 @@ class MissionRunWorkflow:
             ),
             c.persistence,
         )
-        if not await _exec(check_plan_active, inp.mission_id, c.persistence):
-            return await self._end_run("cancelled", "cancelled_by_user", "plan paused")
+        # Executions on the old branch still poll the mission; from
+        # p88-lifecycle-signals a pause arrives through request_pause.
+        if not self._lifecycle_signals:
+            if not await _exec(check_plan_active, inp.mission_id, c.persistence):
+                return await self._end_run("cancelled", "cancelled_by_user", "plan paused")
         if ev.action == "wait":
             return await self._supervisor_wait(seen)
         if ev.action == "advance_approved":
@@ -598,9 +658,28 @@ class MissionRunWorkflow:
                 ),
                 c.write_digest,
             )
-        await _exec(
+        result = await _exec(
             finalise_mission_run,
             FinaliseRunInput(inp.mission_run_id, status, reason, detail, director_objective_met),
             c.persistence,
         )
+        if self._lifecycle_signals and result.notification is not None:
+            await self._notify(result.notification)
         return status
+
+    async def _notify(self, req: NotificationRequest) -> None:
+        """The workflow's only way to send a notification; a failure is logged, never raised."""
+        try:
+            await _exec(send_mission_notification, req, self._input.config.notify)
+        except ActivityError as e:
+            # best-effort — workflows cannot publish events; the failure stays in
+            # this run's Temporal history and the delivery rows record it.
+            workflow.logger.warning(
+                "notification failed",
+                extra={
+                    "mission_id": req.mission_id,
+                    "mission_run_id": self._input.mission_run_id,
+                    "kind": req.kind,
+                    "cause": _cause_type(e),
+                },
+            )

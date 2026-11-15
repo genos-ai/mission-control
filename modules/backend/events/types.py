@@ -20,6 +20,7 @@ from modules.backend.core.logging import get_logger
 from modules.backend.events.base import SessionEvent
 from modules.backend.events.mission_run_types import (
     ContextCompactedEvent,
+    MissionLifecycleChangedEvent,
     MissionRunCreatedEvent,
     MissionRunDigestWrittenEvent,
     MissionRunOccurrenceRecordedEvent,
@@ -841,6 +842,7 @@ EVENT_TYPE_MAP: dict[str, type[SessionEvent]] = {
     "context.compacted": ContextCompactedEvent,
     "mission_run.digest_written": MissionRunDigestWrittenEvent,
     "notification.delivery_failed": NotificationDeliveryFailedEvent,
+    "mission.lifecycle_changed": MissionLifecycleChangedEvent,
 }
 
 

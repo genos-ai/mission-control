@@ -589,11 +589,15 @@ async def test_cancel_other_missions_run_404(db_session_factory, gateway, owner)
     assert (await _run(db_session_factory, run.id)).status == MissionRunStatus.PENDING
 
 
-async def test_cancel_pending_unstarted_run_is_immediate(
+async def test_cancel_running_workflow_not_found_digests_then_finalises(
     db_session_factory, gateway, owner
 ) -> None:
+    # 88.4.5: a run whose workflow is gone gets a deterministic digest and is
+    # finalised CANCELLED with the stored cancel reason.
+    gateway.cancel.return_value = WorkflowState.NOT_FOUND
     user, mission, _ = await owner()
     run = await _start(db_session_factory, mission, user)
+    await _begin(db_session_factory, run.id)
 
     async with db_session_factory() as session:
         cancelled = await _svc(session).cancel_run(
@@ -602,9 +606,11 @@ async def test_cancel_pending_unstarted_run_is_immediate(
 
     assert cancelled.status == MissionRunStatus.CANCELLED
     assert cancelled.status_reason == MissionRunStatusReason.CANCELLED_BY_USER
-    assert cancelled.cancel_requested_at is not None
-    assert cancelled.cancel_requested_by_user_id == user.id
-    gateway.cancel.assert_not_awaited()
+    assert cancelled.status_detail == "workflow not found at cancel"
+    async with db_session_factory() as session:
+        digest = await RunMemoryService(session).get_digest(mission.id, run.id)
+    assert digest is not None
+    assert digest.generator == DigestGenerator.DETERMINISTIC
 
 
 # ── supervisor approval (88.1.8) ──────────────────────────────────────────

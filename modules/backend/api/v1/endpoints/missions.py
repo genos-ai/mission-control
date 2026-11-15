@@ -14,6 +14,7 @@ from modules.backend.api.v1.endpoints import (
     missions_context,
     missions_costs,
     missions_gates,
+    missions_lifecycle,
     missions_notifications,
     missions_plan,
     missions_runs,
@@ -41,6 +42,7 @@ router.include_router(missions_costs.router)
 router.include_router(missions_gates.router)
 router.include_router(missions_budget.router)
 router.include_router(missions_notifications.router)
+router.include_router(missions_lifecycle.router)
 
 
 # ---- Mission CRUD ----

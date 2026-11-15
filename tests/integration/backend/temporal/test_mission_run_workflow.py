@@ -287,7 +287,7 @@ async def test_wait_is_durable_and_free(env: WorkflowEnvironment):
     stubs.SCRIPT.actions = ["wait", "propose_complete"]
 
     async with _started(env) as handle:
-        await _until(lambda: len(stubs.calls("check_plan_active")) == 1)
+        await _until(lambda: len(stubs.calls("fire_supervisor_followups")) == 1)
         assert (await handle.query(MissionRunWorkflow.get_run_state)).iteration == 1
         await env.sleep(timedelta(hours=3))
         assert len(stubs.calls("fetch_run_task_graph")) == 1
@@ -409,7 +409,7 @@ async def test_get_run_state_query(env: WorkflowEnvironment):
     stubs.SCRIPT.actions = ["wait", "propose_complete"]
 
     async with _started(env) as handle:
-        await _until(lambda: len(stubs.calls("check_plan_active")) == 1)
+        await _until(lambda: len(stubs.calls("fire_supervisor_followups")) == 1)
         state = await handle.query(MissionRunWorkflow.get_run_state)
         await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
         await handle.result()
@@ -479,7 +479,7 @@ async def test_state_carried_across_can(env: WorkflowEnvironment, monkeypatch):
     stubs.SCRIPT.task_results = {"a": [failed("a"), failed("a")]}
 
     async with _started(env, continue_as_new_after_iterations=1) as handle:
-        await _until(lambda: len(stubs.calls("check_plan_active")) == 1)
+        await _until(lambda: len(stubs.calls("fire_supervisor_followups")) == 1)
         await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
         assert await handle.result() == "succeeded"
         run_ids = await _run_ids(env, handle)
@@ -508,7 +508,7 @@ async def test_can_does_not_repeat_without_progress(env: WorkflowEnvironment):
     stubs.SCRIPT.actions = ["advance_approved", "wait"]
 
     async with _started(env, continue_as_new_after_iterations=2) as handle:
-        await _until(lambda: len(stubs.calls("check_plan_active")) == 2)
+        await _until(lambda: len(stubs.calls("fire_supervisor_followups")) == 2)
         await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
         assert await handle.result() == "succeeded"
         run_ids = await _run_ids(env, handle)

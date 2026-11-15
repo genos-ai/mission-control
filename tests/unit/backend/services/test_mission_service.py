@@ -262,18 +262,8 @@ class TestUpdateMission:
         assert updated.description == "Updated description"
 
 
-class TestArchiveMission:
-    @pytest.mark.asyncio
-    async def test_archive(self, service):
-        mission = await service.create_mission(
-            gate_mode="manual",
-            name="archive-test",
-            description="To archive",
-            owner_id=TEST_USER_ID,
-        )
-        archived = await service.archive_mission(mission.id)
-        assert archived.status == MissionStatus.ARCHIVED
-
+class TestArchivedMissionListing:
+    # Archiving itself is MissionLifecycleService.archive_mission (88.4.5).
     @pytest.mark.asyncio
     async def test_archived_not_in_active_list(self, service):
         mission = await service.create_mission(
@@ -282,6 +272,6 @@ class TestArchiveMission:
             description="Hidden",
             owner_id=TEST_USER_ID,
         )
-        await service.archive_mission(mission.id)
+        await service.update_mission(mission.id, status=MissionStatus.ARCHIVED)
         active = await service.list_missions(owner_id=TEST_USER_ID, status="active")
         assert all(m.id != mission.id for m in active)

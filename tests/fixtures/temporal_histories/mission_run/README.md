@@ -8,7 +8,7 @@ Temporal server is needed to replay.
 
 ## Recording
 
-Stubbed scenarios (the seven Phase 2 fixtures and `p88-run-memory`). Each test in the module drives
+Stubbed scenarios (the seven Phase 2 fixtures, `p88-run-memory` and `p88-lifecycle-signals`). Each test in the module drives
 one scenario through the real workflow with the stub activities in
 `tests/integration/backend/temporal/mission_run_stubs.py`:
 

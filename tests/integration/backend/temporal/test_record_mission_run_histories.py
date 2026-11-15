@@ -30,6 +30,9 @@ from modules.backend.temporal.history_redaction import redact_history
 from modules.backend.temporal.mission_run_models import (
     ExecuteTaskInput,
     MissionRunWorkflowInput,
+    NotificationRequest,
+    PauseRequest,
+    ResumeRequest,
     TasksApprovedSignal,
 )
 from modules.backend.temporal.mission_run_workflow import MissionRunWorkflow
@@ -121,7 +124,7 @@ async def test_wait_then_signal(env: WorkflowEnvironment):
     stubs.SCRIPT.actions = ["wait", "propose_complete"]
 
     async with _started(env) as handle:
-        await _until(lambda: len(stubs.calls("check_plan_active")) == 1)
+        await _until(lambda: len(stubs.calls("fire_supervisor_followups")) == 1)
         await handle.signal(MissionRunWorkflow.tasks_approved, TasksApprovedSignal(["a"]))
         assert await handle.result() == "succeeded"
         await _write(env, "wait_then_signal", handle.id, handle.result_run_id)
@@ -203,3 +206,46 @@ async def test_p88_run_memory(env: WorkflowEnvironment):
         "write_run_digest",
         "finalise_mission_run",
     ]
+
+
+async def test_p88_lifecycle_signals(env: WorkflowEnvironment):
+    """The p88-lifecycle-signals branch (88.4.5): one pause and resume, then the run-end notice."""
+    release = asyncio.Event()
+
+    async def hold_first_layer(inp: ExecuteTaskInput) -> None:
+        if inp.task_id == "a":
+            await release.wait()
+
+    stubs.SCRIPT.graphs = [graph(["a"], ["b"])]
+    stubs.SCRIPT.actions = ["propose_complete"]
+    stubs.SCRIPT.task_hook = hold_first_layer
+    stubs.SCRIPT.notification = NotificationRequest(
+        kind="run_succeeded",
+        mission_id=str(uuid.uuid4()),
+        mission_run_id=str(uuid.uuid4()),
+        gate_request_id=None,
+        subject_id="run",
+        payload={},
+    )
+
+    async with _started(env) as handle:
+        await _until(lambda: len(stubs.calls("execute_plan_task")) == 1)
+        await handle.signal(
+            MissionRunWorkflow.request_pause,
+            PauseRequest(requested_by_user_id=None, reason="user"),
+        )
+        release.set()
+        await _until(lambda: len(stubs.calls("set_mission_run_status")) == 1)
+        await handle.signal(MissionRunWorkflow.resume, ResumeRequest(requested_by_user_id=None))
+        assert await handle.result() == "succeeded"
+        await _write(env, "p88-lifecycle-signals", handle.id, handle.result_run_id)
+
+    assert [(s.status, s.reason) for s in stubs.calls("set_mission_run_status")] == [
+        ("paused", "user_pause"),
+        ("running", None),
+    ]
+    assert [name for name, _ in stubs.CALLS][-2:] == [
+        "finalise_mission_run",
+        "send_mission_notification",
+    ]
+    assert stubs.calls("check_plan_active") == []

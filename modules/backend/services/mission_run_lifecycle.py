@@ -106,6 +106,15 @@ class MissionRunLifecycleMixin:
             raise MissionRunStateError(
                 f"run {run_id} is {MissionRunStatus(run.status).value}, not pending"
             )
+        if run.cancel_requested_at is not None:
+            # A cancel that found no workflow yet (88.4.5): honour it at start.
+            await self.transition(
+                run_id,
+                MissionRunStatus.CANCELLED,
+                MissionRunStatusReason(run.cancel_reason),
+                "cancelled before start",
+            )
+            raise RunStartRejectedError("run cancelled before start")
         mission_id = run.mission_id
         mission = await self._missions.get_by_id(mission_id)
         plan = await self._plans.get_by_id(run.plan_id)

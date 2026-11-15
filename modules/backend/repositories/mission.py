@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from modules.backend.core.exceptions import NotFoundError
 from modules.backend.models.mission import Mission, MissionMember, MissionStatus, MissionTier
+from modules.backend.models.mission_plan import GateMode, MissionPlan
 from modules.backend.repositories.base import BaseRepository
 
 
@@ -32,6 +33,31 @@ class MissionRepository(BaseRepository[Mission]):
         if mission is None:
             raise NotFoundError("Mission not found")
         return mission
+
+    async def lock(self, mission_id: str) -> Mission:
+        """SELECT ... FOR UPDATE on the mission row, overwriting any stale loaded copy."""
+        stmt = (
+            select(Mission)
+            .where(Mission.id == str(mission_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        mission = (await self.session.execute(stmt)).scalar_one_or_none()
+        if mission is None:
+            raise NotFoundError("Mission not found")
+        return mission
+
+    async def list_ids_by_status_and_gate_mode(
+        self, status: MissionStatus, gate_mode: GateMode
+    ) -> list[str]:
+        """Ids of the missions in ``status`` whose plan runs in ``gate_mode``."""
+        stmt = (
+            select(Mission.id)
+            .join(MissionPlan, MissionPlan.mission_id == Mission.id)
+            .where(Mission.status == status, MissionPlan.gate_mode == gate_mode)
+            .order_by(Mission.created_at)
+        )
+        return [str(i) for i in (await self.session.execute(stmt)).scalars().all()]
 
     async def increment_run_sequence(self, mission_id: str) -> int:
         """Issue the mission's next run sequence number.

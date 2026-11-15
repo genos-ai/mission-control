@@ -256,15 +256,15 @@ async def _action_detail(cli_logger, *, mission_id, name, output_format, **_):
 
 
 async def _action_archive(cli_logger, *, mission_id, **_):
-    """Archive a mission."""
-    from modules.backend.services.mission import MissionService
+    """Archive a mission in-process (admin sits inside the trust boundary)."""
+    from modules.backend.services.mission_lifecycle import MissionLifecycleService
     from modules.clients.cli.mission_context import async_require_mission_id
 
     console = get_console()
     mission_id = await async_require_mission_id(mission_id)
 
-    async with MissionService.factory() as svc:
-        mission = await svc.archive_mission(mission_id)
+    async with MissionLifecycleService.factory() as svc:
+        mission = await svc.archive_mission(mission_id, CLI_SERVICE_ACCOUNT_ID)
 
     console.print(f"[yellow]Mission archived:[/yellow] {mission.name} ({mission.id})")
 

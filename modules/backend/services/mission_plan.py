@@ -24,7 +24,7 @@ from modules.backend.events.types import (
     MissionPlanTaskStatusChangedEvent,
 )
 from modules.backend.models.gate_request import GateRequest, GateRequestStatus
-from modules.backend.models.mission import Mission, MissionPauseReason, MissionStatus
+from modules.backend.models.mission import MissionStatus
 from modules.backend.models.mission_plan import (  # noqa: F401
     AUTO_APPROVE_GATE_MODES,
     GateMode,
@@ -208,32 +208,6 @@ class MissionPlanService(BaseService):
             ),
         )
         return plan
-
-    async def pause_all_autonomous_plans(self) -> int:
-        """Pause every ACTIVE mission whose plan runs in autonomous gate mode.
-
-        Emergency stop: a single UPDATE, no per-mission loop and no race
-        window. Sets the mission PAUSED with reason USER. Returns the number
-        of missions paused. Caller commits.
-        """
-        autonomous = select(MissionPlan.mission_id).where(
-            MissionPlan.gate_mode == GateMode.AUTONOMOUS
-        )
-        result = await self._session.execute(
-            update(Mission)
-            .where(Mission.status == MissionStatus.ACTIVE, Mission.id.in_(autonomous))
-            .values(
-                status=MissionStatus.PAUSED,
-                paused_reason=MissionPauseReason.USER,
-                paused_at=utc_now(),
-            )
-        )
-        paused_count = result.rowcount
-        self._log_operation(
-            "Emergency stop: all autonomous missions paused",
-            paused_count=paused_count,
-        )
-        return paused_count
 
     # ── Manual gate requests (Plan 80g) ─────────────────────────────────
 

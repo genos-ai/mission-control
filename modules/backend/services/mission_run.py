@@ -34,7 +34,6 @@ from modules.backend.models.execution_record import DecisionType, ExecutionRecor
 from modules.backend.models.mission import MissionStatus
 from modules.backend.models.mission_plan import GateMode
 from modules.backend.models.mission_run import (
-    ACTIVE_RUN_STATUSES,
     TERMINAL_RUN_STATUSES,
     MissionRun,
     MissionRunStatus,
@@ -274,26 +273,53 @@ class MissionRunService(MissionRunLifecycleMixin, BaseService):
         self,
         mission_id: str,
         run_id: str,
-        user_id: str,
+        user_id: str | None,
         reason: MissionRunStatusReason,
     ) -> MissionRun:
-        """Record a cancel request; cancel an unstarted run at once, else cancel its workflow."""
+        """Record a cancel request, commit, then cancel the run's workflow (88.4.5).
+
+        A terminal run is returned unchanged. When the workflow is not found, a
+        PENDING run is cancelled directly and any other run gets a
+        deterministic digest and is finalised CANCELLED. ExternalServiceError
+        from Temporal propagates after the commit: the stored request stands
+        and begin or the reconciler honours it.
+
+        Raises:
+            NotFoundError: the run is not in the mission.
+            ExternalServiceError: Temporal is unreachable.
+        """
         run = await self._runs.lock_for_mission(mission_id, run_id)
         if run is None:
             raise NotFoundError(f"Run {run_id} not found in mission {mission_id}")
-        if run.status not in ACTIVE_RUN_STATUSES:
-            raise ConflictError(f"run #{run.sequence} is {MissionRunStatus(run.status).value}")
-        run.cancel_requested_at = utc_now()
-        run.cancel_requested_by_user_id = user_id
-        run.cancel_reason = reason
-        if run.status == MissionRunStatus.PENDING and run.started_at is None:
-            return await self.transition(
-                run_id, MissionRunStatus.CANCELLED, MissionRunStatusReason.CANCELLED_BY_USER, None
-            )
-        workflow_id = run.temporal_workflow_id
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run
+        if run.cancel_requested_at is None:
+            run.cancel_requested_at = utc_now()
+            run.cancel_requested_by_user_id = user_id
+            run.cancel_reason = reason
+        status = MissionRunStatus(run.status)
+        cancel_reason = MissionRunStatusReason(run.cancel_reason)
         await self._session.commit()
+
         gateway = await TemporalWorkflowGateway.connect()
-        await gateway.cancel(workflow_id)
+        state = await gateway.cancel(mission_run_workflow_id(run_id))
+        if state == WorkflowState.NOT_FOUND:
+            if status == MissionRunStatus.PENDING:
+                return await self.transition(
+                    run_id, MissionRunStatus.CANCELLED, cancel_reason, "cancelled before start"
+                )
+            await RunMemoryService(self._session, event_bus=self._event_bus).write_digest(
+                run_id, status=MissionRunStatus.CANCELLED, reason=cancel_reason, narrator=None
+            )
+            await self.finalise(
+                run_id, MissionRunStatus.CANCELLED, cancel_reason, "workflow not found at cancel"
+            )
+        self._log_operation(
+            "Mission run cancel requested",
+            mission_id=mission_id,
+            run_id=run_id,
+            workflow_state=state.value,
+        )
         return await self._runs.get_by_id(run_id)
 
     async def on_tasks_approved(self, mission_id: str, task_ids: list[str], user_id: str) -> None:

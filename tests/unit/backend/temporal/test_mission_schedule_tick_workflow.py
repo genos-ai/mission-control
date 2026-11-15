@@ -1,4 +1,4 @@
-"""MissionScheduleTickWorkflow (Plan 88 step 88.1.8, contract 3.3.2).
+"""MissionScheduleTickWorkflow (Plan 88 steps 88.1.8 and 88.4.5, contract 3.3.2).
 
 Runs the real tick workflow in a time-skipping Temporal environment with a fake
 claim_occurrence and a stub MissionRunWorkflow child. The test server does not
@@ -30,6 +30,7 @@ with workflow.unsafe.imports_passed_through():
         ClaimOccurrenceResult,
         MissionRunWorkflowInput,
         MissionScheduleTickInput,
+        NotificationRequest,
         RetrySnapshot,
         RunConfigSnapshot,
         TickConfigSnapshot,
@@ -44,12 +45,22 @@ _SCHEDULED_FOR = datetime(2027, 1, 4, 6, 0, tzinfo=UTC)
 _claims: list[ClaimOccurrenceInput] = []
 _result: list[ClaimOccurrenceResult] = []
 _children: list[str] = []
+_sent: list[str] = []  # notification kinds, then "child" when the child workflow runs
+_notify_fails: list[bool] = [False]
 
 
 @activity.defn(name="claim_occurrence")
 async def claim_fake(inp: ClaimOccurrenceInput) -> ClaimOccurrenceResult:
     _claims.append(inp)
     return _result[0]
+
+
+@activity.defn(name="send_mission_notification")
+async def notify_fake(req: NotificationRequest) -> list[str]:
+    _sent.append(req.kind)
+    if _notify_fails[0]:
+        raise RuntimeError("telegram down")
+    return []
 
 
 @workflow.defn(name="MissionRunWorkflow")
@@ -107,6 +118,8 @@ async def env() -> AsyncIterator[WorkflowEnvironment]:
     _claims.clear()
     _result.clear()
     _children.clear()
+    _sent.clear()
+    _notify_fails[0] = False
     environment = await WorkflowEnvironment.start_time_skipping()
     try:
         await environment.client.operator_service.add_search_attributes(
@@ -143,7 +156,7 @@ async def _tick(env: WorkflowEnvironment, task_queue: str, *, scheduled: bool = 
         env.client,
         task_queue=task_queue,
         workflows=[MissionScheduleTickWorkflow, MissionRunWorkflowStub],
-        activities=[claim_fake],
+        activities=[claim_fake, notify_fake],
     ):
         return await env.client.execute_workflow(
             MissionScheduleTickWorkflow.run,
@@ -241,3 +254,49 @@ async def test_child_already_started_is_success(env: WorkflowEnvironment, task_q
     assert await _tick(env, task_queue) == "run"
     described = await env.client.get_workflow_handle(mission_run_workflow_id(run_id)).describe()
     assert described.run_id == first.result_run_id
+
+
+def _note(kind: str) -> NotificationRequest:
+    return NotificationRequest(
+        kind=kind,
+        mission_id=str(uuid.uuid4()),
+        mission_run_id=None,
+        gate_request_id=None,
+        subject_id=f"schedule:{_SCHEDULED_FOR.isoformat()}",
+        payload={},
+    )
+
+
+async def test_tick_sends_skip_notification(env: WorkflowEnvironment, task_queue: str):
+    _result.append(
+        ClaimOccurrenceResult(
+            outcome="skipped",
+            mission_run_id=str(uuid.uuid4()),
+            run_input=None,
+            notifications=[_note("run_missed"), _note("run_skipped")],
+        )
+    )
+
+    assert await _tick(env, task_queue) == "skipped"
+
+    assert _sent == ["run_missed", "run_skipped"]
+
+
+async def test_tick_notification_failure_still_starts_child(
+    env: WorkflowEnvironment, task_queue: str
+):
+    _notify_fails[0] = True
+    run_id = str(uuid.uuid4())
+    _result.append(
+        ClaimOccurrenceResult(
+            outcome="run",
+            mission_run_id=run_id,
+            run_input=_run_input(run_id, task_queue),
+            notifications=[_note("run_missed")],
+        )
+    )
+
+    assert await _tick(env, task_queue) == "run"
+
+    assert _sent == ["run_missed", "run_missed"]  # both attempts of the policy
+    assert await _child_result(env, run_id) == run_id

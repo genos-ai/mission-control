@@ -1,4 +1,4 @@
-"""MissionRunWorkflow activities (Plan 88 step 88.1.8, contract 3.3.5).
+"""MissionRunWorkflow activities (Plan 88 steps 88.1.8 and 88.4.5, contract 3.3.5).
 
 Each activity opens its own DB session, builds a SessionEventBus and calls the
 matching MissionRunService method. String status fields arrive as lowercase
@@ -18,6 +18,7 @@ from modules.backend.temporal.mission_run_models import (
     BeginRunResult,
     FinaliseRunInput,
     FinaliseRunResult,
+    PauseForRunInput,
     PlanRunInput,
     PlanRunResult,
     RunStatusUpdate,
@@ -99,7 +100,7 @@ async def set_mission_run_status(input: RunStatusUpdate) -> None:
 
 @activity.defn
 async def finalise_mission_run(input: FinaliseRunInput) -> FinaliseRunResult:
-    """End the run. The notification is logged here; 88.4.5 sends it."""
+    """End the run; the workflow sends the returned notification (88.4.5)."""
     from modules.backend.models.mission_run import MissionRunStatus, MissionRunStatusReason
 
     reason = MissionRunStatusReason(input.reason) if input.reason is not None else None
@@ -111,12 +112,19 @@ async def finalise_mission_run(input: FinaliseRunInput) -> FinaliseRunResult:
             input.detail,
             director_objective_met=input.director_objective_met,
         )
-    if result.notification is not None:
-        logger.info(
-            "Run-end notification built (not sent before 88.4.5)",
-            extra={
-                "kind": result.notification.kind,
-                "subject_id": result.notification.subject_id,
-            },
-        )
     return result
+
+
+@activity.defn
+async def pause_mission_for_run(input: PauseForRunInput) -> None:
+    """Pause the run's mission for a system reason; a PAUSED or ARCHIVED mission is left as is."""
+    from modules.backend.models.mission import MissionPauseReason
+    from modules.backend.services.mission_lifecycle import MissionLifecycleService
+
+    reason = MissionPauseReason(input.reason)
+    async with MissionLifecycleService.factory() as svc:
+        paused = await svc.pause_for_run(input.mission_run_id, reason)
+    logger.info(
+        "Mission pause for run",
+        extra={"mission_run_id": input.mission_run_id, "reason": reason.value, "paused": paused},
+    )

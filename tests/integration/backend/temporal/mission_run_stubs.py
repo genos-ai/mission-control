@@ -1,4 +1,4 @@
-"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 steps 88.2.6, 88.3.8).
+"""Stub activities for the MissionRunWorkflow integration tests (Plan 88 steps 88.2.6-88.4.5).
 
 Each stub is registered under the real activity name. Stubs read their script
 from the module-level ``SCRIPT`` and append ``(activity name, input)`` to the
@@ -25,9 +25,11 @@ from modules.backend.temporal.mission_run_models import (
     ExecuteTaskResult,
     FinaliseRunInput,
     FinaliseRunResult,
+    NotificationRequest,
     PlanRunInput,
     PlanRunResult,
     ResolveTaskInput,
+    RunStatusUpdate,
     RunTaskGraph,
     SupervisorFollowupInput,
     WriteDigestInput,
@@ -89,6 +91,7 @@ class Script:
     task_delay_seconds: float = 0.0
     task_hook: Callable[[ExecuteTaskInput], Awaitable[None]] | None = None
     compaction_error: Exception | None = None
+    notification: NotificationRequest | None = None  # what finalise returns (88.4.5)
     running: int = 0
     max_running: int = 0
     activity_timeouts: list[tuple[timedelta | None, timedelta | None]] = field(default_factory=list)
@@ -210,7 +213,18 @@ async def digest_stub(inp: WriteDigestInput) -> DigestResult:
 @activity.defn(name="finalise_mission_run")
 async def finalise_stub(inp: FinaliseRunInput) -> FinaliseRunResult:
     CALLS.append(("finalise_mission_run", inp))
-    return FinaliseRunResult(cost_usd=0.0, notification=None)
+    return FinaliseRunResult(cost_usd=0.0, notification=SCRIPT.notification)
+
+
+@activity.defn(name="set_mission_run_status")
+async def status_stub(inp: RunStatusUpdate) -> None:
+    CALLS.append(("set_mission_run_status", inp))
+
+
+@activity.defn(name="send_mission_notification")
+async def notify_stub(req: NotificationRequest) -> list[str]:
+    CALLS.append(("send_mission_notification", req))
+    return []
 
 
 def non_retryable(message: str) -> ApplicationError:
@@ -231,4 +245,6 @@ ACTIVITIES = [
     compact_stub,
     digest_stub,
     finalise_stub,
+    status_stub,
+    notify_stub,
 ]

@@ -183,6 +183,12 @@ class ResumeRequest:
 
 
 @dataclass
+class PauseForRunInput:
+    mission_run_id: str
+    reason: str  # a lowercase MissionPauseReason value (3.0.2)
+
+
+@dataclass
 class TasksApprovedSignal:
     task_ids: list[str]
 

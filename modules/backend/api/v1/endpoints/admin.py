@@ -8,18 +8,21 @@ Protected by admin role (X-API-Key header). Provides:
 - User/role management
 """
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
 from modules.backend.core.config import get_app_config
-from modules.backend.core.dependencies import AdminRole, DbSession, RequestId
+from modules.backend.core.dependencies import AdminRole, DbSession, RequestId, get_event_bus
 from modules.backend.core.exceptions import AuthorizationError, ValidationError
+from modules.backend.events.bus import SessionEventBus
 from modules.backend.schemas.agent_config import Visibility
 from modules.backend.schemas.base import ApiResponse
 
 router = APIRouter()
+
+EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
 
 def _load_models_registry() -> dict[str, list[str]]:
@@ -802,26 +805,24 @@ async def admin_daemon_status(
 )
 async def admin_emergency_stop(
     request_id: RequestId,
-    _role: AdminRole,
+    admin: AdminRole,
     db: DbSession,
+    event_bus: EventBus,
 ) -> ApiResponse:
-    """Atomically pause every active mission whose plan is autonomous.
+    """Pause every active mission whose plan is autonomous (Plan 88 step 88.4.5).
 
-    Sets ``status = paused`` with reason ``user`` on every ACTIVE mission
-    whose plan has ``gate_mode = autonomous``. This is a single UPDATE
-    query — no per-mission loop, no race window.
-
-    Does NOT cancel in-flight Temporal workflows — those must be
-    cancelled via the Temporal CLI if needed. This endpoint prevents
-    NEW dispatch cycles from starting.
+    Each ACTIVE mission whose plan has ``gate_mode = autonomous`` is paused
+    with reason ``user`` through MissionLifecycleService.pause_all_active:
+    its schedules are paused in Temporal and its running run is signalled to
+    pause. A running run pauses at its next layer boundary, after its
+    in-flight tasks finish; it is not cancelled.
     """
     from modules.backend.core.logging import get_logger
-    from modules.backend.services.mission_plan import MissionPlanService
+    from modules.backend.services.mission_lifecycle import MissionLifecycleService
 
     logger = get_logger(__name__)
 
-    paused_count = await MissionPlanService(db).pause_all_autonomous_plans()
-    await db.commit()
+    paused_count = await MissionLifecycleService(db, event_bus).pause_all_active(admin.id)
 
     logger.warning(
         "EMERGENCY STOP: paused all autonomous missions",

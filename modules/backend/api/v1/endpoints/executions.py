@@ -6,20 +6,26 @@ decisions, and cost breakdowns. Write operations happen via
 the ExecutionPersistenceService called from the dispatch loop.
 
 Runs start only through MissionRunService; this module starts no
-execution. Cancel stops a record's Temporal workflow, then the record.
+execution. Cancel of a mission run's record delegates to
+MissionRunService.cancel_run (88.4.5); any other record stops its Temporal
+workflow, then the record.
 """
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 
 from modules.backend.core.dependencies import (
     CurrentUser,
     DbSession,
     RequestId,
+    get_event_bus,
     require_mission_access,
     require_mission_operator,
 )
 from modules.backend.core.exceptions import AuthorizationError, NotFoundError
 from modules.backend.core.logging import get_logger
+from modules.backend.events.bus import SessionEventBus
 from modules.backend.schemas.base import ApiResponse
 from modules.backend.schemas.execution_record import (
     ExecutionDecisionResponse,
@@ -31,6 +37,8 @@ from modules.backend.services.execution_persistence import ExecutionPersistenceS
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+EventBus = Annotated[SessionEventBus, Depends(get_event_bus)]
 
 
 async def _require_execution_access(db, mission_id, user) -> None:
@@ -198,10 +206,18 @@ async def cancel_execution(
     db: DbSession,
     current_user: CurrentUser,
     request_id: RequestId,
+    event_bus: EventBus,
     reason: str = "Cancelled by user",
 ) -> ApiResponse:
-    """Cancel a pending or running execution: Temporal first, then the record (Plan 88)."""
+    """Cancel a pending or running execution (Plan 88).
+
+    A mission run's record cancels the run through MissionRunService.cancel_run
+    and returns the run's status; any other record goes through
+    ExecutionCancellationService: Temporal first, then the record.
+    """
+    from modules.backend.schemas.mission_run import MissionRunStatus, MissionRunStatusReason
     from modules.backend.services.execution_cancellation import ExecutionCancellationService
+    from modules.backend.services.mission_run import MissionRunService
 
     record = await ExecutionPersistenceService(db).get_execution(execution_id)
     if not record:
@@ -211,6 +227,24 @@ async def cancel_execution(
         await require_mission_operator(db, record.mission_id, current_user)
     elif not current_user.has_role("admin"):
         raise AuthorizationError("You don't have access to this execution")
+
+    if record.mission_run_id:
+        run = await MissionRunService(db, event_bus).cancel_run(
+            record.mission_id,
+            record.mission_run_id,
+            current_user.id,
+            MissionRunStatusReason.CANCELLED_BY_USER,
+        )
+        return ApiResponse(
+            success=True,
+            data={
+                "id": execution_id,
+                "mission_run_id": run.id,
+                "status": MissionRunStatus(run.status).value,
+                "temporal_cancelled": True,
+            },
+            metadata={"request_id": request_id},
+        )
 
     record, _changed, temporal_cancelled = await ExecutionCancellationService(db).cancel_execution(
         execution_id, user_id=str(current_user.id), reason=reason
